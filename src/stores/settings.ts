@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 
 export interface AISettings {
   provider: "openai" | "claude" | "deepseek" | "custom";
@@ -8,15 +9,21 @@ export interface AISettings {
   endpoint: string;
 }
 
-function loadAISettings(): AISettings {
+async function loadAISettings(): Promise<AISettings> {
   try {
-    const raw = localStorage.getItem("ai-settings");
-    if (raw) return JSON.parse(raw);
-  } catch {}
+    const raw = await invoke<Record<string, unknown> | null>("get_ai_config");
+    if (raw && typeof raw === "object" && "provider" in raw) {
+      return raw as unknown as AISettings;
+    }
+  } catch { /* fall through to defaults */ }
   return { provider: "openai", apiKey: "", model: "gpt-4o", endpoint: "https://api.openai.com/v1" };
 }
 
-function saveAISettings(s: AISettings) { localStorage.setItem("ai-settings", JSON.stringify(s)); }
+async function saveAISettings(s: AISettings) {
+  try {
+    await invoke("save_ai_config", { aiConfig: s });
+  } catch (e) { console.error("Failed to save AI config:", e); }
+}
 
 function loadTheme() {
   try { const raw = localStorage.getItem("theme-settings"); if (raw) return JSON.parse(raw); } catch {}
@@ -47,11 +54,18 @@ export const useSettingsStore = defineStore("settings", () => {
   const focusLineMode = ref(localStorage.getItem("editor_focusline") === "1");
   const layoutMode = ref((localStorage.getItem("layout_mode") || "compact") as "compact" | "classic" | "focus");
 
-  const saved = loadAISettings();
-  aiProvider.value = saved.provider;
-  aiApiKey.value = saved.apiKey;
-  aiModel.value = saved.model;
-  aiEndpoint.value = saved.endpoint;
+  // Async init for AI settings from secure backend storage
+  let aiInitialized = false;
+  async function initAISettings() {
+    if (aiInitialized) return;
+    aiInitialized = true;
+    const saved = await loadAISettings();
+    aiProvider.value = saved.provider;
+    aiApiKey.value = saved.apiKey;
+    aiModel.value = saved.model;
+    aiEndpoint.value = saved.endpoint;
+  }
+  initAISettings();
 
   function setBookTitle(title: string) { bookTitle.value = title; localStorage.setItem("book-title", title); }
   function setBookDesc(desc: string) { bookDesc.value = desc; localStorage.setItem("book-desc", desc); }

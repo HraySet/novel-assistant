@@ -2,8 +2,21 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+use time::OffsetDateTime;
 
-// 鈹€鈹€ Types 鈹€鈹€
+// ── Directory constants ──
+
+#[allow(dead_code)]
+mod dirs {
+    pub const CHAPTERS: &str = "章节";
+    pub const OUTLINE: &str = "大纲";
+    pub const CHARACTERS: &str = "角色";
+    pub const SETTINGS: &str = "设定";
+    pub const CHAT: &str = "聊天";
+    pub const SNAPSHOTS: &str = "快照";
+}
+
+// ── Types ──
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WorkspaceStatus {
@@ -38,7 +51,7 @@ struct WorkspaceIndex {
     books: Vec<BookInfo>,
 }
 
-// 鈹€鈹€ Helpers 鈹€鈹€
+// ── Helpers ──
 
 fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -84,50 +97,21 @@ fn write_workspace_index(app: &tauri::AppHandle, index: &WorkspaceIndex) -> Resu
     fs::write(&idx_path, json).map_err(|e| e.to_string())
 }
 
-fn gen_book_id(title: &str) -> String {
-    let dur = std::time::SystemTime::now()
+fn gen_book_id(_title: &str) -> String {
+    let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    format!("book_{}", dur.as_millis())
+        .unwrap()
+        .as_millis();
+    format!("book_{}", ms)
 }
 
 fn now_iso() -> String {
-    let dur = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap();
-    let secs = dur.as_secs();
-    let days = secs / 86400;
-    let (y, m, d) = days_to_ymd(days as i64);
-    let day_secs = secs % 86400;
-    let h = day_secs / 3600;
-    let min = (day_secs % 3600) / 60;
-    let s = day_secs % 60;
-    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, h, min, s)
+    OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| String::from("1970-01-01T00:00:00Z"))
 }
 
-fn days_to_ymd(days: i64) -> (i64, usize, i64) {
-    let mut y = 1970i64;
-    let mut remaining = days;
-    loop {
-        let diy: i64 = if is_leap(y) { 366 } else { 365 };
-        if remaining < diy { break; }
-        remaining -= diy;
-        y += 1;
-    }
-    let md = if is_leap(y) { [31,29,31,30,31,30,31,31,30,31,30,31] } else { [31,28,31,30,31,30,31,31,30,31,30,31] };
-    let mut m = 0usize;
-    while m < 12 && remaining >= md[m] as i64 {
-        remaining -= md[m] as i64;
-        m += 1;
-    }
-    (y, m + 1, remaining + 1)
-}
-
-fn is_leap(y: i64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0)
-}
-
-// 鈹€鈹€ Commands 鈹€鈹€
+// ── Commands ──
 
 #[tauri::command]
 fn get_workspace_status(app: tauri::AppHandle) -> WorkspaceStatus {
@@ -163,17 +147,17 @@ fn create_book(app: tauri::AppHandle, title: String, description: String) -> Res
     let book_id = gen_book_id(&title);
     let now = now_iso();
     let dir = book_dir(&app, &book_id)?;
-    fs::create_dir_all(dir.join("绔犺妭")).map_err(|e| e.to_string())?;
-    fs::create_dir_all(dir.join("澶х翰")).map_err(|e| e.to_string())?;
-    fs::create_dir_all(dir.join("瑙掕壊")).map_err(|e| e.to_string())?;
-    fs::create_dir_all(dir.join("璁惧畾")).map_err(|e| e.to_string())?;
+    fs::create_dir_all(dir.join(dirs::CHAPTERS)).map_err(|e| e.to_string())?;
+    fs::create_dir_all(dir.join(dirs::OUTLINE)).map_err(|e| e.to_string())?;
+    fs::create_dir_all(dir.join(dirs::CHARACTERS)).map_err(|e| e.to_string())?;
+    fs::create_dir_all(dir.join(dirs::SETTINGS)).map_err(|e| e.to_string())?;
     let config = BookConfig { title: title.clone(), description: description.clone(), created_at: now.clone() };
     let json = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
     fs::write(dir.join("book.json"), json).map_err(|e| e.to_string())?;
     let stats = serde_json::json!({"records":[],"snapshots":{},"goal":4000});
     fs::write(dir.join("stats.json"), serde_json::to_string_pretty(&stats).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
-    fs::write(dir.join("澶х翰").join("outline.md"), "# 澶х翰\n\n").map_err(|e| e.to_string())?;
+    fs::write(dir.join(dirs::OUTLINE).join("outline.md"), "# 大纲\n\n").map_err(|e| e.to_string())?;
     let mut index = read_workspace_index(&app)?;
     let book = BookInfo { id: book_id, title, description, created_at: now };
     index.books.push(book.clone());
@@ -237,7 +221,7 @@ fn list_book_files(app: tauri::AppHandle, book_id: String, subdir: String) -> Re
             modified_at: modified,
         });
     }
-    if subdir == "绔犺妭" { files.sort_by(|a, b| a.filename.cmp(&b.filename)); }
+    if subdir == dirs::CHAPTERS { files.sort_by(|a, b| a.filename.cmp(&b.filename)); }
     else { files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at)); }
     Ok(files)
 }
@@ -280,7 +264,34 @@ fn delete_book_file(app: tauri::AppHandle, book_id: String, subdir: String, file
     Ok(())
 }
 
-// 鈹€鈹€ Entry 鈹€鈹€
+// ── AI config (stored in app data dir, not localStorage) ──
+
+#[tauri::command]
+fn get_ai_config(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let path = config_path(&app)?;
+    if !path.exists() {
+        return Ok(serde_json::json!({}));
+    }
+    let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let config: serde_json::Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    Ok(config.get("ai").cloned().unwrap_or(serde_json::json!({})))
+}
+
+#[tauri::command]
+fn save_ai_config(app: tauri::AppHandle, ai_config: serde_json::Value) -> Result<(), String> {
+    let path = config_path(&app)?;
+    let mut config: serde_json::Value = if path.exists() {
+        let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).map_err(|e| e.to_string())?
+    } else {
+        serde_json::json!({})
+    };
+    config["ai"] = ai_config;
+    fs::write(&path, serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+
+// ── Entry ──
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -298,6 +309,8 @@ pub fn run() {
             read_book_file,
             write_book_file,
             delete_book_file,
+            get_ai_config,
+            save_ai_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

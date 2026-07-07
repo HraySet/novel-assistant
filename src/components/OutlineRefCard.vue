@@ -19,11 +19,11 @@
       </div>
       <div v-if="outline!.foreshadowIn" class="flex items-center gap-1.5">
         <n-icon size="12" :style="{ color: 'var(--status-info)' }" class="shrink-0"><ArrowDownOutline /></n-icon>
-        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400/70">{{ outline!.foreshadowIn }}</span>
+        <Tag variant="info">{{ outline!.foreshadowIn }}</Tag>
       </div>
       <div v-if="outline!.foreshadowOut" class="flex items-center gap-1.5">
         <n-icon size="12" :style="{ color: 'var(--status-success)' }" class="shrink-0"><ArrowUpOutline /></n-icon>
-        <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400/70">{{ outline!.foreshadowOut }}</span>
+        <Tag variant="success">{{ outline!.foreshadowOut }}</Tag>
       </div>
     </div>
   </div>
@@ -34,6 +34,7 @@ import { computed } from "vue";
 import { NIcon } from "naive-ui";
 import { BookmarkOutline, BulbOutline, ListOutline, ArrowDownOutline, ArrowUpOutline } from "@vicons/ionicons5";
 import { useNovelStore } from "../stores/novel";
+import Tag from "./Tag.vue";
 
 const novel = useNovelStore();
 

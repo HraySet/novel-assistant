@@ -1,6 +1,7 @@
 import { ref, computed } from "vue";
 import { useSettingsStore } from "../stores/settings";
 import { useBooksStore } from "../stores/books";
+import { buildAiHeaders } from "./useAiApi";
 
 export function useSettingsForm() {
   const store = useSettingsStore();
@@ -26,11 +27,7 @@ export function useSettingsForm() {
     testResult.value = "";
     try {
       const url = `${store.aiEndpoint}/models`;
-      const res = await fetch(url, {
-        headers: store.aiProvider === "claude"
-          ? { "x-api-key": store.aiApiKey, "anthropic-version": "2023-06-01" }
-          : { Authorization: `Bearer ${store.aiApiKey}` },
-      });
+      const res = await fetch(url, { headers: buildAiHeaders() });
       testOk.value = res.ok;
       testResult.value = res.ok ? "连接成功" : `错误 ${res.status}`;
     } catch {
@@ -44,11 +41,7 @@ export function useSettingsForm() {
     fetching.value = true;
     try {
       const url = `${store.aiEndpoint}/models`;
-      const res = await fetch(url, {
-        headers: store.aiProvider === "claude"
-          ? { "x-api-key": store.aiApiKey, "anthropic-version": "2023-06-01" }
-          : { Authorization: `Bearer ${store.aiApiKey}` },
-      });
+      const res = await fetch(url, { headers: buildAiHeaders() });
       if (res.ok) {
         const data = await res.json();
         modelList.value = (data.data || [])

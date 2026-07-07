@@ -1,5 +1,5 @@
 <template>
-  <div :class="tx('bg-white/[0.03] border-white/[0.06]', 'bg-black/[0.02] border-black/[0.06]')" class="p-4 rounded-xl border">
+  <div :class="tx('bg-white/3 border-white/6', 'bg-black/2 border-black/6')" class="p-4 rounded-xl border">
     <div class="flex items-center justify-between mb-3">
       <span :class="tx('text-gray-400', 'text-gray-500')" class="text-[10px] uppercase tracking-wider font-medium">码字日历</span>
       <span :class="tx('text-gray-600', 'text-gray-400')" class="text-[10px]">近 12 周</span>
@@ -7,7 +7,7 @@
 
     <div class="flex gap-0.5">
       <!-- Day labels -->
-      <div class="flex flex-col gap-0.5 mr-1 pt-[16px]">
+      <div class="flex flex-col gap-0.5 mr-1 pt-4">
         <span v-for="d in ['一','','三','','五','','日']" :key="d" :class="tx('text-gray-600', 'text-gray-400')" class="text-[8px] h-3 leading-none">{{ d }}</span>
       </div>
 
@@ -49,10 +49,10 @@
 import { computed } from "vue";
 import { useStatsStore } from "../stores/stats";
 import { useSettingsStore } from "../stores/settings";
+import { tx } from "../composables/useTheme";
 
 const stats = useStatsStore();
 const s = useSettingsStore();
-const tx = (d: string, l: string) => s.themeDark ? d : l;
 
 interface DayCell { date: string; count: number; dayOfWeek: number }
 

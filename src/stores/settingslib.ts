@@ -37,8 +37,7 @@ const DEFAULT_CATEGORIES: SettingCategory[] = [
   { id: "cat_timeline", name: "时间线", icon: "📮", sortOrder: 5 },
 ];
 
-let nextId = 1;
-function genId(): string { return `set_${++nextId}_${Date.now()}`; }
+function genId(): string { return crypto.randomUUID(); }
 
 async function loadData(bookId: string): Promise<SettingsData> {
   try {
@@ -70,7 +69,6 @@ export const useSettingLibStore = defineStore("settingslib", () => {
 
   const filteredEntries = computed(() => {
     const q = searchQuery.value.trim().toLowerCase();
-    // 搜索时跨分类全局搜索，否则只显示当前分类
     let list = q
       ? entries.value.filter(e =>
           e.name.toLowerCase().includes(q) ||
@@ -78,7 +76,7 @@ export const useSettingLibStore = defineStore("settingslib", () => {
           Object.values(e.fields).some(v => v.toLowerCase().includes(q)) ||
           e.notes.toLowerCase().includes(q)
         )
-      : entries.value.filter(e => e.categoryId === selectedCategoryId.value);
+      : entries.value;
     return list.sort((a, b) => a.sortOrder - b.sortOrder);
   });
 

@@ -1,10 +1,7 @@
 <template>
-  <div class="flex flex-col h-full">
-    <EmptyState v-if="!booksStore.workspaceStatus.initialized"
-      :icon="FolderOutline" title="还未设置工作区" subtitle="先在设置中选择一个目录" />
-    <EmptyState v-else-if="!booksStore.currentBookId"
-      :icon="BookOutline" title="还没有作品" subtitle="点击左上角书图标创建" />
-    <EmptyState v-else-if="!store.currentChapterId"
+  <WorkspaceGuard>
+    <div class="flex flex-col h-full">
+    <EmptyState v-if="!store.currentChapterId"
       :icon="ChatbubblesOutline" title="请先选择一个章节" subtitle="在左侧大纲中点击章节开始对话" />
 
     <!-- === Active Chat === -->
@@ -58,7 +55,7 @@
               <!-- Action buttons -->
               <div v-if="msg.role === 'assistant' && msg.actions?.length && !streaming" class="mt-1.5 space-y-1">
                 <button v-for="(act, ai) in msg.actions" :key="ai"
-                  class="w-full flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-all text-left group"
+                  class="w-full flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-sm)] text-xs transition-all text-left group"
                   :class="tx('hover:bg-white/5', 'hover:bg-black/5')"
                   :style="{ color: settings.accentColor }"
                   @click="onApplyAction(act)">
@@ -81,7 +78,7 @@
       <div class="shrink-0 px-4 pb-3 pt-2 border-t" :class="tx('border-white/[0.08]', 'border-black/[0.08]')">
         <!-- Quick commands -->
         <div class="flex gap-1 mb-2 flex-wrap">
-          <button v-for="q in quickCommands" :key="q.label" class="px-2.5 py-1 rounded-lg text-[10px] transition-colors"
+          <button v-for="q in quickCommands" :key="q.label" class="px-2.5 py-1 rounded-[var(--radius-sm)] text-[10px] transition-colors"
             :class="tx('bg-white/5 text-gray-400 hover:text-gray-200 hover:bg-white/10', 'bg-black/5 text-gray-500 hover:text-gray-700 hover:bg-black/10')"
             @click="onQuickCommand(q)">{{ q.label }}</button>
         </div>
@@ -107,25 +104,25 @@
       </div>
     </template>
   </div>
+  </WorkspaceGuard>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onUnmounted } from "vue";
 import { NIcon } from "naive-ui";
-import { SendOutline, ChatbubblesOutline, FolderOutline, BookOutline } from "@vicons/ionicons5";
+import { SendOutline, ChatbubblesOutline } from "@vicons/ionicons5";
 import { useNovelStore } from "../stores/novel";
 import { useSettingsStore } from "../stores/settings";
-import { useBooksStore } from "../stores/books";
+import { tx } from "../composables/useTheme";
+import { buildAiHeaders, isClaudeProvider, getAiEndpoint, getAiModel, parseStreamToken } from "../composables/useAiApi";
 import { assembleContext } from "./ContextAssembler";
 import { parseActions, applyAction, type ChatAction } from "./ChatActions";
 import EmptyState from "./EmptyState.vue";
 import SectionHeader from "./SectionHeader.vue";
+import WorkspaceGuard from "./WorkspaceGuard.vue";
 
 const store = useNovelStore();
 const settings = useSettingsStore();
-const booksStore = useBooksStore();
-
-const tx = (d: string, l: string) => settings.themeDark ? d : l;
 
 const messages = ref<{ role: "user" | "assistant"; content: string; actions?: ChatAction[] }[]>([]);
 const input = ref("");
@@ -236,23 +233,24 @@ async function send() {
   loading.value = true;
 
   try {
-    const provider = settings.aiProvider;
     const apiKey = settings.aiApiKey;
-    const model = settings.aiModel;
-    const endpoint = settings.aiEndpoint;
     if (!apiKey) throw new Error("请先在设置中配置 API Key");
 
-    const isClaude = provider === "claude";
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (isClaude) { headers["x-api-key"] = apiKey; headers["anthropic-version"] = "2023-06-01"; }
-    else { headers["Authorization"] = `Bearer ${apiKey}`; }
-
-    const body: any = { model, stream: true, messages: [{ role: "system", content: ctx.fullPrompt }, ...messages.value.filter(m => m !== messages.value[assistantIdx]).map(m => ({ role: m.role, content: m.content }))] };
+    const isClaude = isClaudeProvider();
+    const body: any = {
+      model: getAiModel(),
+      stream: true,
+      messages: [{ role: "system", content: ctx.fullPrompt }, ...messages.value.filter(m => m !== messages.value[assistantIdx]).map(m => ({ role: m.role, content: m.content }))],
+    };
     if (isClaude) { body.max_tokens = 4096; body.system = ctx.fullPrompt; body.messages = body.messages.filter((m: any) => m.role !== "system"); }
 
+    // Abort any previous in-flight request before starting a new one
+    if (abortController.value) abortController.value.abort();
     const controller = new AbortController();
     abortController.value = controller;
-    const res = await fetch(`${endpoint}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: controller.signal });
+    const res = await fetch(`${getAiEndpoint()}/chat/completions`, {
+      method: "POST", headers: buildAiHeaders(), body: JSON.stringify(body), signal: controller.signal,
+    });
     if (!res.ok) { const err = await res.text(); throw new Error("API错误 " + res.status + ": " + err); }
     if (!res.body) throw new Error("响应体为空");
 
@@ -267,7 +265,7 @@ async function send() {
       for (const line of lines) {
         const t = line.trim(); if (!t || !t.startsWith("data:")) continue;
         const d = t.slice(5).trim(); if (d === "[DONE]") continue;
-        try { const j = JSON.parse(d); let tok = ""; if (isClaude) { if (j.type === "content_block_delta") tok = j.delta?.text ?? ""; else if (j.type === "content_block_start") tok = j.content_block?.text ?? ""; } else tok = j.choices?.[0]?.delta?.content ?? ""; if (tok) { fullContent += tok; messages.value[assistantIdx].content = fullContent; scrollBottom(); } } catch {}
+        try { const j = JSON.parse(d); const tok = parseStreamToken(j, isClaude); if (tok) { fullContent += tok; messages.value[assistantIdx].content = fullContent; scrollBottom(); } } catch {}
       }
     }
     if (fullContent) { messages.value[assistantIdx].actions = parseActions(fullContent, store.characters, store.outlines); }

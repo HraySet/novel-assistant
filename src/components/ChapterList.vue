@@ -58,7 +58,7 @@
         <!-- 默认：按卷分组，可折叠 -->
         <template v-else>
           <div v-for="group in groupedChapters" :key="group.volumeId" class="mb-1">
-            <button class="w-full flex items-center gap-1.5 px-2 py-2 rounded-lg transition-all"
+            <button class="w-full flex items-center gap-1.5 px-2 py-2 rounded-[var(--radius-sm)] transition-all"
               :class="tx('hover:bg-white/[0.04] text-gray-500', 'hover:bg-black/[0.04] text-gray-500')"
               :style="s.themeDark ? { background: 'rgba(255,255,255,0.02)' } : { background: 'rgba(0,0,0,0.02)' }"
               @click="toggleVolume(group.volumeId)">
@@ -93,6 +93,7 @@ import { DocumentTextOutline, ChevronForwardOutline, FolderOutline, BookOutline 
 import { useNovelStore } from "../stores/novel";
 import { useBooksStore } from "../stores/books";
 import { useSettingsStore } from "../stores/settings";
+import { tx } from "../composables/useTheme";
 import EmptyState from "./EmptyState.vue";
 import SectionHeader from "./SectionHeader.vue";
 import SegmentedGroup from "./SegmentedGroup.vue";
@@ -100,7 +101,6 @@ import SegmentedGroup from "./SegmentedGroup.vue";
 const novel = useNovelStore();
 const booksStore = useBooksStore();
 const s = useSettingsStore();
-const tx = (d: string, l: string) => s.themeDark ? d : l;
 
 const search = ref("");
 const statusFilter = ref<string>("all");
@@ -226,7 +226,7 @@ const ChapterRow = {
     };
     return () => h("div", {
       class: [
-        "flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all mb-0.5",
+        "flex items-center gap-2 px-3 py-2 rounded-[var(--radius-sm)] cursor-pointer transition-all mb-0.5",
         !props.isCurrent && props.tx("hover:bg-white/[0.04] text-gray-400 hover:text-gray-300", "hover:bg-black/[0.04] text-gray-500 hover:text-gray-700"),
       ],
       style: props.isCurrent ? { backgroundColor: s.accentColor + '12', color: s.accentColor, boxShadow: `inset 3px 0 0 ${s.accentColor}` } : {},

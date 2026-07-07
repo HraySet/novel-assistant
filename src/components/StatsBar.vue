@@ -1,13 +1,14 @@
 <template>
   <div class="flex items-center gap-4 px-4 py-1.5 shrink-0 text-xs"
-    :class="s.themeDark ? 'text-gray-500' : 'text-gray-400'">
+    :style="{ color: 'var(--text-tertiary)' }">
     <div class="flex items-center gap-2">
       <span>今日</span>
-      <span class="font-semibold tabular-nums" :class="stats.todayGoalMet ? 'text-green-400' : tx('text-gray-300','text-gray-700')">
+      <span class="font-semibold tabular-nums"
+        :style="{ color: stats.todayGoalMet ? 'var(--status-success)' : 'var(--text-primary)' }">
         {{ stats.todayWords.toLocaleString() }}
       </span>
       <span class="tabular-nums">/ {{ stats.dailyGoal.toLocaleString() }}</span>
-      <div class="w-10 h-1 rounded-full overflow-hidden" :class="tx('bg-white/10','bg-black/10')">
+      <div class="w-10 h-1 rounded-full overflow-hidden" :style="{ background: 'var(--border-soft)' }">
         <div class="h-full rounded-full transition-all duration-500"
           :style="{ width: stats.todayGoalPercent + '%', backgroundColor: stats.todayGoalPercent >= 100 ? 'var(--status-success)' : stats.todayGoalPercent >= 60 ? 'var(--status-warning)' : 'var(--accent)' }" />
       </div>
@@ -19,9 +20,9 @@
 
     <span class="opacity-30">·</span>
 
-    <button class="hover:opacity-80 transition-opacity flex items-center gap-1" @click="stats.toggleSession()">
+    <button class="hover:opacity-80 transition-opacity flex items-center gap-1" :style="{ color: 'var(--text-tertiary)' }" @click="stats.toggleSession()">
       <span>{{ stats.session.isRunning ? '⏱' : '▶' }}</span>
-      <span class="font-mono tabular-nums" :class="stats.session.isRunning ? 'text-purple-400' : ''">{{ stats.sessionFormatted }}</span>
+      <span class="font-mono tabular-nums" :style="{ color: stats.session.isRunning ? 'var(--accent)' : 'var(--text-tertiary)' }">{{ stats.sessionFormatted }}</span>
     </button>
 
     <div class="flex-1" />
@@ -35,5 +36,4 @@ import { useStatsStore } from "../stores/stats";
 import { useSettingsStore } from "../stores/settings";
 const stats = useStatsStore();
 const s = useSettingsStore();
-const tx = (d: string, l: string) => s.themeDark ? d : l;
 </script>

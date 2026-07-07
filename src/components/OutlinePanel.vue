@@ -1,16 +1,10 @@
 <template>
-  <div class="flex flex-col h-full">
-    <!-- Guard: no workspace -->
-    <EmptyState v-if="!booksStore.workspaceStatus.initialized" :icon="FolderOutline" title="还未设置工作区"
-      subtitle="请先在主页面选择工作目录" />
-    <!-- Guard: no book -->
-    <EmptyState v-else-if="!booksStore.currentBookId" :icon="BookOutline" title="还没有作品" subtitle="请先创建或打开一本书" />
-
-    <template v-else>
+  <WorkspaceGuard>
+    <div class="flex flex-col h-full">
       <!-- Header -->
       <SectionHeader :icon="DocumentTextOutline" label="大纲" :count="outlines.length">
         <template #actions>
-          <n-button size="small" quaternary @click="handleAddMenu('volume')" class="!w-7 !h-7">
+          <n-button size="small" quaternary @click="handleAddMenu('volume')" class="w-7! h-7!">
             <template #icon><n-icon size="16"><AddOutline /></n-icon></template>
           </n-button>
         </template>
@@ -37,7 +31,7 @@
                 class="w-4 h-4 rounded flex items-center justify-center shrink-0 transition-transform duration-200"
                 :class="collapsedVolumes.has(vol.key) ? '' : 'rotate-90'" :style="{ color: 'var(--text-tertiary)' }"
                 @click="toggleVolume(vol.key)">
-                <span class="text-[10px] leading-none">›</span>
+                <n-icon size="12"><ChevronForwardOutline /></n-icon>
               </button>
               <span :style="{ color: 'var(--text-primary)' }"
                 class="text-[13px] font-semibold tracking-wider truncate flex-1">{{ vol.label }}</span>
@@ -48,10 +42,10 @@
                 {{ volStats.get(vol.key)?.done ?? 0 }}/{{ volStats.get(vol.key)?.total ?? 0 }}
               </span>
               <button :style="{ color: 'var(--text-tertiary)' }"
-                class="text-xs leading-none w-5 h-5 rounded transition-colors hover:text-[var(--text-secondary)] hover:bg-[var(--surface-2)]"
+                class="text-xs leading-none w-5 h-5 rounded transition-colors hover:text-(--text-secondary) hover:bg-(--surface-2)"
                 @click="openInlineNew(vol.key)">+</button>
               <button
-                class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 rounded flex items-center justify-center shrink-0 hover:text-[var(--status-danger)] hover:bg-[rgba(239,68,68,0.1)]"
+                class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 rounded flex items-center justify-center shrink-0 hover:text-(--status-danger) hover:bg-[rgba(239,68,68,0.1)]"
                 :style="{ color: 'var(--text-tertiary)' }" @click.stop="openEdit(vol)" title="编辑或删除此卷">
                 <n-icon size="12">
                   <CreateOutline />
@@ -65,7 +59,7 @@
                 :selected="selectedId === child.outlineId" :class="[
                   'group',
                   dragIdx === ci ? 'opacity-30' : '',
-                  dragOverIdx === ci ? '!border-[var(--border-accent)]' : '',
+                  dragOverIdx === ci ? 'border-(--border-accent)!' : '',
                 ]" @mouseenter="dragIdx !== null && (dragOverIdx = ci)">
                 <!-- Row -->
                 <div class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" role="button" tabindex="0"
@@ -87,7 +81,7 @@
                     <n-tooltip trigger="hover" :delay="300">
                       <template #trigger>
                         <button :style="{ color: 'var(--accent)' }"
-                          class="w-6 h-6 rounded flex items-center justify-center transition-colors hover:bg-[var(--surface-accent)]"
+                          class="w-6 h-6 rounded flex items-center justify-center transition-colors hover:bg-(--surface-accent)"
                           @click.stop="openChapter(child)">
                           <n-icon size="13">
                             <PencilOutline />
@@ -99,7 +93,7 @@
                     <n-tooltip trigger="hover" :delay="300">
                       <template #trigger>
                         <button :style="{ color: 'var(--text-tertiary)' }"
-                          class="w-6 h-6 rounded flex items-center justify-center transition-colors hover:bg-[var(--surface-2)]"
+                          class="w-6 h-6 rounded flex items-center justify-center transition-colors hover:bg-(--surface-2)"
                           @click.stop="openEdit(child)">
                           <n-icon size="13">
                             <CreateOutline />
@@ -235,11 +229,11 @@
           <!-- Advanced options -->
           <div :style="{ borderColor: 'var(--border-hairline)' }" class="border-t pt-3">
             <button
-              class="w-full text-xs flex items-center justify-between rounded-[var(--radius-md)] px-3 py-2 transition-colors hover:bg-[var(--surface-2)]"
+              class="w-full text-xs flex items-center justify-between rounded-[var(--radius-md)] px-3 py-2 transition-colors hover:bg-(--surface-2)"
               :style="{ color: 'var(--text-tertiary)' }" @click="showMore = !showMore">
               <span class="flex items-center gap-1.5">
-                <span class="text-[13px] transition-transform duration-200"
-                  :class="showMore ? 'rotate-90' : ''">›</span>
+                <n-icon size="12" class="transition-transform duration-200"
+                  :class="showMore ? 'rotate-90' : ''"><ChevronForwardOutline /></n-icon>
                 {{ showMore ? '收起高级选项' : '高级选项' }}
               </span>
               <span v-if="!showMore" :style="{ color: 'var(--text-tertiary)' }" class="text-[9px]">事件 · 伏笔</span>
@@ -265,12 +259,12 @@
                     <n-input v-model:value="editKeyEvents[ei]" size="small" :placeholder="'事件 ' + (ei + 1)"
                       class="flex-1" />
                     <button :style="{ color: 'var(--text-tertiary)' }"
-                      class="text-xs w-5 h-5 rounded transition-colors opacity-0 group-hover/ev:opacity-100 shrink-0 hover:bg-[rgba(239,68,68,0.1)] hover:text-[var(--status-danger)]"
+                      class="text-xs w-5 h-5 rounded transition-colors opacity-0 group-hover/ev:opacity-100 shrink-0 hover:bg-[rgba(239,68,68,0.1)] hover:text-(--status-danger)"
                       @click="removeKeyEvent(ei)">✕</button>
                   </div>
                 </div>
                 <button
-                  class="w-full text-xs mt-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-dashed transition-colors hover:bg-[var(--surface-1)]"
+                  class="w-full text-xs mt-2 px-3 py-1.5 rounded-[var(--radius-md)] border border-dashed transition-colors hover:bg-(--surface-1)"
                   :style="{ color: 'var(--text-tertiary)', borderColor: 'var(--border-hairline)' }"
                   @click="addKeyEvent">+
                   添加事件</button>
@@ -294,30 +288,28 @@
         </div>
 
         <template #footer>
-          <div class="flex justify-between items-center">
-            <div class="flex items-center gap-2">
-              <n-button v-if="editingId" size="small" quaternary :type="deleteCtrl.armed.value ? 'error' : 'default'"
-                :class="deleteCtrl.armed.value ? 'animate-pulse' : ''" @click="deleteCtrl.trigger">
-                <template #icon><n-icon size="14">
-                    <TrashOutline />
-                  </n-icon></template>
-                {{ deleteCtrl.armed.value ? '确认删除' : '删除' }}
-              </n-button>
-              <span v-if="editingId && !deleteCtrl.armed.value" :style="{ color: 'var(--text-tertiary)' }"
-                class="text-[9px]">{{
-                  editingNodeHasChildren ? '将同时删除所有子章节' : '点击后需二次确认' }}</span>
-            </div>
-            <div class="flex gap-2">
-              <n-button size="small" quaternary @click="editShow = false">取消</n-button>
-              <n-button size="small" type="primary" :disabled="!editTitle.trim()" @click="handleSave">
-                {{ editingId ? '保存修改' : (editingNodeType === 'volume' ? '创建卷' : '创建章节') }}
-              </n-button>
-            </div>
-          </div>
+          <ModalFooter
+            align="between"
+            :confirm-label="editingId ? '保存修改' : (editingNodeType === 'volume' ? '创建卷' : '创建章节')"
+            :disabled="!editTitle.trim()"
+            @confirm="handleSave"
+            @cancel="editShow = false"
+          >
+            <template #left>
+              <div class="flex items-center gap-2">
+                <DeleteButton :ctrl="deleteCtrl" :show="!!editingId">
+                  <template #icon><n-icon size="14"><TrashOutline /></n-icon></template>
+                </DeleteButton>
+                <span v-if="editingId && !deleteCtrl.armed.value" :style="{ color: 'var(--text-tertiary)' }"
+                  class="text-[9px]">{{
+                    editingNodeHasChildren ? '将同时删除所有子章节' : '点击后需二次确认' }}</span>
+              </div>
+            </template>
+          </ModalFooter>
         </template>
       </n-modal>
-    </template>
-  </div>
+    </div>
+  </WorkspaceGuard>
 </template>
 
 <script setup lang="ts">
@@ -325,10 +317,9 @@ import { ref, computed, watch, nextTick } from "vue";
 import { NButton, NInput, NIcon, NModal, NSelect, NTooltip } from "naive-ui";
 import {
   AddOutline,
+  ChevronForwardOutline,
   DocumentTextOutline,
   TrashOutline,
-  FolderOutline,
-  BookOutline,
   LayersOutline,
   FlagOutline,
   FlashOutline,
@@ -336,17 +327,19 @@ import {
   CreateOutline,
 } from "@vicons/ionicons5";
 import { useNovelStore, type OutlineNode, type TreeNode } from "../stores/novel";
-import { useBooksStore } from "../stores/books";
 import { useSettingsStore } from "../stores/settings";
 import { useConfirmDelete } from "../composables/useConfirmDelete";
+import { useDragReorder } from "../composables/useDragReorder";
 import SurfaceCard from "./SurfaceCard.vue";
 import SectionHeader from "./SectionHeader.vue";
 import StatusDot from "./StatusDot.vue";
 import Tag from "./Tag.vue";
 import EmptyState from "./EmptyState.vue";
+import WorkspaceGuard from "./WorkspaceGuard.vue";
+import DeleteButton from "./DeleteButton.vue";
+import ModalFooter from "./ModalFooter.vue";
 
 const novel = useNovelStore();
-const booksStore = useBooksStore();
 const s = useSettingsStore();
 
 // ── Constants ──
@@ -543,30 +536,20 @@ watch(editShow, (v) => {
   }
 });
 
-// ── Drag ──
-const dragIdx = ref<number | null>(null);
-const dragOverIdx = ref<number | null>(null);
-let dragVolKey: string | null = null;
+const dragVolKey = ref<string>("");
+
+const { dragIdx, dragOverIdx, onPointerDown: _onPtrDown } = useDragReorder((from, to) => {
+  const vol = treeData.value.find(v => v.key === dragVolKey.value);
+  const children = vol?.children;
+  if (!children) return;
+  const fn = outlines.value.find(o => o.id === children[from].outlineId);
+  const tn = outlines.value.find(o => o.id === children[to].outlineId);
+  if (fn && tn) { const tmp = fn.sortOrder; fn.sortOrder = tn.sortOrder; tn.sortOrder = tmp; }
+});
+
 function onPointerDown(idx: number, volKey: string, e: MouseEvent) {
-  const startY = e.clientY; const startIdx = idx; dragVolKey = volKey; let moved = false;
-  const onMove = (ev: MouseEvent) => { if (Math.abs(ev.clientY - startY) > 5) { moved = true; dragIdx.value = startIdx; document.body.style.cursor = "grabbing"; } };
-  const onUp = () => {
-    document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp);
-    document.body.style.cursor = "";
-    if (moved && dragOverIdx.value !== null && dragOverIdx.value !== startIdx && dragVolKey) {
-      const vol = treeData.value.find(v => v.key === dragVolKey);
-      if (vol?.children) {
-        const from = vol.children[startIdx]; const to = vol.children[dragOverIdx.value];
-        if (from && to) {
-          const fn = outlines.value.find(o => o.id === from.outlineId);
-          const tn = outlines.value.find(o => o.id === to.outlineId);
-          if (fn && tn) { const tmp = fn.sortOrder; fn.sortOrder = tn.sortOrder; tn.sortOrder = tmp; }
-        }
-      }
-    }
-    dragIdx.value = null; dragOverIdx.value = null; dragVolKey = null;
-  };
-  document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
+  dragVolKey.value = volKey;
+  _onPtrDown(idx, e);
 }
 </script>
 

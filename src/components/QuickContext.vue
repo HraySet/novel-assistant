@@ -29,7 +29,7 @@
         <div class="space-y-1">
           <div v-for="char in relatedChars" :key="char.id"
             :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }"
-            class="rounded-lg border px-2.5 py-2">
+            class="rounded-[var(--radius-md)] border px-2.5 py-2">
             <div class="flex items-center gap-2">
               <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ background: roleColor(char.role) }" />
               <span :style="{ color: 'var(--text-primary)' }" class="text-xs font-medium">{{ char.name }}</span>
@@ -60,11 +60,10 @@
 import { computed } from "vue";
 import { useNovelStore } from "../stores/novel";
 import { useSettingsStore } from "../stores/settings";
-import { roleColor } from "../composables/useTheme";
+import { roleColor, tx } from "../composables/useTheme";
 
 const store = useNovelStore();
 const s = useSettingsStore();
-const tx = (d: string, l: string) => s.themeDark ? d : l;
 
 const currentOutline = computed(() => {
   const ch = store.currentChapter;

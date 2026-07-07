@@ -1,12 +1,6 @@
 <template>
-  <div class="flex flex-col h-full">
-    <!-- === Workspace / Book Guard === -->
-    <EmptyState v-if="!booksStore.workspaceStatus.initialized"
-      :icon="FolderOutline" title="还未设置工作区" subtitle="先在设置中选择一个目录" />
-    <EmptyState v-else-if="!booksStore.currentBookId"
-      :icon="BookOutline" title="还没有作品" subtitle="点击左上角书图标创建" />
-
-    <template v-else>
+  <WorkspaceGuard>
+    <div class="flex flex-col h-full">
       <!-- Header -->
       <SectionHeader :icon="PeopleOutline" label="角色" :count="characters.length">
         <template #actions>
@@ -127,7 +121,7 @@
             <div :class="tx('text-gray-500', 'text-gray-500')" class="text-xs mb-2">定位</div>
             <div class="flex gap-1.5 flex-wrap mb-2">
               <button v-for="r in roleSuggestions" :key="r"
-                class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
+                class="px-3 py-1.5 rounded-[var(--radius-sm)] text-xs font-medium transition-all border"
                 :style="form.role === r ? { borderColor: s.accentColor + '60', backgroundColor: s.accentColor + '20', color: s.accentColor, boxShadow: `0 0 0 3px ${s.accentColor}25` } : {}"
                 :class="form.role !== r ? tx('border-white/[0.06] text-gray-500 hover:border-white/15 hover:text-gray-300', 'border-black/[0.06] text-gray-400 hover:border-black/15 hover:text-gray-600') : ''"
                 @click="form.role = form.role === r ? '' : r">{{ r }}</button>
@@ -178,25 +172,21 @@
           </div>
         </div>
         <template #footer>
-          <div class="flex justify-between">
-            <n-button v-if="editingId" size="small" quaternary
-              :type="deleteCtrl.armed.value ? 'error' : 'default'"
-              :class="deleteCtrl.armed.value ? 'animate-pulse' : ''"
-              @click="deleteCtrl.trigger">
-              {{ deleteCtrl.armed.value ? '确认删除' : '删除' }}
-            </n-button>
-            <div v-else />
-            <div class="flex gap-2">
-              <n-button size="small" @click="modalShow = false">取消</n-button>
-              <n-button size="small" type="primary" @click="handleSave" :disabled="!form.name.trim()">
-                {{ editingId ? '保存' : '创建' }}
-              </n-button>
-            </div>
-          </div>
+          <ModalFooter
+            align="between"
+            :confirm-label="editingId ? '保存' : '创建'"
+            :disabled="!form.name.trim()"
+            @confirm="handleSave"
+            @cancel="modalShow = false"
+          >
+            <template #left>
+              <DeleteButton :ctrl="deleteCtrl" :show="!!editingId" />
+            </template>
+          </ModalFooter>
         </template>
       </n-modal>
-    </template>
-  </div>
+    </div>
+  </WorkspaceGuard>
 </template>
 
 <script setup lang="ts">
@@ -204,27 +194,27 @@ import { ref, reactive, computed } from "vue";
 import { NButton, NIcon, NInput, NModal, NTooltip } from "naive-ui";
 import {
   AddOutline,
-  BookOutline,
   CreateOutline,
   FlashOutline,
-  FolderOutline,
   PeopleOutline,
   ReorderTwoOutline,
   SearchOutline,
 } from "@vicons/ionicons5";
 import { useNovelStore, type Character } from "../stores/novel";
-import { useBooksStore } from "../stores/books";
 import { useSettingsStore } from "../stores/settings";
 import { useConfirmDelete } from "../composables/useConfirmDelete";
-import { roleColor } from "../composables/useTheme";
+import { useDragReorder } from "../composables/useDragReorder";
+import { roleColor, tx } from "../composables/useTheme";
+import { buildAiHeaders, isClaudeProvider, getAiEndpoint, getAiModel, parseResponseText } from "../composables/useAiApi";
 import SectionHeader from "./SectionHeader.vue";
 import EmptyState from "./EmptyState.vue";
 import SurfaceCard from "./SurfaceCard.vue";
+import WorkspaceGuard from "./WorkspaceGuard.vue";
+import DeleteButton from "./DeleteButton.vue";
+import ModalFooter from "./ModalFooter.vue";
 
 const store = useNovelStore();
-const booksStore = useBooksStore();
 const s = useSettingsStore();
-const tx = (d: string, l: string) => s.themeDark ? d : l;
 const characters = computed(() => store.characters);
 
 const selectedId = ref<string | null>(null);
@@ -277,10 +267,7 @@ async function generateCharacter() {
   aiGenError.value = "";
   aiGenerating.value = true;
   try {
-    const provider = s.aiProvider;
     const apiKey = s.aiApiKey;
-    const model = s.aiModel;
-    const endpoint = s.aiEndpoint;
     if (!apiKey) throw new Error("请先在设置中配置 AI API Key");
 
     const prompt = `你是一个小说角色设计助手。请根据以下描述生成角色信息，以严格的JSON格式返回（不要包含markdown代码块标记）：
@@ -296,25 +283,22 @@ async function generateCharacter() {
 
 只返回JSON，不要其他文字。`;
 
-    const isClaude = provider === "claude";
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (isClaude) { headers["x-api-key"] = apiKey; headers["anthropic-version"] = "2023-06-01"; }
-    else { headers["Authorization"] = `Bearer ${apiKey}`; }
-
-    const body: any = { model, messages: [{ role: "user", content: prompt }] };
+    const isClaude = isClaudeProvider();
+    const body: any = {
+      model: getAiModel(),
+      messages: [{ role: "user", content: prompt }],
+    };
     if (isClaude) { body.max_tokens = 1024; body.system = "你是一个角色设计助手，只返回JSON格式。"; }
 
-    const res = await fetch(`${endpoint}/chat/completions`, {
-      method: "POST", headers, body: JSON.stringify(body),
+    const res = await fetch(`${getAiEndpoint()}/chat/completions`, {
+      method: "POST", headers: buildAiHeaders(), body: JSON.stringify(body),
     });
     if (!res.ok) {
       const errText = await res.text();
       throw new Error(`API错误 ${res.status}: ${errText.slice(0, 200)}`);
     }
     const data = await res.json();
-    let text = isClaude
-      ? data?.content?.[0]?.text ?? ""
-      : data?.choices?.[0]?.message?.content ?? "";
+    let text = parseResponseText(data, isClaude);
     if (!text) throw new Error("AI 未返回内容");
 
     // 去除可能的 markdown 代码块
@@ -367,22 +351,7 @@ function handleSave() {
   modalShow.value = false;
 }
 
-// ── Drag（修复了原版 dragOverIdx 从未被赋值、导致拖拽排序实际不生效的问题）──
-
-const dragIdx = ref<number | null>(null);
-const dragOverIdx = ref<number | null>(null);
-
-function onPointerDown(idx: number, e: MouseEvent) {
-  const startY = e.clientY; const startIdx = idx; let moved = false;
-  const onMove = (ev: MouseEvent) => {
-    if (Math.abs(ev.clientY - startY) > 5) { moved = true; dragIdx.value = startIdx; document.body.style.cursor = "grabbing"; }
-  };
-  const onUp = () => {
-    document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp);
-    document.body.style.cursor = "";
-    if (moved && dragOverIdx.value !== null && dragOverIdx.value !== startIdx) store.reorderCharacter(startIdx, dragOverIdx.value);
-    dragIdx.value = null; dragOverIdx.value = null;
-  };
-  document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp);
-}
+const { dragIdx, dragOverIdx, onPointerDown } = useDragReorder(
+  (from, to) => store.reorderCharacter(from, to),
+);
 </script>

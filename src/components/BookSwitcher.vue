@@ -3,7 +3,7 @@
     <n-popover trigger="click" placement="right" :width="260" @update:show="onPopoverToggle">
       <template #trigger>
         <button
-          class="relative w-9 h-9 rounded-lg flex items-center justify-center transition-all duration-150 cursor-pointer hover:scale-105"
+          class="relative w-9 h-9 rounded-[var(--radius-sm)] flex items-center justify-center transition-all duration-150 cursor-pointer hover:scale-105"
           :class="tx('hover:bg-white/5 text-gray-400 hover:text-gray-200', 'hover:bg-black/5 text-gray-500 hover:text-gray-700')"
           :title="books.currentBook?.title ?? '无作品'">
           <span class="text-xs leading-tight text-center font-bold tracking-wide" :style="{ color: accentColor }">{{
@@ -26,7 +26,7 @@
 
         <div class="space-y-0.5 max-h-56 overflow-y-auto">
           <div v-for="book in filteredBooks" :key="book.id"
-            class="group relative flex items-center gap-2 pl-2 pr-1 py-1.5 rounded-lg text-left text-xs transition-all cursor-pointer"
+            class="group relative flex items-center gap-2 pl-2 pr-1 py-1.5 rounded-[var(--radius-sm)] text-left text-xs transition-all cursor-pointer"
             :style="book.id === books.currentBookId
               ? { backgroundColor: 'var(--surface-accent)', color: 'var(--accent)' }
               : { color: 'var(--text-tertiary)' }"
@@ -73,7 +73,7 @@
           </div>
 
           <button v-if="books.books.length > 0"
-            class="w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-lg border border-dashed transition-colors"
+            class="w-full flex items-center justify-center gap-1.5 text-xs py-2 rounded-[var(--radius-sm)] border border-dashed transition-colors"
             :class="tx('border-white/10 text-gray-500 hover:text-gray-200 hover:border-white/20 hover:bg-white/[0.03]',
               'border-black/10 text-gray-400 hover:text-gray-700 hover:border-black/20 hover:bg-black/[0.02]')"
             @click="showCreate = true">
@@ -118,6 +118,7 @@ import { ref, computed } from "vue";
 import { NButton, NInput, NModal, NPopover, NDropdown } from "naive-ui";
 import { useBooksStore } from "../stores/books";
 import { useSettingsStore } from "../stores/settings";
+import { tx } from "../composables/useTheme";
 
 interface BookItem {
   id: string;
@@ -126,7 +127,6 @@ interface BookItem {
 
 const books = useBooksStore();
 const s = useSettingsStore();
-const tx = (d: string, l: string) => s.themeDark ? d : l;
 
 const accentColor = computed(() => s.accentColor);
 

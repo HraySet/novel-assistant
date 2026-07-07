@@ -4,8 +4,23 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Novel Assistant</title>
+    <script>
+      // Pre-apply theme before Vue mounts to prevent flash
+      (function() {
+        try {
+          var t = JSON.parse(localStorage.getItem('theme-settings') || '{}');
+          var bg = t.bgColor || '#12121a';
+          var dark = t.themeDark !== false;
+          document.documentElement.style.backgroundColor = bg;
+          document.documentElement.classList.add(dark ? 'theme-dark' : 'theme-light');
+        } catch(e) {
+          document.documentElement.style.backgroundColor = '#12121a';
+          document.documentElement.classList.add('theme-dark');
+        }
+      })();
+    </script>
   </head>
-  <body class="bg-[#1a1a2e]">
+  <body>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

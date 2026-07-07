@@ -1,7 +1,7 @@
 <template>
   <div class="h-full overflow-y-auto">
     <div class="sticky top-0 z-10 px-6 py-4 border-b backdrop-blur-sm"
-      :class="tx('bg-slate-950/90 border-white/[0.08]', 'bg-white/90 border-black/[0.08]')">
+      :class="tx('bg-slate-950/90 border-white/8', 'bg-white/90 border-black/8')">
       <h2 class="text-lg font-bold" :class="tx('text-gray-100', 'text-gray-800')">设置</h2>
     </div>
 
@@ -16,7 +16,7 @@
             </div>
             <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">工作区</h3>
           </div>
-          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-[52px]">管理小说数据存储位置</p>
+          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-13">管理小说数据存储位置</p>
         </div>
         <div :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }" class="rounded-xl border p-4 space-y-4">
           <div>
@@ -26,7 +26,7 @@
               <span v-else class="text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/10 text-yellow-400">未设置</span>
             </div>
             <div v-if="!booksStore.workspaceStatus.initialized" class="mb-3">
-              <div class="flex flex-col items-center py-6 gap-3 rounded-lg" :class="tx('bg-white/[0.02]', 'bg-black/[0.02]')">
+              <div class="flex flex-col items-center py-6 gap-3 rounded-[var(--radius-sm)]" :class="tx('bg-white/2', 'bg-black/2')">
                 <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" :class="tx('bg-white/5', 'bg-black/5')">📁</div>
                 <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs">选择一个目录作为小说数据的工作区</p>
               </div>
@@ -40,7 +40,7 @@
             <span :style="{ color: 'var(--text-secondary)' }" class="text-xs font-medium block mb-2">作品列表</span>
             <div class="space-y-1">
               <div v-for="book in booksStore.books" :key="book.id"
-                class="flex items-center gap-2 px-3 py-2 rounded-lg border"
+                class="flex items-center gap-2 px-3 py-2 rounded-[var(--radius-sm)] border"
                 :class="book.id === booksStore.currentBookId ? '' : 'border-transparent'"
                 :style="book.id === booksStore.currentBookId ? { backgroundColor: store.accentColor + '15', borderColor: store.accentColor + '30' } : {}">
                 <span class="text-sm truncate flex-1" :style="{ color: 'var(--text-primary)' }">{{ book.title }}</span>
@@ -61,7 +61,7 @@
             </div>
             <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">写作</h3>
           </div>
-          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-[52px]">每日字数目标与编辑器偏好</p>
+          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-13">每日字数目标与编辑器偏好</p>
         </div>
         <div class="space-y-4">
           <div :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }" class="rounded-xl border p-4">
@@ -92,7 +92,7 @@
             <div class="grid grid-cols-3 gap-2">
               <button v-for="m in layoutModes" :key="m.key"
                 class="py-3 rounded-xl border text-center transition-all"
-                :class="store.layoutMode === m.key ? '' : tx('border-white/[0.06] bg-white/[0.02] text-gray-500 hover:border-white/[0.12]', 'border-black/[0.06] bg-black/[0.01] text-gray-400 hover:border-black/[0.12]')"
+                :class="store.layoutMode === m.key ? '' : tx('border-white/6 bg-white/2 text-gray-500 hover:border-white/12', 'border-black/6 bg-black/1 text-gray-400 hover:border-black/12')"
                 :style="store.layoutMode === m.key ? { borderColor: store.accentColor + '80', backgroundColor: store.accentColor + '15', color: store.accentColor, boxShadow: '0 0 0 3px ' + store.accentColor + '25' } : {}"
                 @click="store.setLayoutMode(m.key)">
                 <div class="text-lg mb-1">{{ m.icon }}</div>
@@ -114,7 +114,7 @@
             </div>
             <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">主题</h3>
           </div>
-          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-[52px]">自定义界面配色方案</p>
+          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-13">自定义界面配色方案</p>
         </div>
         <div :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }" class="rounded-xl border p-4 mb-4">
           <div class="flex items-center gap-3">
@@ -128,10 +128,10 @@
         <span :style="{ color: 'var(--text-secondary)' }" class="text-xs font-medium block mb-3">深色主题</span>
         <div class="grid grid-cols-2 gap-2 mb-6">
           <button v-for="p in darkPresets" :key="p.name" class="flex items-center gap-3 px-4 py-3 rounded-xl border transition-all"
-            :class="store.accentColor === p.value && store.themeDark ? '' : tx('border-white/[0.06] bg-white/[0.02]', 'border-black/[0.06] bg-black/[0.01]')"
+            :class="store.accentColor === p.value && store.themeDark ? '' : tx('border-white/6 bg-white/2', 'border-black/6 bg-black/1')"
             :style="store.accentColor === p.value && store.themeDark ? { borderColor: store.accentColor + '80', backgroundColor: store.accentColor + '15' } : {}"
             @click="store.applyColorPreset(p)">
-            <div class="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-xs font-bold" :style="{ background: p.value + '20', color: p.value }">Aa</div>
+            <div class="w-8 h-8 rounded-[var(--radius-sm)] shrink-0 flex items-center justify-center text-xs font-bold" :style="{ background: p.value + '20', color: p.value }">Aa</div>
             <div class="text-left flex-1 min-w-0"><div :class="tx('text-gray-200', 'text-gray-700')" class="text-xs font-medium">{{ p.name }}</div></div>
             <div v-if="store.accentColor === p.value && store.themeDark" class="text-xs" :style="{ color: store.accentColor }">✓</div>
           </button>
@@ -139,10 +139,10 @@
         <span :style="{ color: 'var(--text-secondary)' }" class="text-xs font-medium block mb-3 mt-6">浅色主题</span>
         <div class="grid grid-cols-2 gap-2">
           <button v-for="p in lightPresets" :key="p.name" class="flex items-center gap-3 px-4 py-3 rounded-xl border transition-all"
-            :class="store.accentColor === p.value && !store.themeDark ? '' : tx('border-white/[0.06] bg-white/[0.02]', 'border-black/[0.06] bg-black/[0.01]')"
+            :class="store.accentColor === p.value && !store.themeDark ? '' : tx('border-white/6 bg-white/2', 'border-black/6 bg-black/1')"
             :style="store.accentColor === p.value && !store.themeDark ? { borderColor: store.accentColor + '80', backgroundColor: store.accentColor + '15' } : {}"
             @click="store.applyColorPreset(p)">
-            <div class="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-xs font-bold" :style="{ background: p.value + '20', color: p.value }">Aa</div>
+            <div class="w-8 h-8 rounded-[var(--radius-sm)] shrink-0 flex items-center justify-center text-xs font-bold" :style="{ background: p.value + '20', color: p.value }">Aa</div>
             <div class="text-left flex-1 min-w-0"><div :class="tx('text-gray-200', 'text-gray-700')" class="text-xs font-medium">{{ p.name }}</div></div>
             <div v-if="store.accentColor === p.value && !store.themeDark" class="text-xs" :style="{ color: store.accentColor }">✓</div>
           </button>
@@ -159,7 +159,7 @@
             </div>
             <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">AI 接口</h3>
           </div>
-          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-[52px]">配置大模型连接参数</p>
+          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-13">配置大模型连接参数</p>
         </div>
 
         <div :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }" class="rounded-xl border p-5 space-y-4">
@@ -220,6 +220,54 @@
         </div>
       </section>
 
+      <!-- === Writing Stats === -->
+      <section v-if="section === 'stats'">
+        <div class="mb-5">
+          <div class="flex items-center gap-3 mb-1.5">
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
+              :style="{ backgroundColor: store.accentColor + '15', color: store.accentColor }">
+              <n-icon size="18"><TrendingUpOutline /></n-icon>
+            </div>
+            <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">写作统计</h3>
+          </div>
+          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-13">码字数据与热力图</p>
+        </div>
+
+        <!-- Stats cards -->
+        <div class="grid grid-cols-2 gap-3 mb-5">
+          <div :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }" class="rounded-xl border p-4">
+            <div :style="{ color: 'var(--text-tertiary)' }" class="text-[10px] uppercase tracking-wider mb-1">今日码字</div>
+            <div class="text-2xl font-bold tabular-nums" :style="{ color: 'var(--text-primary)' }">{{ stats.todayWords.toLocaleString() }}</div>
+            <div v-if="stats.dailyGoal > 0" class="mt-2 flex items-center gap-2">
+              <div class="flex-1 h-1.5 rounded-full overflow-hidden" :style="{ background: 'var(--border-soft)' }">
+                <div class="h-full rounded-full transition-all duration-500" :style="{ width: stats.todayGoalPercent + '%', background: store.accentColor }" />
+              </div>
+              <span :style="{ color: 'var(--text-tertiary)' }" class="text-[10px] tabular-nums">{{ stats.todayGoalPercent }}%</span>
+            </div>
+          </div>
+          <div :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }" class="rounded-xl border p-4">
+            <div :style="{ color: 'var(--text-tertiary)' }" class="text-[10px] uppercase tracking-wider mb-1">连续天数</div>
+            <div class="text-2xl font-bold tabular-nums" :style="{ color: 'var(--text-primary)' }">{{ stats.streakDays }}</div>
+            <div :style="{ color: stats.streakDays >= 7 ? 'var(--status-success)' : 'var(--text-tertiary)' }" class="text-[10px] mt-1">
+              {{ stats.streakDays >= 7 ? '🔥 保持得好' : stats.streakDays > 0 ? '继续加油' : '今天开始吧' }}
+            </div>
+          </div>
+          <div :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }" class="rounded-xl border p-4">
+            <div :style="{ color: 'var(--text-tertiary)' }" class="text-[10px] uppercase tracking-wider mb-1">日目标</div>
+            <div class="text-2xl font-bold tabular-nums" :style="{ color: 'var(--text-primary)' }">{{ stats.dailyGoal.toLocaleString() }}</div>
+            <div :style="{ color: 'var(--text-tertiary)' }" class="text-[10px] mt-1">字/天</div>
+          </div>
+          <div :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }" class="rounded-xl border p-4">
+            <div :style="{ color: 'var(--text-tertiary)' }" class="text-[10px] uppercase tracking-wider mb-1">总计码字</div>
+            <div class="text-2xl font-bold tabular-nums" :style="{ color: 'var(--text-primary)' }">{{ stats.totalWordsAllTime.toLocaleString() }}</div>
+            <div :style="{ color: 'var(--text-tertiary)' }" class="text-[10px] mt-1">历史累计</div>
+          </div>
+        </div>
+
+        <!-- Calendar heatmap -->
+        <WritingCalendar class="w-full" />
+      </section>
+
       <!-- === About === -->
       <section v-if="section === 'about'">
         <div class="mb-5">
@@ -230,7 +278,7 @@
             </div>
             <h3 class="text-base font-semibold" :style="{ color: 'var(--text-primary)' }">关于</h3>
           </div>
-          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-[52px]">版本与技术信息</p>
+          <p :style="{ color: 'var(--text-tertiary)' }" class="text-xs ml-13">版本与技术信息</p>
         </div>
         <div :style="{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border-hairline)' }" class="rounded-xl border p-4">
           <div class="flex items-center gap-3 mb-4">
@@ -256,17 +304,21 @@ import {
   InformationCircleOutline,
   MoonOutline,
   SunnyOutline,
+  TrendingUpOutline,
 } from "@vicons/ionicons5";
 import { useSettingsStore } from "../stores/settings";
 import { useBooksStore } from "../stores/books";
+import { useStatsStore } from "../stores/stats";
 import { useSettingsForm } from "../composables/useSettingsForm";
+import { tx } from "../composables/useTheme";
 import SegmentedGroup from "./SegmentedGroup.vue";
+import WritingCalendar from "./WritingCalendar.vue";
 
 defineProps<{ section: string }>();
 const store = useSettingsStore();
 const booksStore = useBooksStore();
+const stats = useStatsStore();
 const form = useSettingsForm();
-const tx = (d: string, l: string) => store.themeDark ? d : l;
 const darkPresets = store.colorPresets.filter(p => p.dark);
 const lightPresets = store.colorPresets.filter(p => !p.dark);
 const fontSizeOpts = ["小", "中", "大"];

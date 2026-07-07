@@ -1,0 +1,46 @@
+/* ============================================================
+   Design Tokens — Novel Assistant
+   动态的强调色相关变量由 useDesignTokens.ts 在运行时注入，
+   这里只放静态、不随主题色变化的部分。
+   ============================================================ */
+
+:root {
+  /* ---- 圆角尺度 ---- */
+  --radius-sm: 8px;   /* 胶囊、小按钮 */
+  --radius-md: 12px;  /* 卡片、列表行 */
+  --radius-lg: 16px;  /* 弹窗、大图标容器 */
+
+  /* ---- 语义色（固定，不随用户选择的强调色变化） ---- */
+  --status-success: #22c55e;
+  --status-warning: #eab308;
+  --status-danger: #ef4444;
+  --status-info: #06b6d4;
+}
+
+/* ---- 深色主题：中性表面与文字 ---- */
+.theme-dark {
+  --surface-1: rgba(255, 255, 255, 0.03);
+  --surface-2: rgba(255, 255, 255, 0.06);
+
+  --border-hairline: rgba(255, 255, 255, 0.06);
+  --border-soft: rgba(255, 255, 255, 0.08);
+
+  --text-primary: rgb(243, 244, 246);
+  --text-secondary: rgb(156, 163, 175);
+  --text-tertiary: rgb(107, 114, 128);
+  --text-disabled: rgb(75, 85, 99);
+}
+
+/* ---- 浅色主题：中性表面与文字 ---- */
+.theme-light {
+  --surface-1: rgba(0, 0, 0, 0.02);
+  --surface-2: rgba(0, 0, 0, 0.05);
+
+  --border-hairline: rgba(0, 0, 0, 0.06);
+  --border-soft: rgba(0, 0, 0, 0.08);
+
+  --text-primary: rgb(55, 65, 81);
+  --text-secondary: rgb(107, 114, 128);
+  --text-tertiary: rgb(156, 163, 175);
+  --text-disabled: rgb(209, 213, 219);
+}

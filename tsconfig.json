@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "esnext",
+    "lib": ["ES2023", "DOM"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true
+  },
+  "include": ["src"]
+}

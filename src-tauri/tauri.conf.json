@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "novel-assistant",
-  "version": "0.1.0",
+  "productName": "Novel Assistant",
+  "version": "0.2.0",
   "identifier": "com.novelassistant.app",
   "build": {
     "frontendDist": "../dist",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Novel Assistant",
+        "title": "小说助手",
         "width": 1200,
         "height": 800,
         "resizable": true,
@@ -33,6 +33,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "windows": {
+      "nsis": {
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

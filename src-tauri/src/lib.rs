@@ -6,6 +6,7 @@ use tauri::Manager;
 // ── Types ──
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct DirEntry {
     pub name: String,
     pub path: String,

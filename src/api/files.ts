@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 export interface DirEntry {
   name: string
   path: string
-  is_dir: boolean
+  isDir: boolean
   children?: DirEntry[]
 }
 

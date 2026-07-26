@@ -187,7 +187,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { FolderOpen, Search, Sparkles, X } from 'lucide-vue-next'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
@@ -370,7 +370,7 @@ async function loadFileTree() {
 
 async function handleFileSelect(path: string) {
   // 先保存当前文件未写盘的内容
-  editorRef.value?.flushPendingSave()
+  await editorRef.value?.flushPendingSave()
   // TODO: 调用 Rust read_file
 }
 
@@ -428,7 +428,23 @@ function isEditorFocused(): boolean {
   return el !== null && (el.closest('.cm-editor') !== null || el.closest('.cm-content') !== null)
 }
 
+function isAnyOverlayOpen(): boolean {
+  return showNewProjectDialog.value || showSearch.value
+}
+
 function handleGlobalKeydown(e: KeyboardEvent) {
+  // 弹窗打开时只允许 Esc，其他快捷键都不触发
+  if (isAnyOverlayOpen() && e.key !== 'Escape') return
+
+  // AI 全屏对话页也支持跳回
+  if (view.value === 'ai-chat') {
+    if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+      e.preventDefault()
+      view.value = 'editor'
+    }
+    return
+  }
+
   if (view.value !== 'editor') return
 
   // Ctrl+B — 切换文件树（编辑器内不拦截，留给加粗）
@@ -457,6 +473,10 @@ onMounted(() => {
   projectStore.loadIndex()
   projects.value = projectStore.projects
   window.addEventListener('keydown', handleGlobalKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 

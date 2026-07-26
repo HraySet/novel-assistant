@@ -218,14 +218,15 @@ function handleRemove() {
   border-radius: 8px;
   padding: 8px 16px;
   cursor: pointer;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.1s ease;
   border: none;
   font-family: inherit;
   line-height: 1.4;
+  user-select: none;
 }
 
 .btn:active {
-  transform: scale(0.98);
+  transform: scale(0.96);
 }
 
 .btn-accent {
@@ -236,6 +237,12 @@ function handleRemove() {
 
 .btn-accent:hover {
   background: var(--color-accent-border, #dba876);
+  color: var(--color-accent-hover, #9c5527);
+}
+
+.btn-accent:active {
+  background: var(--color-accent, #b5652f);
+  color: var(--color-text-on-accent, #faf6ee);
 }
 
 .btn-ghost {
@@ -246,6 +253,10 @@ function handleRemove() {
 
 .btn-ghost:hover {
   background: var(--color-bg-surface-hover, #ebe3d4);
+}
+
+.btn-ghost:active {
+  background: var(--color-border, #e3d9c8);
 }
 
 /* ── Empty state ── */

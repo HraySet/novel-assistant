@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { ProjectEntry } from '../components/ProjectLibrary.vue'
+import type { ProjectEntry } from '../types/project'
 
 const INDEX_PATH = 'project-index.json'
 

@@ -194,6 +194,7 @@ import { useFileStore } from './stores/file'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
 import { pickCoverColor } from './types/project'
+import * as api from './api/files'
 import TopBar from './components/TopBar.vue'
 import FileTree from './components/FileTree.vue'
 import MdEditor from './components/MdEditor.vue'
@@ -280,7 +281,12 @@ async function openProject(project: ProjectEntry) {
   currentProject.value = project
   projectStore.markOpened(project.path)
   view.value = 'editor'
-  await loadFileTree()
+  try {
+    await api.setProjectPath(project.path)
+    await loadFileTree()
+  } catch (e) {
+    console.error('打开项目失败:', e)
+  }
 }
 
 async function handleNewProject() {
@@ -364,20 +370,72 @@ function handleRemoveProject(project: ProjectEntry) {
 // ── File operations ──
 
 async function loadFileTree() {
-  // TODO: 调用 Rust list_dir
-  fileTree.value = []
+  if (!currentProject.value) return
+  try {
+    const entries = await api.listDir(currentProject.value.path)
+    fileTree.value = entries
+  } catch (e) {
+    console.error('加载文件树失败:', e)
+  }
 }
 
 async function handleFileSelect(path: string) {
-  // 先保存当前文件未写盘的内容
   await editorRef.value?.flushPendingSave()
-  // TODO: 调用 Rust read_file
+  try {
+    const content = await api.readFile(path)
+    const name = path.split(/[/\\]/).pop() || path
+    activeFile.value = { path, name, content }
+    isDirty.value = false
+    fileStore.setOpenFile({ path, name, content, isDirty: false })
+  } catch (e) {
+    console.error('读取文件失败:', e)
+  }
 }
 
-function handleCreateFile(parentPath: string) { /* TODO */ }
-function handleCreateDir(parentPath: string) { /* TODO */ }
-function handleDelete(path: string) { /* TODO */ }
-function handleRename(path: string, newName: string) { /* TODO */ }
+async function handleCreateFile(parentPath: string) {
+  const name = window.prompt('文件名（自动补 .md）：')
+  if (!name?.trim()) return
+  const filename = name.endsWith('.md') ? name : `${name}.md`
+  const sep = parentPath.includes('\\') ? '\\' : '/'
+  const filepath = `${parentPath}${sep}${filename}`
+  try {
+    await api.createFile(filepath)
+    await loadFileTree()
+    await handleFileSelect(filepath)
+  } catch (e) {
+    console.error('创建文件失败:', e)
+  }
+}
+
+async function handleCreateDir(parentPath: string) {
+  const name = window.prompt('文件夹名：')
+  if (!name?.trim()) return
+  const sep = parentPath.includes('\\') ? '\\' : '/'
+  const dirpath = `${parentPath}${sep}${name}`
+  try {
+    await api.createDir(dirpath)
+    await loadFileTree()
+  } catch (e) {
+    console.error('创建文件夹失败:', e)
+  }
+}
+
+async function handleDelete(path: string) {
+  if (!confirm('确定要删除吗？（会移到 .trash）')) return
+  try {
+    await api.deletePath(path)
+    await loadFileTree()
+    if (activeFile.value?.path === path) {
+      activeFile.value = null
+    }
+  } catch (e) {
+    console.error('删除失败:', e)
+  }
+}
+
+async function handleRename(path: string, newName: string) {
+  // TODO: 需要 Rust 端 rename 命令
+}
 
 function handleContentChange(content: string) {
   if (activeFile.value) {
@@ -387,8 +445,13 @@ function handleContentChange(content: string) {
 }
 
 async function handleSave() {
-  // TODO: 调用 Rust write_file
-  isDirty.value = false
+  if (!activeFile.value) return
+  try {
+    await api.writeFile(activeFile.value.path, activeFile.value.content)
+    isDirty.value = false
+  } catch (e) {
+    console.error('保存失败:', e)
+  }
 }
 
 async function handleGoBack() {

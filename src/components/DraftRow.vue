@@ -1,7 +1,13 @@
 <template>
   <div class="draft-row" :style="{ paddingLeft: depth * 14 + 4 + 'px' }">
-    <FileText v-if="type === 'file'" :size="13" class="text-text-muted shrink-0" />
-    <Folder v-else :size="13" class="text-text-muted shrink-0" />
+    <template v-if="type === 'file'">
+      <FileText :size="13" class="text-accent shrink-0" />
+      <span class="draft-label">新文件</span>
+    </template>
+    <template v-else>
+      <Folder :size="13" class="text-accent shrink-0" />
+      <span class="draft-label">新文件夹</span>
+    </template>
     <input
       ref="inputRef"
       v-model="value"
@@ -65,6 +71,13 @@ function cancel() {
   gap: 6px;
   height: 26px;
   padding-right: 6px;
+}
+
+.draft-label {
+  font-size: 11px;
+  color: var(--color-accent);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .draft-input {

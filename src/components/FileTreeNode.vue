@@ -128,6 +128,7 @@ const dirMenu = reactive({ show: false, x: 0, y: 0 })
 const dirMenuRef = ref<HTMLElement>()
 
 function openDirMenu(e: MouseEvent) {
+  closeFileMenu() // 互斥：开新菜单前先关掉别的
   dirMenu.show = true
   dirMenu.x = e.clientX
   dirMenu.y = e.clientY
@@ -149,6 +150,7 @@ const fileMenu = reactive({ show: false, x: 0, y: 0 })
 const fileMenuRef = ref<HTMLElement>()
 
 function openFileMenu(e: MouseEvent) {
+  closeDirMenu() // 互斥
   fileMenu.show = true
   fileMenu.x = e.clientX
   fileMenu.y = e.clientY

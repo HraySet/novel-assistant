@@ -30,30 +30,20 @@
     <!-- 主体：编辑器 + 两条图标轨 + 可推挤面板 -->
     <div class="flex-1 flex min-h-0">
       
-      <!-- 左侧图标轨 -->
-      <div class="icon-bar icon-bar--left">
-        <button class="icon-bar-btn" :class="{ active: showSidebar }" title="文件树" @click="showSidebar = !showSidebar">
-          <FolderOpen :size="16" />
-        </button>
-        <button class="icon-bar-btn" title="搜索文件" @click="showSearch = true">
-          <Search :size="16" />
-        </button>
-      </div>
-
-      <!-- 左侧推挤面板：文件树 -->
-      <Transition name="slide-left">
-        <FileTree
-          v-if="showSidebar"
-          :root-path="currentProject?.path ?? ''"
-          :active-file="activeFile?.path"
-          :files="fileTree"
-          @select-file="handleFileSelect"
-          @create-file="handleCreateFile"
-          @create-dir="handleCreateDir"
-          @delete="handleDelete"
-          @rename="handleRename"
-        />
-      </Transition>
+      <!-- 左侧图标轨 + 文件树面板 -->
+      <LeftSidebar
+        :project-path="currentProject?.path ?? ''"
+        :active-file-path="activeFile?.path"
+        :files="fileTree"
+        :show-file-tree="showSidebar"
+        @select-file="handleFileSelect"
+        @create-file="handleCreateFile"
+        @create-dir="handleCreateDir"
+        @delete="handleDelete"
+        @rename="handleRename"
+        @open-search="showSearch = true"
+        @toggle-file-tree="showSidebar = !showSidebar"
+      />
 
       <!-- 编辑器 -->
       <main class="flex-1 min-w-0 flex flex-col">
@@ -135,45 +125,12 @@
     </Teleport>
 
     <!-- 搜索浮层 -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showSearch" class="search-overlay" @click.self="showSearch = false">
-          <div class="search-modal">
-            <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color: var(--color-border)">
-              <Search :size="16" class="text-text-muted" />
-              <input
-                ref="searchInput"
-                v-model="searchQuery"
-                class="flex-1 bg-transparent text-sm text-text-primary outline-none"
-                placeholder="搜索文件..."
-                @keydown.escape="showSearch = false"
-                @keydown.enter="handleSearchSelect"
-                @keydown.up.prevent="searchIndex = Math.max(0, searchIndex - 1)"
-                @keydown.down.prevent="searchIndex = Math.min(searchResults.length - 1, searchIndex + 1)"
-              />
-              <span class="text-[10px] text-text-muted">ESC</span>
-            </div>
-            <div class="max-h-64 overflow-y-auto p-1">
-              <div
-                v-for="(item, i) in searchResults"
-                :key="item.path"
-                class="search-item"
-                :class="{ 'search-item--active': searchIndex === i }"
-                @click="selectSearchResult(item)"
-                @mouseenter="searchIndex = i"
-              >
-                <span class="text-text-muted mr-2">{{ item.isDir ? '📁' : '📄' }}</span>
-                <span class="text-sm text-text-primary">{{ item.name }}</span>
-                <span class="ml-auto text-[10px] text-text-muted">{{ item.parent }}</span>
-              </div>
-              <div v-if="searchQuery && searchResults.length === 0" class="text-xs text-text-muted text-center py-4">
-                没有找到匹配的文件
-              </div>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+    <SearchModal
+      :show="showSearch"
+      :files="fileTree"
+      @close="showSearch = false"
+      @select-file="handleFileSelect"
+    />
   </div>
 
   <!-- ===== AI 全屏对话 ===== -->
@@ -187,8 +144,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { FolderOpen, Search, Sparkles, X } from 'lucide-vue-next'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { Sparkles, X } from 'lucide-vue-next'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
 import ProjectLibrary from './components/ProjectLibrary.vue'
@@ -196,10 +153,11 @@ import type { ProjectEntry } from './types/project'
 import { pickCoverColor } from './types/project'
 import * as api from './api/files'
 import TopBar from './components/TopBar.vue'
-import FileTree from './components/FileTree.vue'
 import MdEditor from './components/MdEditor.vue'
 import AiPanel from './components/AiPanel.vue'
 import AiChatView from './components/AiChatView.vue'
+import LeftSidebar from './components/LeftSidebar.vue'
+import SearchModal from './components/SearchModal.vue'
 
 // ── State ──
 
@@ -211,9 +169,6 @@ const newProjectPath = ref('')
 const newProjectName = ref('')
 const showAiPanel = ref(false)
 const showSearch = ref(false)
-const searchQuery = ref('')
-const searchIndex = ref(0)
-const searchInput = ref<HTMLInputElement>()
 const editorRef = ref<InstanceType<typeof MdEditor>>()
 
 const projectStore = useProjectStore()
@@ -224,56 +179,6 @@ const currentProject = ref<ProjectEntry | null>(null)
 const activeFile = ref<{ path: string; name: string; content: string } | null>(null)
 const isDirty = ref(false)
 const fileTree = ref<any[]>([])
-
-// ── Search ──
-
-interface SearchResult {
-  name: string
-  path: string
-  isDir: boolean
-  parent: string
-}
-
-const searchResults = computed(() => {
-  if (!searchQuery.value) return []
-  const q = searchQuery.value.toLowerCase()
-  const results: SearchResult[] = []
-  
-  function walk(nodes: any[], parentPath: string) {
-    for (const node of nodes) {
-      if (node.name.toLowerCase().includes(q)) {
-        results.push({
-          name: node.name,
-          path: node.path,
-          isDir: node.isDir,
-          parent: parentPath || '/',
-        })
-      }
-      if (node.children) walk(node.children, node.name)
-    }
-  }
-  walk(fileTree.value, '')
-  return results.slice(0, 20)
-})
-
-watch(searchQuery, () => { searchIndex.value = 0 })
-
-watch(showSearch, (v) => {
-  if (v) {
-    searchQuery.value = ''
-    nextTick(() => searchInput.value?.focus())
-  }
-})
-
-function handleSearchSelect() {
-  const item = searchResults.value[searchIndex.value]
-  if (item && !item.isDir) selectSearchResult(item)
-}
-
-function selectSearchResult(item: SearchResult) {
-  showSearch.value = false
-  if (!item.isDir) handleFileSelect(item.path)
-}
 
 // ── Project operations ──
 
@@ -557,10 +462,6 @@ onUnmounted(() => {
   background: var(--color-bg-surface);
 }
 
-.icon-bar--left {
-  border-right: 1px solid var(--color-border);
-}
-
 .icon-bar--right {
   border-left: 1px solid var(--color-border);
 }
@@ -602,17 +503,6 @@ onUnmounted(() => {
 
 /* ── Slide Transitions ── */
 
-.slide-left-enter-active,
-.slide-left-leave-active {
-  transition: width 0.2s ease, opacity 0.15s ease;
-}
-
-.slide-left-enter-from,
-.slide-left-leave-to {
-  width: 0 !important;
-  opacity: 0;
-}
-
 .slide-right-enter-active,
 .slide-right-leave-active {
   transition: width 0.2s ease, opacity 0.15s ease;
@@ -624,42 +514,7 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* ── Search Overlay ── */
-
-.search-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: center;
-  padding-top: 120px;
-  background: rgba(74, 64, 50, 0.08);
-}
-
-.search-modal {
-  width: 420px;
-  max-height: 360px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
-  overflow: hidden;
-}
-
-.search-item {
-  display: flex;
-  align-items: center;
-  padding: 8px 16px;
-  cursor: pointer;
-  border-radius: var(--radius-sm);
-  margin: 2px 4px;
-  transition: background 0.1s ease;
-}
-
-.search-item:hover,
-.search-item--active {
-  background: var(--color-accent-bg);
-}
+/* ── Fade Transition ── */
 
 .fade-enter-active,
 .fade-leave-active {

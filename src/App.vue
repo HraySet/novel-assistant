@@ -52,6 +52,7 @@
           @create-dir="handleCreateDir"
           @delete="handleDelete"
           @rename="handleRename"
+          @move="handleMove"
         />
       </Transition>
 
@@ -342,6 +343,15 @@ async function handleDelete(path: string) {
     }
   } catch (e) {
     console.error('删除失败:', e)
+  }
+}
+
+async function handleMove(source: string, destDir: string) {
+  try {
+    await api.movePath(source, destDir)
+    await loadFileTree()
+  } catch (e) {
+    console.error('移动失败:', e)
   }
 }
 

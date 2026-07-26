@@ -179,6 +179,21 @@ fn delete_path(path: String) -> Result<(), String> {
     fs::rename(src, &dest).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn move_path(source: String, dest_dir: String) -> Result<(), String> {
+    let src = Path::new(&source);
+    if !src.exists() {
+        return Err(format!("源文件不存在: {}", source));
+    }
+    let filename = src.file_name().unwrap_or_default().to_string_lossy();
+    let dest = Path::new(&dest_dir).join(filename.as_ref());
+    if dest.exists() {
+        return Err(format!("目标位置已存在同名文件: {}", dest.display()));
+    }
+    fs::create_dir_all(Path::new(&dest_dir)).map_err(|e| e.to_string())?;
+    fs::rename(src, &dest).map_err(|e| e.to_string())
+}
+
 // ── AI Config ──
 
 #[tauri::command]
@@ -209,6 +224,7 @@ pub fn run() {
             create_dir,
             create_file,
             delete_path,
+            move_path,
             get_ai_config,
             save_ai_config,
         ])

@@ -23,7 +23,8 @@
         :draft="draft" :draft-default-name="draftDefaultName" @select-file="(path: string) => $emit('selectFile', path)"
         @start-create="startCreate" @confirm-draft="confirmDraft" @cancel-draft="cancelDraft"
         @delete="(path: string) => $emit('delete', path)"
-        @rename="(path: string, name: string) => $emit('rename', path, name)" />
+        @rename="(path: string, name: string) => $emit('rename', path, name)"
+        @move="(source: string, destDir: string) => $emit('move', source, destDir)" />
 
       <!-- 撑满剩余高度，保证列表短时也有可右键的空白区 -->
       <div class="flex-1 min-h-[80px]" @contextmenu.self.prevent="openBlankMenu($event)" />
@@ -66,6 +67,7 @@ const emit = defineEmits<{
   createDir: [parentPath: string, name: string]
   delete: [path: string]
   rename: [path: string, newName: string]
+  move: [source: string, destDir: string]
 }>()
 
 // ── 草稿创建态（新建后立刻内联编辑，不弹输入框） ──

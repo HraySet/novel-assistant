@@ -31,6 +31,10 @@ export async function deletePath(path: string): Promise<void> {
   return invoke('delete_path', { path })
 }
 
+export async function movePath(source: string, destDir: string): Promise<void> {
+  return invoke('move_path', { source, destDir })
+}
+
 export async function getProjectPath(): Promise<string> {
   return invoke('get_project_path')
 }

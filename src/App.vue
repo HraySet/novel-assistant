@@ -13,7 +13,7 @@
   />
 
   <!-- ===== 编辑器视图 ===== -->
-  <div v-else class="h-screen flex flex-col overflow-hidden bg-bg-page">
+  <div v-else-if="view === 'editor'" class="h-screen flex flex-col overflow-hidden bg-bg-page">
     <!-- 顶栏 -->
     <TopBar
       :project-name="currentProject?.name ?? ''"
@@ -59,6 +59,7 @@
       <main class="flex-1 min-w-0 flex flex-col">
         <MdEditor
           v-if="activeFile"
+          ref="editorRef"
           :content="activeFile.content"
           @update:content="handleContentChange"
           @save="handleSave"
@@ -99,6 +100,40 @@
       </div>
     </div>
 
+    <!-- 新建项目命名弹窗 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showNewProjectDialog" class="dialog-overlay" @click.self="showNewProjectDialog = false">
+          <div class="dialog-box">
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-sm font-medium text-text-primary">新建项目</span>
+              <button class="dialog-close" @click="showNewProjectDialog = false">
+                <X :size="14" />
+              </button>
+            </div>
+            <label class="block text-xs text-text-secondary mb-1">项目名称</label>
+            <input
+              ref="newProjectInput"
+              v-model="newProjectName"
+              class="dialog-input"
+              placeholder="输入项目名称"
+              @keydown.enter="confirmNewProject"
+              @keydown.escape="showNewProjectDialog = false"
+            />
+            <div class="text-[10px] text-text-muted mt-1">
+              位置：{{ newProjectPath }}
+            </div>
+            <div class="flex justify-end gap-2 mt-4">
+              <button class="btn-dialog-ghost" @click="showNewProjectDialog = false">取消</button>
+              <button class="btn-dialog-accent" :disabled="!newProjectName.trim()" @click="confirmNewProject">
+                创建
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- 搜索浮层 -->
     <Teleport to="body">
       <Transition name="fade">
@@ -113,6 +148,8 @@
                 placeholder="搜索文件..."
                 @keydown.escape="showSearch = false"
                 @keydown.enter="handleSearchSelect"
+                @keydown.up.prevent="searchIndex = Math.max(0, searchIndex - 1)"
+                @keydown.down.prevent="searchIndex = Math.min(searchResults.length - 1, searchIndex + 1)"
               />
               <span class="text-[10px] text-text-muted">ESC</span>
             </div>
@@ -151,7 +188,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
-import { FolderOpen, Search, Sparkles } from 'lucide-vue-next'
+import { FolderOpen, Search, Sparkles, X } from 'lucide-vue-next'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
 import ProjectLibrary from './components/ProjectLibrary.vue'
@@ -168,11 +205,15 @@ import AiChatView from './components/AiChatView.vue'
 type View = 'library' | 'editor' | 'ai-chat'
 const view = ref<View>('library')
 const showSidebar = ref(false)
+const showNewProjectDialog = ref(false)
+const newProjectPath = ref('')
+const newProjectName = ref('')
 const showAiPanel = ref(false)
 const showSearch = ref(false)
 const searchQuery = ref('')
 const searchIndex = ref(0)
 const searchInput = ref<HTMLInputElement>()
+const editorRef = ref<InstanceType<typeof MdEditor>>()
 
 const projectStore = useProjectStore()
 const fileStore = useFileStore()
@@ -248,25 +289,32 @@ async function handleNewProject() {
     const folder = await open({ directory: true, title: '选择新项目的存放位置' })
     if (!folder) return
 
-    const name = window.prompt('项目名称：')
-    if (!name?.trim()) return
-
-    const projectPath = `${folder}/${name.trim()}`
-    
-    const project: ProjectEntry = {
-      path: projectPath,
-      name: name.trim(),
-      lastOpened: new Date().toISOString(),
-      wordCount: 0,
-      color: pickCoverColor(projects.value.length),
-    }
-
-    projects.value = [...projects.value, project]
-    projectStore.addProject(project)
-    await openProject(project)
+    newProjectPath.value = typeof folder === 'string' ? folder : String(folder)
+    newProjectName.value = ''
+    showNewProjectDialog.value = true
   } catch (e) {
     console.error('新建项目失败:', e)
   }
+}
+
+async function confirmNewProject() {
+  const name = newProjectName.value.trim()
+  if (!name) return
+
+  showNewProjectDialog.value = false
+  const projectPath = `${newProjectPath.value}/${name}`
+
+  const project: ProjectEntry = {
+    path: projectPath,
+    name,
+    lastOpened: new Date().toISOString(),
+    wordCount: 0,
+    color: pickCoverColor(projects.value.length),
+  }
+
+  projects.value = [...projects.value, project]
+  projectStore.addProject(project)
+  await openProject(project)
 }
 
 async function handleOpenProject() {
@@ -321,6 +369,8 @@ async function loadFileTree() {
 }
 
 async function handleFileSelect(path: string) {
+  // 先保存当前文件未写盘的内容
+  editorRef.value?.flushPendingSave()
   // TODO: 调用 Rust read_file
 }
 
@@ -371,9 +421,42 @@ function toggleTheme() {
 
 // ── Init ──
 
+// ── Keyboard shortcuts ──
+
+function isEditorFocused(): boolean {
+  const el = document.activeElement
+  return el !== null && (el.closest('.cm-editor') !== null || el.closest('.cm-content') !== null)
+}
+
+function handleGlobalKeydown(e: KeyboardEvent) {
+  if (view.value !== 'editor') return
+
+  // Ctrl+B — 切换文件树（编辑器内不拦截，留给加粗）
+  if (e.ctrlKey && e.key === 'b' && !isEditorFocused()) {
+    e.preventDefault()
+    showSidebar.value = !showSidebar.value
+  }
+  // Ctrl+J — 切换 AI 面板
+  if (e.ctrlKey && e.key === 'j') {
+    e.preventDefault()
+    showAiPanel.value = !showAiPanel.value
+  }
+  // Ctrl+Shift+A — 全屏 AI
+  if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+    e.preventDefault()
+    view.value = 'ai-chat'
+  }
+  // Ctrl+P — 搜索（编辑器内不拦截）
+  if (e.ctrlKey && e.key === 'p' && !isEditorFocused()) {
+    e.preventDefault()
+    showSearch.value = true
+  }
+}
+
 onMounted(() => {
   projectStore.loadIndex()
   projects.value = projectStore.projects
+  window.addEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 
@@ -503,5 +586,95 @@ onMounted(() => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* ── Dialog ── */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(74, 64, 50, 0.1);
+}
+
+.dialog-box {
+  width: 380px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+  padding: 20px;
+}
+
+.dialog-close {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.dialog-close:hover {
+  background: var(--color-bg-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.dialog-input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  outline: none;
+}
+
+.dialog-input:focus {
+  border-color: var(--color-accent-border);
+}
+
+.btn-dialog-ghost {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn-dialog-ghost:hover {
+  background: var(--color-bg-surface-hover);
+}
+
+.btn-dialog-accent {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--color-text-on-accent);
+  background: var(--color-accent);
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn-dialog-accent:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.btn-dialog-accent:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 </style>

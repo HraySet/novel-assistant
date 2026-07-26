@@ -63,6 +63,17 @@ function handleChange() {
   }, 1000)
 }
 
+function flushPendingSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+    emit('save')
+    isSaved.value = true
+  }
+}
+
+defineExpose({ flushPendingSave })
+
 onMounted(() => {
   if (!editorEl.value) return
 

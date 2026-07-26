@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 /* ==========================================================================
-   主题：米白纸感（warm-paper）
+   默认主题：米白纸感（warm-paper）
+   暗色主题用 html[data-theme="warm-paper-dark"] 覆盖
    ========================================================================== */
 
-:root,
-[data-theme="warm-paper"] {
+:root {
   /* ---- 背景层级 ---- */
   --color-bg-page: #faf6ee;
   --color-bg-surface: #f2ece1;
@@ -55,6 +55,36 @@
   --width-sidebar: 240px;
   --width-ai-panel: 320px;
   --font-size-editor: 16px;
+}
+
+/* 暖纸暗色（台灯下写字的感觉——暖灰底 + 暖白字） */
+html[data-theme="warm-paper-dark"] {
+  --color-bg-page: #2a2420;
+  --color-bg-surface: #332d28;
+  --color-bg-surface-hover: #3d3630;
+  --color-bg-elevated: #3a332e;
+
+  --color-border: #4a3f38;
+  --color-border-strong: #5c5048;
+
+  --color-text-primary: #e5d9c8;
+  --color-text-secondary: #b0a392;
+  --color-text-muted: #7a6f62;
+  --color-text-on-accent: #2a2420;
+
+  --color-accent: #d48a5c;
+  --color-accent-hover: #e09e76;
+  --color-accent-bg: #3d3228;
+  --color-accent-border: #6b4a35;
+
+  --color-success: #7a9e6a;
+  --color-success-bg: #2e3528;
+  --color-danger: #c45a50;
+  --color-danger-bg: #352828;
+  --color-warning: #d4a040;
+  --color-warning-bg: #353028;
+
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.2), 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
 /* ---- 全局重置 ---- */

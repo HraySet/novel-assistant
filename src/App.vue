@@ -1,35 +1,19 @@
 <template>
   <!-- ===== 项目库视图 ===== -->
-  <ProjectLibrary
-    v-if="view === 'library'"
-    :projects="projects"
-    @select="openProject"
-    @new-project="handleNewProject"
-    @open-project="handleOpenProject"
-    @add-project="handleAddProject"
-    @locate="handleLocate"
-    @relocate="handleRelocate"
-    @remove="handleRemoveProject"
-  />
+  <ProjectLibrary v-if="view === 'library'" :projects="projects" @select="openProject" @new-project="handleNewProject"
+    @open-project="handleOpenProject" @add-project="handleAddProject" @locate="handleLocate" @relocate="handleRelocate"
+    @remove="handleRemoveProject" />
 
   <!-- ===== 编辑器视图 ===== -->
   <div v-else-if="view === 'editor'" class="h-screen flex flex-col overflow-hidden bg-bg-page">
     <!-- 顶栏 -->
-    <TopBar
-      :project-name="currentProject?.name ?? ''"
-      :file-name="activeFile?.name"
-      :is-dirty="isDirty"
-      :has-back="fileStore.hasBack()"
-      :has-forward="fileStore.hasForward()"
-      @go-library="view = 'library'"
-      @go-back="handleGoBack"
-      @go-forward="handleGoForward"
-      @toggle-theme="toggleTheme"
-    />
+    <TopBar :project-name="currentProject?.name ?? ''" :file-name="activeFile?.name" :is-dirty="isDirty"
+      :has-back="fileStore.hasBack()" :has-forward="fileStore.hasForward()" @go-library="view = 'library'"
+      @go-back="handleGoBack" @go-forward="handleGoForward" @toggle-theme="toggleTheme" />
 
     <!-- 主体：编辑器 + 两条图标轨 + 可推挤面板 -->
     <div class="flex-1 flex min-h-0">
-      
+
       <!-- 左侧图标轨 -->
       <div class="icon-bar icon-bar--left">
         <button class="icon-bar-btn" :class="{ active: showSidebar }" title="文件树" @click="showSidebar = !showSidebar">
@@ -42,29 +26,15 @@
 
       <!-- 左侧推挤面板：文件树 -->
       <Transition name="slide-left">
-        <LeftSidebar
-          v-if="showSidebar"
-          :root-path="currentProject?.path ?? ''"
-          :active-file="activeFile?.path"
-          :files="fileTree"
-          @select-file="handleFileSelect"
-          @create-file="handleCreateFile"
-          @create-dir="handleCreateDir"
-          @delete="handleDelete"
-          @rename="handleRename"
-          @move="handleMove"
-        />
+        <LeftSidebar v-if="showSidebar" :root-path="currentProject?.path ?? ''" :active-file="activeFile?.path"
+          :files="fileTree" @select-file="handleFileSelect" @create-file="handleCreateFile"
+          @create-dir="handleCreateDir" @delete="handleDelete" @rename="handleRename" @move="handleMove" />
       </Transition>
 
       <!-- 编辑器 -->
       <main class="flex-1 min-w-0 flex flex-col">
-        <MdEditor
-          v-if="activeFile"
-          ref="editorRef"
-          :content="activeFile.content"
-          @update:content="handleContentChange"
-          @save="handleSave"
-        />
+        <MdEditor v-if="activeFile" ref="editorRef" :content="activeFile.content" @update:content="handleContentChange"
+          @save="handleSave" />
         <div v-else class="flex-1 flex items-center justify-center text-text-muted text-sm">
           打开一个文件开始写作
         </div>
@@ -72,12 +42,8 @@
 
       <!-- 右侧推挤面板：AI 紧凑面板 -->
       <Transition name="slide-right">
-        <AiPanel
-          v-if="showAiPanel"
-          :active-file="activeFile"
-          :project-root="currentProject?.path ?? ''"
-          @expand="view = 'ai-chat'"
-        />
+        <AiPanel v-if="showAiPanel" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
+          @expand="view = 'ai-chat'" />
       </Transition>
 
       <!-- 右侧图标轨 -->
@@ -113,14 +79,8 @@
               </button>
             </div>
             <label class="block text-xs text-text-secondary mb-1">项目名称</label>
-            <input
-              ref="newProjectInput"
-              v-model="newProjectName"
-              class="dialog-input"
-              placeholder="输入项目名称"
-              @keydown.enter="confirmNewProject"
-              @keydown.escape="showNewProjectDialog = false"
-            />
+            <input ref="newProjectInput" v-model="newProjectName" class="dialog-input" placeholder="输入项目名称"
+              @keydown.enter="confirmNewProject" @keydown.escape="showNewProjectDialog = false" />
             <div class="text-[10px] text-text-muted mt-1">
               位置：{{ newProjectPath }}
             </div>
@@ -136,27 +96,18 @@
     </Teleport>
 
     <!-- 搜索浮层 -->
-    <SearchModal
-      :show="showSearch"
-      :files="fileTree"
-      @close="showSearch = false"
-      @select-file="handleFileSelect"
-    />
+    <SearchModal :show="showSearch" :files="fileTree" @close="showSearch = false" @select-file="handleFileSelect" />
   </div>
 
   <!-- ===== AI 全屏对话 ===== -->
-  <AiChatView
-    v-if="view === 'ai-chat'"
-    :active-file="activeFile"
-    :project-root="currentProject?.path ?? ''"
-    @back="view = 'editor'"
-    @insert="handleAiInsert"
-  />
+  <AiChatView v-if="view === 'ai-chat'" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
+    @back="view = 'editor'" @insert="handleAiInsert" />
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { FolderOpen, Search, Sparkles, X } from 'lucide-vue-next'
+import { storeToRefs } from 'pinia'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
 import ProjectLibrary from './components/ProjectLibrary.vue'
@@ -184,12 +135,11 @@ const editorRef = ref<InstanceType<typeof MdEditor>>()
 
 const projectStore = useProjectStore()
 const fileStore = useFileStore()
+const { openFile: activeFile, tree: fileTree } = storeToRefs(fileStore)
 
 const projects = ref<ProjectEntry[]>([])
 const currentProject = ref<ProjectEntry | null>(null)
-const activeFile = ref<{ path: string; name: string; content: string } | null>(null)
 const isDirty = ref(false)
-const fileTree = ref<any[]>([])
 
 // ── Project operations ──
 
@@ -288,8 +238,7 @@ function handleRemoveProject(project: ProjectEntry) {
 async function loadFileTree() {
   if (!currentProject.value) return
   try {
-    const entries = await api.listDir(currentProject.value.path)
-    fileTree.value = entries
+    await fileStore.loadTree(currentProject.value.path)
   } catch (e) {
     console.error('加载文件树失败:', e)
   }
@@ -300,9 +249,9 @@ async function handleFileSelect(path: string) {
   try {
     const content = await api.readFile(path)
     const name = path.split(/[/\\]/).pop() || path
-    activeFile.value = { path, name, content }
+    const nextFile = { path, name, content, isDirty: false }
     isDirty.value = false
-    fileStore.setOpenFile({ path, name, content, isDirty: false })
+    fileStore.setOpenFile(nextFile)
   } catch (e) {
     console.error('读取文件失败:', e)
   }
@@ -310,11 +259,8 @@ async function handleFileSelect(path: string) {
 
 async function handleCreateFile(parentPath: string, name: string) {
   if (!name.trim()) return
-  const sep = parentPath.includes('\\') ? '\\' : '/'
-  const filepath = `${parentPath}${sep}${name}`
   try {
-    await api.createFile(filepath)
-    await loadFileTree()
+    const filepath = await fileStore.createFile(parentPath, name)
     await handleFileSelect(filepath)
   } catch (e) {
     console.error('创建文件失败:', e)
@@ -323,11 +269,8 @@ async function handleCreateFile(parentPath: string, name: string) {
 
 async function handleCreateDir(parentPath: string, name: string) {
   if (!name.trim()) return
-  const sep = parentPath.includes('\\') ? '\\' : '/'
-  const dirpath = `${parentPath}${sep}${name}`
   try {
-    await api.createDir(dirpath)
-    await loadFileTree()
+    await fileStore.createDir(parentPath, name)
   } catch (e) {
     console.error('创建文件夹失败:', e)
   }
@@ -336,11 +279,7 @@ async function handleCreateDir(parentPath: string, name: string) {
 async function handleDelete(path: string) {
   if (!confirm('确定要删除吗？（会移到 .trash）')) return
   try {
-    await api.deletePath(path)
-    await loadFileTree()
-    if (activeFile.value?.path === path) {
-      activeFile.value = null
-    }
+    await fileStore.deletePath(path)
   } catch (e) {
     console.error('删除失败:', e)
   }
@@ -348,20 +287,23 @@ async function handleDelete(path: string) {
 
 async function handleMove(source: string, destDir: string) {
   try {
-    await api.movePath(source, destDir)
-    await loadFileTree()
+    await fileStore.movePath(source, destDir)
   } catch (e) {
     console.error('移动失败:', e)
   }
 }
 
 async function handleRename(path: string, newName: string) {
-  // TODO: 需要 Rust 端 rename 命令
+  try {
+    await fileStore.renamePath(path, newName)
+  } catch (e) {
+    console.error('重命名失败:', e)
+  }
 }
 
 function handleContentChange(content: string) {
   if (activeFile.value) {
-    activeFile.value.content = content
+    fileStore.updateActiveFile({ content, isDirty: true })
     isDirty.value = true
   }
 }
@@ -371,6 +313,7 @@ async function handleSave() {
   try {
     await api.writeFile(activeFile.value.path, activeFile.value.content)
     isDirty.value = false
+    fileStore.updateActiveFile({ isDirty: false })
   } catch (e) {
     console.error('保存失败:', e)
   }

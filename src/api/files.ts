@@ -35,6 +35,10 @@ export async function movePath(source: string, destDir: string): Promise<void> {
   return invoke('move_path', { source, destDir })
 }
 
+export async function renamePath(source: string, dest: string): Promise<void> {
+  return invoke('rename_path', { source, dest })
+}
+
 export async function getProjectPath(): Promise<string> {
   return invoke('get_project_path')
 }

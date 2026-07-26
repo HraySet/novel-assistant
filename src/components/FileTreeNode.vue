@@ -1,39 +1,35 @@
 <template>
   <div class="file-tree-node">
-    <!-- 文件夹 -->
-    <div v-if="node.isDir" class="node-row" :class="{ 'node-row--expanded': expanded, 'node-row--drop-target': dragOver }"
-      :style="{ paddingLeft: depth * 14 + 4 + 'px' }" @click="expanded = !expanded"
-      @contextmenu.prevent="openDirMenu($event)"
-      draggable="true"
-      @dragstart="handleDragStart"
-      @dragover.prevent="handleDragOver"
-      @dragleave="handleDragLeave"
-      @drop.prevent="handleDrop">
+    <div v-if="node.isDir" class="node-row"
+      :class="{ 'node-row--expanded': expanded, 'node-row--drop-target': dragOver }"
+      :style="{ paddingLeft: depth * 14 + 4 + 'px' }" @click="handleToggleExpand"
+      @contextmenu.prevent="openMenu($event, 'dir')" draggable="true" @dragstart="handleDragStart($event, node.path)"
+      @dragover.prevent="handleDragOver($event)" @dragleave="handleDragLeave"
+      @drop.prevent="handleDrop($event, node.path)">
       <span class="node-arrow">{{ expanded ? '▾' : '▸' }}</span>
       <Folder :size="14" class="text-text-muted shrink-0" />
       <span v-if="!renaming" class="node-name">{{ node.name }}</span>
       <input v-else ref="renameInputRef" v-model="renameValue" class="rename-input" spellcheck="false" @click.stop
-        @keydown.enter="confirmRename" @keydown.escape="cancelRename" @blur="confirmRename" />
+        @keydown.enter="confirmRename(node.name, (newName) => emit('rename', node.path, newName))"
+        @keydown.escape="cancelRename"
+        @blur="confirmRename(node.name, (newName) => emit('rename', node.path, newName))" />
       <span class="node-count" v-if="!renaming && node.children?.length">{{ node.children.length }}</span>
     </div>
 
-    <!-- 文件 -->
     <div v-else class="node-row" :class="{ 'node-row--active': activeFile === node.path }"
       :style="{ paddingLeft: depth * 14 + 4 + 'px' }" @click="handleFileClick"
-      @contextmenu.prevent="openFileMenu($event)"
-      draggable="true"
-      @dragstart="handleDragStart">
+      @contextmenu.prevent="openMenu($event, 'file')" draggable="true" @dragstart="handleDragStart($event, node.path)">
       <span class="node-arrow invisible">▸</span>
       <FileText :size="14" class="text-text-muted shrink-0" />
       <span v-if="!renaming" class="node-name">{{ node.name }}</span>
       <input v-else ref="renameInputRef" v-model="renameValue" class="rename-input" spellcheck="false" @click.stop
-        @keydown.enter="confirmRename" @keydown.escape="cancelRename" @blur="confirmRename" />
+        @keydown.enter="confirmRename(node.name, (newName) => emit('rename', node.path, newName))"
+        @keydown.escape="cancelRename"
+        @blur="confirmRename(node.name, (newName) => emit('rename', node.path, newName))" />
     </div>
 
-    <!-- 子节点区域 -->
     <template v-if="expanded && node.children">
-      <!-- 草稿行（在此目录下新建时显示） -->
-      <DraftRow v-if="draft && draft.parentPath === node.path" :type="draft.type" :default-name="draftDefaultName"
+      <DraftRow v-if="draft && draft.parentPath === node.path" :type="draft.type" :default-name="draftDefaultName ?? ''"
         :depth="depth + 1" @confirm="(name: string) => $emit('confirmDraft', name)" @cancel="$emit('cancelDraft')" />
       <FileTreeNode v-for="child in node.children" :key="child.path" :node="child" :active-file="activeFile"
         :depth="depth + 1" :draft="draft" :draft-default-name="draftDefaultName"
@@ -41,64 +37,45 @@
         @start-create="(type: 'file' | 'dir', path: string) => $emit('startCreate', type, path)"
         @confirm-draft="(name: string) => $emit('confirmDraft', name)" @cancel-draft="$emit('cancelDraft')"
         @delete="(path: string) => $emit('delete', path)"
-        @rename="(path: string, name: string) => $emit('rename', path, name)" />
+        @rename="(path: string, name: string) => $emit('rename', path, name)"
+        @move="(source: string, destDir: string) => $emit('move', source, destDir)" />
     </template>
 
-    <!-- 目录右键菜单 -->
-    <Teleport to="body">
-      <div v-if="dirMenu.show" ref="dirMenuRef" class="context-menu"
-        :style="{ left: dirMenu.x + 'px', top: dirMenu.y + 'px' }">
-        <button class="context-menu-item" @click="startCreateHere('file')">
-          <FilePlus :size="14" />
-          <span>新建文件</span>
-        </button>
-        <button class="context-menu-item" @click="startCreateHere('dir')">
-          <FolderPlus :size="14" />
-          <span>新建文件夹</span>
-        </button>
-        <div class="context-divider" />
-        <button class="context-menu-item" @click="closeDirMenu(); startRename()">
-          <Pencil :size="14" />
-          <span>重命名</span>
-        </button>
-        <button class="context-menu-item" @click="handleCopyPath">
-          <Copy :size="14" />
-          <span>复制路径</span>
-        </button>
-        <div class="context-divider" />
-        <button class="context-menu-item context-menu-item--danger" @click="handleDelete">
-          删除
-        </button>
-      </div>
-    </Teleport>
-
-    <!-- 文件右键菜单 -->
-    <Teleport to="body">
-      <div v-if="fileMenu.show" ref="fileMenuRef" class="context-menu"
-        :style="{ left: fileMenu.x + 'px', top: fileMenu.y + 'px' }">
-        <button class="context-menu-item" @click="closeFileMenu(); startRename()">
-          <Pencil :size="14" />
-          <span>重命名</span>
-        </button>
-        <button class="context-menu-item" @click="handleCopyPath">
-          <Copy :size="14" />
-          <span>复制路径</span>
-        </button>
-        <div class="context-divider" />
-        <button class="context-menu-item context-menu-item--danger" @click="handleDelete">
-          删除
-        </button>
-      </div>
-    </Teleport>
+    <TreeContextMenu v-model="menuVisible" :x="menuX" :y="menuY">
+      <button v-if="menuType === 'dir'" class="context-menu-item" @click="startCreateHere('file')">
+        <FilePlus :size="14" />
+        <span>新建文件</span>
+      </button>
+      <button v-if="menuType === 'dir'" class="context-menu-item" @click="startCreateHere('dir')">
+        <FolderPlus :size="14" />
+        <span>新建文件夹</span>
+      </button>
+      <div v-if="menuType === 'dir'" class="context-divider" />
+      <button class="context-menu-item" @click="closeMenu(); startRename(node.name, node.isDir)">
+        <Pencil :size="14" />
+        <span>重命名</span>
+      </button>
+      <button class="context-menu-item" @click="handleCopyPath">
+        <Copy :size="14" />
+        <span>复制路径</span>
+      </button>
+      <div class="context-divider" />
+      <button class="context-menu-item context-menu-item--danger" @click="handleDelete">
+        删除
+      </button>
+    </TreeContextMenu>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, nextTick } from 'vue'
-import { onClickOutside } from '@vueuse/core'
+import { computed, ref } from 'vue'
 import { FileText, Folder, FilePlus, FolderPlus, Pencil, Copy } from 'lucide-vue-next'
+import { storeToRefs } from 'pinia'
 import type { FileNode } from '../stores/file'
+import { useFileStore } from '../stores/file'
 import DraftRow from './DraftRow.vue'
+import TreeContextMenu from './TreeContextMenu.vue'
+import { useFileTreeNodeInteractions } from '../composables/useFileTreeNodeInteractions'
 
 const props = defineProps<{
   node: FileNode
@@ -119,162 +96,96 @@ const emit = defineEmits<{
   move: [source: string, destDir: string]
 }>()
 
-const expanded = ref(false)
+const fileStore = useFileStore()
+const { expandedPaths, selectedPath } = storeToRefs(fileStore)
 
-// ── 文件点击：已激活的文件再点一下 = 进入重命名，否则才是打开 ──
+const expanded = computed({
+  get: () => fileStore.isExpanded(props.node.path),
+  set: (value: boolean) => {
+    if (value) fileStore.expandPath(props.node.path)
+    else fileStore.toggleExpanded(props.node.path)
+  },
+})
+
+const {
+  renaming,
+  renameValue,
+  renameInputRef,
+  dragOver,
+  startRename,
+  confirmRename,
+  cancelRename,
+  handleDragStart,
+  handleDragOver,
+  handleDragLeave,
+  handleDrop: handleDropInteraction,
+} = useFileTreeNodeInteractions()
 
 function handleFileClick() {
   if (renaming.value) return
   if (props.activeFile === props.node.path) {
-    startRename()
+    startRename(props.node.name, props.node.isDir)
     return
   }
   emit('selectFile', props.node.path)
+  fileStore.setSelectedPath(props.node.path)
 }
 
-// ── 内联重命名 ──
-
-const renaming = ref(false)
-const renameValue = ref('')
-const renameInputRef = ref<HTMLInputElement>()
-let renameConfirmed = false
-
-function startRename() {
-  renameConfirmed = false
-  renameValue.value = props.node.name
-  renaming.value = true
-  nextTick(() => {
-    const el = renameInputRef.value
-    if (!el) return
-    el.focus()
-    if (!props.node.isDir) {
-      const dot = props.node.name.lastIndexOf('.')
-      el.setSelectionRange(0, dot > 0 ? dot : props.node.name.length)
-    } else {
-      el.select()
-    }
-  })
-}
-
-function confirmRename() {
-  if (renameConfirmed) return
-  renameConfirmed = true
-  renaming.value = false
-  const trimmed = renameValue.value.trim()
-  if (trimmed && trimmed !== props.node.name) {
-    emit('rename', props.node.path, trimmed)
+function handleToggleExpand() {
+  if (!props.node.isDir) return
+  if (expanded.value) {
+    fileStore.toggleExpanded(props.node.path)
+  } else {
+    fileStore.expandPath(props.node.path)
   }
 }
 
-function cancelRename() {
-  renameConfirmed = true
-  renaming.value = false
-}
-
-// ── 复制路径 ──
-
 async function handleCopyPath() {
-  closeDirMenu()
-  closeFileMenu()
+  closeMenu()
   try {
     await navigator.clipboard.writeText(props.node.path)
-    emit('copyPath', props.node.path) // 父组件可以借此弹一个"已复制"的轻提示
+    emit('copyPath', props.node.path)
   } catch (e) {
     console.error('复制路径失败:', e)
   }
 }
 
-// ── 菜单边界检测：避免在屏幕边缘弹出时被截断 ──
+const menuVisible = ref(false)
+const menuX = ref(0)
+const menuY = ref(0)
+const menuType = ref<'dir' | 'file' | null>(null)
 
-function clampMenuPosition(x: number, y: number) {
-  const menuW = 150
-  const menuH = 160
-  const clampedX = Math.min(x, window.innerWidth - menuW - 8)
-  const clampedY = Math.min(y, window.innerHeight - menuH - 8)
-  return { x: Math.max(8, clampedX), y: Math.max(8, clampedY) }
+function openMenu(e: MouseEvent, type: 'dir' | 'file') {
+  menuType.value = type
+  menuVisible.value = true
+  menuX.value = e.clientX
+  menuY.value = e.clientY
 }
 
-// ── 目录右键菜单 ──
-
-const dirMenu = reactive({ show: false, x: 0, y: 0 })
-const dirMenuRef = ref<HTMLElement>()
-
-function openDirMenu(e: MouseEvent) {
-  closeFileMenu()
-  const { x, y } = clampMenuPosition(e.clientX, e.clientY)
-  dirMenu.show = true
-  dirMenu.x = x
-  dirMenu.y = y
+function closeMenu() {
+  menuVisible.value = false
 }
-
-function closeDirMenu() { dirMenu.show = false }
-
-onClickOutside(dirMenuRef, closeDirMenu)
 
 function startCreateHere(type: 'file' | 'dir') {
-  closeDirMenu()
-  if (!expanded.value) expanded.value = true
+  closeMenu()
+  if (!expanded.value) {
+    fileStore.expandPath(props.node.path)
+  }
   emit('startCreate', type, props.node.path)
 }
 
-// ── 文件右键菜单 ──
-
-const fileMenu = reactive({ show: false, x: 0, y: 0 })
-const fileMenuRef = ref<HTMLElement>()
-
-function openFileMenu(e: MouseEvent) {
-  closeDirMenu()
-  const { x, y } = clampMenuPosition(e.clientX, e.clientY)
-  fileMenu.show = true
-  fileMenu.x = x
-  fileMenu.y = y
-}
-
-function closeFileMenu() { fileMenu.show = false }
-
-onClickOutside(fileMenuRef, closeFileMenu)
-
-// ── 删除 ──
-// 注意：建议父组件对应的实现挪动到 .trash/ 目录而不是物理删除，
-// 保留一个"最近删除"可恢复的余地，避免手滑丢失稿件内容。
-
 function handleDelete() {
-  closeDirMenu()
-  closeFileMenu()
+  closeMenu()
   emit('delete', props.node.path)
 }
 
-// ── 拖拽 ──
-
-const dragOver = ref(false)
-
-function handleDragStart(e: DragEvent) {
-  if (!e.dataTransfer) return
-  e.dataTransfer.effectAllowed = 'move'
-  e.dataTransfer.setData('text/plain', props.node.path)
-}
-
-function handleDragOver(e: DragEvent) {
-  if (!e.dataTransfer) return
-  // 不能拖到自己里面
-  if (e.dataTransfer.types.includes('text/plain')) {
-    e.dataTransfer.dropEffect = 'move'
-    dragOver.value = true
-  }
-}
-
-function handleDragLeave() {
-  dragOver.value = false
-}
-
-function handleDrop(e: DragEvent) {
-  dragOver.value = false
-  const sourcePath = e.dataTransfer?.getData('text/plain')
-  if (!sourcePath || sourcePath === props.node.path) return
-  // 不能拖到自己的子目录
-  if (sourcePath.startsWith(props.node.path + '/') || sourcePath.startsWith(props.node.path + '\\')) return
-  if (!expanded.value) expanded.value = true
-  emit('move', sourcePath, props.node.path)
+function handleDrop(event: DragEvent, nodePath: string) {
+  handleDropInteraction(event, nodePath, (sourcePath, destDir) => {
+    if (!expanded.value) {
+      fileStore.expandPath(props.node.path)
+    }
+    emit('move', sourcePath, destDir)
+  })
 }
 </script>
 
@@ -344,19 +255,6 @@ function handleDrop(e: DragEvent) {
   border-radius: var(--radius-sm);
   padding: 1px 4px;
   outline: none;
-}
-
-/* ── 右键菜单 ── */
-
-.context-menu {
-  position: fixed;
-  z-index: 300;
-  min-width: 140px;
-  padding: 4px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-popover);
 }
 
 .context-menu-item {

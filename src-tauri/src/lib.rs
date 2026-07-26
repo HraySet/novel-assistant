@@ -64,12 +64,18 @@ fn list_entries(dir_path: &Path) -> Result<Vec<DirEntry>, String> {
             None
         };
 
-        entries.push(DirEntry { name, path: path_str, is_dir, children });
+        entries.push(DirEntry {
+            name,
+            path: path_str,
+            is_dir,
+            children,
+        });
     }
 
     // 文件夹排前，文件排后，各自按名称排序
     entries.sort_by(|a, b| {
-        b.is_dir.cmp(&a.is_dir)  // true > false，文件夹排前面
+        b.is_dir
+            .cmp(&a.is_dir) // true > false，文件夹排前面
             .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
 
@@ -195,6 +201,22 @@ fn move_path(source: String, dest_dir: String) -> Result<(), String> {
     fs::rename(src, &dest).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn rename_path(source: String, dest: String) -> Result<(), String> {
+    let src = Path::new(&source);
+    if !src.exists() {
+        return Err(format!("源文件不存在: {}", source));
+    }
+    let dest_path = Path::new(&dest);
+    if dest_path.exists() {
+        return Err(format!("目标位置已存在同名文件: {}", dest_path.display()));
+    }
+    if let Some(parent) = dest_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::rename(src, dest_path).map_err(|e| e.to_string())
+}
+
 // ── AI Config ──
 
 #[tauri::command]
@@ -226,6 +248,7 @@ pub fn run() {
             create_file,
             delete_path,
             move_path,
+            rename_path,
             get_ai_config,
             save_ai_config,
         ])

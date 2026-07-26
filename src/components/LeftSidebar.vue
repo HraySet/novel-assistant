@@ -23,8 +23,8 @@
         :active-file="activeFilePath"
         :files="files"
         @select-file="(path: string) => $emit('select-file', path)"
-        @create-file="(path: string) => $emit('create-file', path)"
-        @create-dir="(path: string) => $emit('create-dir', path)"
+        @create-file="(parentPath: string, name: string) => $emit('create-file', parentPath, name)"
+        @create-dir="(parentPath: string, name: string) => $emit('create-dir', parentPath, name)"
         @delete="(path: string) => $emit('delete', path)"
         @rename="(path: string, name: string) => $emit('rename', path, name)"
       />
@@ -46,8 +46,8 @@ defineProps<{
 
 defineEmits<{
   'select-file': [path: string]
-  'create-file': [parentPath: string]
-  'create-dir': [parentPath: string]
+  'create-file': [parentPath: string, name: string]
+  'create-dir': [parentPath: string, name: string]
   'delete': [path: string]
   'rename': [path: string, newName: string]
   'open-search': []

@@ -297,12 +297,10 @@ async function handleFileSelect(path: string) {
   }
 }
 
-async function handleCreateFile(parentPath: string) {
-  const name = window.prompt('文件名（自动补 .md）：')
-  if (!name?.trim()) return
-  const filename = name.endsWith('.md') ? name : `${name}.md`
+async function handleCreateFile(parentPath: string, name: string) {
+  if (!name.trim()) return
   const sep = parentPath.includes('\\') ? '\\' : '/'
-  const filepath = `${parentPath}${sep}${filename}`
+  const filepath = `${parentPath}${sep}${name}`
   try {
     await api.createFile(filepath)
     await loadFileTree()
@@ -312,9 +310,8 @@ async function handleCreateFile(parentPath: string) {
   }
 }
 
-async function handleCreateDir(parentPath: string) {
-  const name = window.prompt('文件夹名：')
-  if (!name?.trim()) return
+async function handleCreateDir(parentPath: string, name: string) {
+  if (!name.trim()) return
   const sep = parentPath.includes('\\') ? '\\' : '/'
   const dirpath = `${parentPath}${sep}${name}`
   try {

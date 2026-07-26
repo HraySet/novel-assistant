@@ -150,12 +150,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { FolderOpen, Search, Sparkles } from 'lucide-vue-next'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
+import { pickCoverColor } from './types/project'
 import TopBar from './components/TopBar.vue'
 import FileTree from './components/FileTree.vue'
 import MdEditor from './components/MdEditor.vue'
@@ -241,15 +242,75 @@ async function openProject(project: ProjectEntry) {
   await loadFileTree()
 }
 
-function handleNewProject() { /* TODO */ }
-function handleOpenProject() { /* TODO */ }
-function handleAddProject() { /* TODO */ }
-function handleLocate(project: ProjectEntry) { /* TODO */ }
-function handleRelocate(project: ProjectEntry) { /* TODO */ }
+async function handleNewProject() {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const folder = await open({ directory: true, title: '选择新项目的存放位置' })
+    if (!folder) return
+
+    const name = window.prompt('项目名称：')
+    if (!name?.trim()) return
+
+    const projectPath = `${folder}/${name.trim()}`
+    
+    const project: ProjectEntry = {
+      path: projectPath,
+      name: name.trim(),
+      lastOpened: new Date().toISOString(),
+      wordCount: 0,
+      color: pickCoverColor(projects.value.length),
+    }
+
+    projects.value = [...projects.value, project]
+    projectStore.addProject(project)
+    await openProject(project)
+  } catch (e) {
+    console.error('新建项目失败:', e)
+  }
+}
+
+async function handleOpenProject() {
+  handleAddProject()
+}
+
+async function handleAddProject() {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog')
+    const folder = await open({ directory: true, title: '选择已有项目文件夹' })
+    if (!folder) return
+
+    const path = typeof folder === 'string' ? folder : String(folder)
+    const name = path.split(/[/\\]/).pop() || '未命名'
+
+    const project: ProjectEntry = {
+      path,
+      name,
+      lastOpened: new Date().toISOString(),
+      wordCount: 0,
+      color: pickCoverColor(projects.value.length),
+    }
+
+    projects.value = [...projects.value, project]
+    projectStore.addProject(project)
+    await openProject(project)
+  } catch (e) {
+    console.error('打开项目失败:', e)
+  }
+}
+
+function handleLocate(_project: ProjectEntry) {
+  // TODO: 调用系统文件管理器
+}
+
+function handleRelocate(project: ProjectEntry) {
+  handleAddProject().then(() => {
+    handleRemoveProject(project)
+  })
+}
 
 function handleRemoveProject(project: ProjectEntry) {
+  projects.value = projects.value.filter(p => p.path !== project.path)
   projectStore.removeProject(project.path)
-  projects.value = projectStore.projects
 }
 
 // ── File operations ──
@@ -307,6 +368,13 @@ function toggleTheme() {
   const current = document.documentElement.getAttribute('data-theme')
   document.documentElement.setAttribute('data-theme', current === 'warm-paper' ? 'warm-paper-dark' : 'warm-paper')
 }
+
+// ── Init ──
+
+onMounted(() => {
+  projectStore.loadIndex()
+  projects.value = projectStore.projects
+})
 </script>
 
 <style scoped>

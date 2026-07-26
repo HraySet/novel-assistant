@@ -30,20 +30,30 @@
     <!-- 主体：编辑器 + 两条图标轨 + 可推挤面板 -->
     <div class="flex-1 flex min-h-0">
       
-      <!-- 左侧图标轨 + 文件树面板 -->
-      <LeftSidebar
-        :project-path="currentProject?.path ?? ''"
-        :active-file-path="activeFile?.path"
-        :files="fileTree"
-        :show-file-tree="showSidebar"
-        @select-file="handleFileSelect"
-        @create-file="handleCreateFile"
-        @create-dir="handleCreateDir"
-        @delete="handleDelete"
-        @rename="handleRename"
-        @open-search="showSearch = true"
-        @toggle-file-tree="showSidebar = !showSidebar"
-      />
+      <!-- 左侧图标轨 -->
+      <div class="icon-bar icon-bar--left">
+        <button class="icon-bar-btn" :class="{ active: showSidebar }" title="文件树" @click="showSidebar = !showSidebar">
+          <FolderOpen :size="16" />
+        </button>
+        <button class="icon-bar-btn" title="搜索文件" @click="showSearch = true">
+          <Search :size="16" />
+        </button>
+      </div>
+
+      <!-- 左侧推挤面板：文件树 -->
+      <Transition name="slide-left">
+        <LeftSidebar
+          v-if="showSidebar"
+          :root-path="currentProject?.path ?? ''"
+          :active-file="activeFile?.path"
+          :files="fileTree"
+          @select-file="handleFileSelect"
+          @create-file="handleCreateFile"
+          @create-dir="handleCreateDir"
+          @delete="handleDelete"
+          @rename="handleRename"
+        />
+      </Transition>
 
       <!-- 编辑器 -->
       <main class="flex-1 min-w-0 flex flex-col">
@@ -145,7 +155,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { Sparkles, X } from 'lucide-vue-next'
+import { FolderOpen, Search, Sparkles, X } from 'lucide-vue-next'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
 import ProjectLibrary from './components/ProjectLibrary.vue'

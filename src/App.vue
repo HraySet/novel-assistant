@@ -12,41 +12,53 @@
     @remove="handleRemoveProject"
   />
 
-  <!-- ===== 编辑器三栏视图 ===== -->
-  <div v-else class="h-screen flex flex-col">
+  <!-- ===== 编辑器视图 ===== -->
+  <div v-else class="h-screen flex flex-col overflow-hidden bg-bg-page">
     <!-- 顶栏 -->
     <TopBar
       :project-name="currentProject?.name ?? ''"
       :file-name="activeFile?.name"
       :is-dirty="isDirty"
+      :has-back="fileStore.hasBack()"
+      :has-forward="fileStore.hasForward()"
       @go-library="view = 'library'"
-      @toggle-sidebar="showSidebar = !showSidebar"
-      @toggle-ai="showAiPanel = !showAiPanel"
+      @go-back="handleGoBack"
+      @go-forward="handleGoForward"
+      @toggle-theme="toggleTheme"
     />
 
-    <!-- 主体三栏 -->
+    <!-- 主体：编辑器 + 两条图标轨 + 可推挤面板 -->
     <div class="flex-1 flex min-h-0">
-      <!-- 左侧：文件树 -->
-      <FileTree
-        v-if="showSidebar"
-        :root-path="currentProject?.path ?? ''"
-        :active-file="activeFile?.path"
-        :files="fileTree"
-        @select-file="openFile"
-        @create-file="handleCreateFile"
-        @create-dir="handleCreateDir"
-        @delete="handleDelete"
-        @rename="handleRename"
-      />
+      
+      <!-- 左侧图标轨 -->
+      <div class="icon-bar icon-bar--left">
+        <button class="icon-bar-btn" :class="{ active: showSidebar }" title="文件树" @click="showSidebar = !showSidebar">
+          <FolderOpen :size="16" />
+        </button>
+        <button class="icon-bar-btn" title="搜索文件" @click="showSearch = true">
+          <Search :size="16" />
+        </button>
+      </div>
 
-      <!-- 中间：编辑器 -->
-      <main class="flex-1 min-w-0 flex flex-col" :class="[
-        showSidebar ? '' : '',
-        showAiPanel ? '' : ''
-      ]">
+      <!-- 左侧推挤面板：文件树 -->
+      <Transition name="slide-left">
+        <FileTree
+          v-if="showSidebar"
+          :root-path="currentProject?.path ?? ''"
+          :active-file="activeFile?.path"
+          :files="fileTree"
+          @select-file="handleFileSelect"
+          @create-file="handleCreateFile"
+          @create-dir="handleCreateDir"
+          @delete="handleDelete"
+          @rename="handleRename"
+        />
+      </Transition>
+
+      <!-- 编辑器 -->
+      <main class="flex-1 min-w-0 flex flex-col">
         <MdEditor
           v-if="activeFile"
-          :file-path="activeFile.path"
           :content="activeFile.content"
           @update:content="handleContentChange"
           @save="handleSave"
@@ -56,14 +68,75 @@
         </div>
       </main>
 
-      <!-- 右侧：AI 面板 -->
-      <AiPanel
-        v-if="showAiPanel"
-        :active-file="activeFile"
-        :project-root="currentProject?.path ?? ''"
-        @expand="view = 'ai-chat'"
-      />
+      <!-- 右侧推挤面板：AI 紧凑面板 -->
+      <Transition name="slide-right">
+        <AiPanel
+          v-if="showAiPanel"
+          :active-file="activeFile"
+          :project-root="currentProject?.path ?? ''"
+          @expand="view = 'ai-chat'"
+        />
+      </Transition>
+
+      <!-- 右侧图标轨 -->
+      <div class="icon-bar icon-bar--right">
+        <button class="icon-bar-btn" :class="{ active: showAiPanel }" title="AI 助手" @click="showAiPanel = !showAiPanel">
+          <Sparkles :size="16" />
+        </button>
+        <div class="icon-bar-divider" />
+        <button class="icon-bar-btn icon-bar-btn--text" title="续写" @click="runQuickAction('续写')">
+          续
+        </button>
+        <button class="icon-bar-btn icon-bar-btn--text" title="润色" @click="runQuickAction('润色')">
+          润
+        </button>
+        <button class="icon-bar-btn icon-bar-btn--text" title="扩写" @click="runQuickAction('扩写')">
+          扩
+        </button>
+        <button class="icon-bar-btn icon-bar-btn--text" title="检查" @click="runQuickAction('检查')">
+          查
+        </button>
+      </div>
     </div>
+
+    <!-- 搜索浮层 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showSearch" class="search-overlay" @click.self="showSearch = false">
+          <div class="search-modal">
+            <div class="flex items-center gap-2 px-4 py-3 border-b" style="border-color: var(--color-border)">
+              <Search :size="16" class="text-text-muted" />
+              <input
+                ref="searchInput"
+                v-model="searchQuery"
+                class="flex-1 bg-transparent text-sm text-text-primary outline-none"
+                placeholder="搜索文件..."
+                @keydown.escape="showSearch = false"
+                @keydown.enter="handleSearchSelect"
+              />
+              <span class="text-[10px] text-text-muted">ESC</span>
+            </div>
+            <div class="max-h-64 overflow-y-auto p-1">
+              <div
+                v-for="(item, i) in searchResults"
+                :key="item.path"
+                class="search-item"
+                :class="{ 'search-item--active': searchIndex === i }"
+                @click="selectSearchResult(item)"
+                @mouseenter="searchIndex = i"
+              >
+                <span class="text-text-muted mr-2">{{ item.isDir ? '📁' : '📄' }}</span>
+                <span class="text-sm text-text-primary">{{ item.name }}</span>
+                <span class="ml-auto text-[10px] text-text-muted">{{ item.parent }}</span>
+              </div>
+              <div v-if="searchQuery && searchResults.length === 0" class="text-xs text-text-muted text-center py-4">
+                没有找到匹配的文件
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 
   <!-- ===== AI 全屏对话 ===== -->
@@ -77,7 +150,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
+import { FolderOpen, Search, Sparkles } from 'lucide-vue-next'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
 import ProjectLibrary from './components/ProjectLibrary.vue'
@@ -92,8 +166,12 @@ import AiChatView from './components/AiChatView.vue'
 
 type View = 'library' | 'editor' | 'ai-chat'
 const view = ref<View>('library')
-const showSidebar = ref(true)
-const showAiPanel = ref(true)
+const showSidebar = ref(false)
+const showAiPanel = ref(false)
+const showSearch = ref(false)
+const searchQuery = ref('')
+const searchIndex = ref(0)
+const searchInput = ref<HTMLInputElement>()
 
 const projectStore = useProjectStore()
 const fileStore = useFileStore()
@@ -104,65 +182,91 @@ const activeFile = ref<{ path: string; name: string; content: string } | null>(n
 const isDirty = ref(false)
 const fileTree = ref<any[]>([])
 
+// ── Search ──
+
+interface SearchResult {
+  name: string
+  path: string
+  isDir: boolean
+  parent: string
+}
+
+const searchResults = computed(() => {
+  if (!searchQuery.value) return []
+  const q = searchQuery.value.toLowerCase()
+  const results: SearchResult[] = []
+  
+  function walk(nodes: any[], parentPath: string) {
+    for (const node of nodes) {
+      if (node.name.toLowerCase().includes(q)) {
+        results.push({
+          name: node.name,
+          path: node.path,
+          isDir: node.isDir,
+          parent: parentPath || '/',
+        })
+      }
+      if (node.children) walk(node.children, node.name)
+    }
+  }
+  walk(fileTree.value, '')
+  return results.slice(0, 20)
+})
+
+watch(searchQuery, () => { searchIndex.value = 0 })
+
+watch(showSearch, (v) => {
+  if (v) {
+    searchQuery.value = ''
+    nextTick(() => searchInput.value?.focus())
+  }
+})
+
+function handleSearchSelect() {
+  const item = searchResults.value[searchIndex.value]
+  if (item && !item.isDir) selectSearchResult(item)
+}
+
+function selectSearchResult(item: SearchResult) {
+  showSearch.value = false
+  if (!item.isDir) handleFileSelect(item.path)
+}
+
 // ── Project operations ──
 
 async function openProject(project: ProjectEntry) {
   currentProject.value = project
+  projectStore.markOpened(project.path)
   view.value = 'editor'
   await loadFileTree()
 }
 
-function handleNewProject() {
-  // TODO: 选位置 + 输入名
-}
-
-function handleOpenProject() {
-  // TODO: 选文件夹加入索引
-}
-
-function handleAddProject() {
-  // TODO: 同上
-}
-
-function handleLocate(project: ProjectEntry) {
-  // TODO: 调用系统文件管理器打开
-}
-
-function handleRelocate(project: ProjectEntry) {
-  // TODO: 重新选择路径
-}
+function handleNewProject() { /* TODO */ }
+function handleOpenProject() { /* TODO */ }
+function handleAddProject() { /* TODO */ }
+function handleLocate(project: ProjectEntry) { /* TODO */ }
+function handleRelocate(project: ProjectEntry) { /* TODO */ }
 
 function handleRemoveProject(project: ProjectEntry) {
-  projects.value = projects.value.filter(p => p.path !== project.path)
+  projectStore.removeProject(project.path)
+  projects.value = projectStore.projects
 }
 
 // ── File operations ──
 
 async function loadFileTree() {
-  if (!currentProject.value) return
   // TODO: 调用 Rust list_dir
   fileTree.value = []
 }
 
-async function openFile(path: string) {
+async function handleFileSelect(path: string) {
   // TODO: 调用 Rust read_file
 }
 
-function handleCreateFile(parentPath: string) {
-  // TODO
-}
-
-function handleCreateDir(parentPath: string) {
-  // TODO
-}
-
-function handleDelete(path: string) {
-  // TODO
-}
-
-function handleRename(path: string, newName: string) {
-  // TODO
-}
+function handleCreateFile(parentPath: string) { /* TODO */ }
+function handleCreateDir(parentPath: string) { /* TODO */ }
+function handleDelete(path: string) { /* TODO */ }
+function handleRename(path: string, newName: string) { /* TODO */ }
 
 function handleContentChange(content: string) {
   if (activeFile.value) {
@@ -176,7 +280,160 @@ async function handleSave() {
   isDirty.value = false
 }
 
+async function handleGoBack() {
+  const path = fileStore.goBack()
+  if (path) await handleFileSelect(path)
+}
+
+async function handleGoForward() {
+  const path = fileStore.goForward()
+  if (path) await handleFileSelect(path)
+}
+
+// ── AI ──
+
+function runQuickAction(action: string) {
+  // TODO: 一键 AI 操作，不打开面板
+  console.log('Quick action:', action)
+}
+
 function handleAiInsert(text: string) {
   // TODO: 插入到编辑器
 }
+
+// ── Theme ──
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme')
+  document.documentElement.setAttribute('data-theme', current === 'warm-paper' ? 'warm-paper-dark' : 'warm-paper')
+}
 </script>
+
+<style scoped>
+/* ── Icon Bars ── */
+
+.icon-bar {
+  width: 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 14px;
+  gap: 14px;
+  flex-shrink: 0;
+  background: var(--color-bg-surface);
+}
+
+.icon-bar--left {
+  border-right: 1px solid var(--color-border);
+}
+
+.icon-bar--right {
+  border-left: 1px solid var(--color-border);
+}
+
+.icon-bar-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.icon-bar-btn:hover {
+  background: var(--color-bg-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.icon-bar-btn.active {
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+}
+
+.icon-bar-btn--text {
+  font-size: 10px;
+  font-family: inherit;
+}
+
+.icon-bar-divider {
+  width: 20px;
+  height: 1px;
+  background: var(--color-border);
+}
+
+/* ── Slide Transitions ── */
+
+.slide-left-enter-active,
+.slide-left-leave-active {
+  transition: width 0.2s ease, opacity 0.15s ease;
+}
+
+.slide-left-enter-from,
+.slide-left-leave-to {
+  width: 0 !important;
+  opacity: 0;
+}
+
+.slide-right-enter-active,
+.slide-right-leave-active {
+  transition: width 0.2s ease, opacity 0.15s ease;
+}
+
+.slide-right-enter-from,
+.slide-right-leave-to {
+  width: 0 !important;
+  opacity: 0;
+}
+
+/* ── Search Overlay ── */
+
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: center;
+  padding-top: 120px;
+  background: rgba(74, 64, 50, 0.08);
+}
+
+.search-modal {
+  width: 420px;
+  max-height: 360px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+}
+
+.search-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  margin: 2px 4px;
+  transition: background 0.1s ease;
+}
+
+.search-item:hover,
+.search-item--active {
+  background: var(--color-accent-bg);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>

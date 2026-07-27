@@ -136,7 +136,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { FolderOpen, Search, Sparkles, X, Settings } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useProjectOperations } from './composables/useProjectOperations'
@@ -203,6 +203,8 @@ async function handleGoForward() {
 function runQuickAction(action: string) {
   quickAction.value = action
   showAiPanel.value = true
+  // 重置让下次同动作点击能再次触发 watch
+  nextTick(() => { quickAction.value = null })
 }
 
 function handleAiInsert(text: string) {

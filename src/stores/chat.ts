@@ -30,8 +30,20 @@ export const useChatStore = defineStore('chat', () => {
   const loading = ref(false)
   const streaming = ref(false)
   let saveTimer: ReturnType<typeof setTimeout> | null = null
+  let abortController: AbortController | null = null
 
   const activeConversation = () => conversations.value.find(c => c.id === activeId.value) ?? null
+
+  function createAbortController() {
+    abortController = new AbortController()
+    return abortController
+  }
+
+  function abortStreaming() {
+    abortController?.abort()
+    abortController = null
+    streaming.value = false
+  }
 
   // ── 持久化 ──
 
@@ -146,6 +158,8 @@ export const useChatStore = defineStore('chat', () => {
     projectRoot,
     loading,
     streaming,
+    abortStreaming,
+    createAbortController,
     activeConversation,
     loadConversations,
     createConversation,

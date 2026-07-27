@@ -135,8 +135,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { FolderOpen, Search, Sparkles, X, Settings } from 'lucide-vue-next'
+import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { storeToRefs } from 'pinia'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
@@ -313,77 +314,11 @@ function toggleTheme() {
 }
 
 // ── Keyboard shortcuts ──
-
-function isEditorFocused(): boolean {
-  const el = document.activeElement
-  return el !== null && (el.closest('.cm-editor') !== null || el.closest('.cm-content') !== null)
-}
-
-function isAnyOverlayOpen(): boolean {
-  return showNewProjectDialog.value || showSearch.value || showSettings.value
-}
-
-function handleGlobalKeydown(e: KeyboardEvent) {
-  // 弹窗打开时只允许 Esc，其他快捷键都不触发
-  if (isAnyOverlayOpen()) {
-    if (e.key === 'Escape') {
-      showSettings.value = false
-      showSearch.value = false
-      showNewProjectDialog.value = false
-    }
-    return
-  }
-
-  // AI 全屏对话页也支持跳回
-  if (view.value === 'ai-chat') {
-    if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-      e.preventDefault()
-      view.value = 'editor'
-    }
-    return
-  }
-
-  if (view.value !== 'editor') return
-
-  // Ctrl+B — 切换文件树（编辑器内不拦截，留给加粗）
-  if (e.ctrlKey && e.key === 'b' && !isEditorFocused()) {
-    e.preventDefault()
-    showSidebar.value = !showSidebar.value
-  }
-  // Ctrl+J — 切换 AI 面板
-  if (e.ctrlKey && e.key === 'j') {
-    e.preventDefault()
-    showAiPanel.value = !showAiPanel.value
-  }
-  // Ctrl+Shift+A — 全屏 AI
-  if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-    e.preventDefault()
-    view.value = 'ai-chat'
-  }
-  // Ctrl+, — 设置
-  if (e.ctrlKey && e.key === ',') {
-    e.preventDefault()
-    showSettings.value = true
-    settingsSection.value = 'writing'
-  }
-  // Ctrl+P — 搜索（始终拦截浏览器的打印行为）
-  if (e.ctrlKey && e.key === 'p') {
-    e.preventDefault()
-    // 编辑器内不打开搜索面板，留给编辑器自身的快捷键
-    if (!isEditorFocused()) {
-      showSearch.value = true
-    }
-  }
-}
+useKeyboardShortcuts({ view, showSidebar, showAiPanel, showSearch, showSettings, settingsSection, showNewProjectDialog })
 
 onMounted(() => {
   projectStore.loadIndex()
   projects.value = projectStore.projects
-  window.addEventListener('keydown', handleGlobalKeydown)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 

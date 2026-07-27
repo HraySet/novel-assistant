@@ -121,18 +121,18 @@ watch(() => props.quickAction, (action) => {
 function handleSend() {
   const text = inputText.value.trim()
   if (!text || chatStore.streaming) return
-  chatStore.streaming = true  // ★ 锁提到 build() 之前，关竞态窗口
-  build().then(({ prompt }) => {
-    send(text, '', prompt)
-  })
+  chatStore.streaming = true
+  build()
+    .then(({ prompt }) => { send(text, '', prompt) })
+    .catch(() => { chatStore.streaming = false })
 }
 
 function handleQuickAction(label: string, prompt: string) {
-  if (chatStore.streaming) return  // ★ 补守卫
+  if (chatStore.streaming) return
   chatStore.streaming = true
-  build().then(({ prompt: ctx }) => {
-    send(prompt, label, ctx)
-  })
+  build()
+    .then(({ prompt: ctx }) => { send(prompt, label, ctx) })
+    .catch(() => { chatStore.streaming = false })
 }
 
 async function send(text: string, prefix: string, contextPrompt?: string) {

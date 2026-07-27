@@ -35,6 +35,7 @@
   --color-success-bg: #e9efe3;
   --color-danger: #a13f35;
   --color-danger-bg: #f5e6e2;
+  --color-danger-border: #d4a5a0;
   --color-warning: #c08a2e;
   --color-warning-bg: #f7ecd8;
 
@@ -81,6 +82,7 @@ html[data-theme="warm-paper-dark"] {
   --color-success-bg: #2e3528;
   --color-danger: #c45a50;
   --color-danger-bg: #352828;
+  --color-danger-border: #6b3a3a;
   --color-warning: #d4a040;
   --color-warning-bg: #353028;
 

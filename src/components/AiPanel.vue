@@ -18,20 +18,12 @@
       </div>
     </div>
 
-    <!-- 快捷操作 -->
-    <div class="flex flex-wrap gap-1.5 px-3 py-2 border-b shrink-0" style="border-color: var(--color-border)">
-      <button v-for="action in quickActions" :key="action.label"
-        class="quick-action-btn" @click="runQuickAction(action)">
-        {{ action.label }}
-      </button>
-    </div>
-
     <!-- 对话 -->
     <div ref="chatEl" class="flex-1 overflow-y-auto px-3 py-2 space-y-3">
-      <div v-if="messages.length === 0" class="text-xs text-text-muted text-center py-8">
-        点一个快捷操作，或直接输入对话
+      <div v-if="!activeConversation || activeConversation.messages.length === 0" class="text-xs text-text-muted text-center py-8">
+        点击右侧 续/润/扩/查 开始，或直接输入对话
       </div>
-      <div v-for="(msg, i) in messages" :key="i"
+      <div v-for="(msg, i) in (activeConversation?.messages || [])" :key="i"
         :class="msg.role === 'user' ? 'chat-user' : 'chat-ai'">
         <div class="chat-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
         <div class="chat-content">{{ msg.content }}</div>
@@ -43,81 +35,50 @@
     <div class="p-3 border-t shrink-0" style="border-color: var(--color-border)">
       <textarea v-model="inputText" class="ai-input" rows="2"
         placeholder="输入消息或点上方快捷操作..."
+        :disabled="chatStore.streaming"
         @keydown.enter.exact.prevent="handleSend" />
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted } from 'vue'
+import { ref, nextTick, watch, onMounted, computed } from 'vue'
 import { useSettingsStore } from '../stores/settings'
+import { useChatStore } from '../stores/chat'
 import { buildAiHeaders, getAiEndpoint } from '../composables/useAiApi'
 import * as api from '../api/files'
-
-const CHATLOG_DIR = '.chatlog'
-const CHATLOG_FILE = 'history.json'
 
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
   projectRoot?: string
+  quickAction?: string | null
 }>()
-defineEmits<{ expand: [] }>()
+const emit = defineEmits<{ expand: [] }>()
 
 const settings = useSettingsStore()
+const chatStore = useChatStore()
+const activeConversation = computed(() => chatStore.activeConversation())
+
 const inputText = ref('')
-const messages = ref<{ role: string; content: string }[]>([])
 const chatEl = ref<HTMLElement>()
 const loading = ref(false)
 
-function chatlogPath(): string {
-  if (!props.projectRoot) return ''
-  return `${props.projectRoot.replace(/\\/g, '/')}/${CHATLOG_DIR}`
-}
+// 首次打开或项目切换时加载对话
+onMounted(() => { if (props.projectRoot) chatStore.loadConversations(props.projectRoot) })
+watch(() => props.projectRoot, (root) => { if (root) chatStore.loadConversations(root) })
 
-function chatlogFilePath(): string {
-  return `${chatlogPath()}/${CHATLOG_FILE}`
-}
-
-async function loadMessages() {
-  if (!props.projectRoot) return
-  try {
-    const content = await api.readFile(chatlogFilePath())
-    const parsed = JSON.parse(content)
-    if (Array.isArray(parsed)) messages.value = parsed
-  } catch { /* 没有历史记录 */ }
-}
-
-async function saveMessages() {
-  if (!props.projectRoot || messages.value.length === 0) return
-  try {
-    await api.createDir(chatlogPath())
-  } catch { /* 目录可能已存在 */ }
-  try {
-    await api.writeFile(chatlogFilePath(), JSON.stringify(messages.value))
-  } catch { /* 保存失败不阻塞 */ }
-}
-
-// 项目切换时加载历史
-watch(() => props.projectRoot, (root) => {
-  messages.value = []
-  if (root) loadMessages()
+// 自动触发快捷操作
+watch(() => props.quickAction, (action) => {
+  if (!action) return
+  const map: Record<string, string> = {
+    '续写': '请续写以下内容，保持风格一致，直接给出续写结果：',
+    '润色': '请润色以下文字，保持原意不变，优化表达和节奏：',
+    '扩写': '请对以下内容进行扩写，增加细节和描写，但不要偏离原意：',
+    '检查': '请检查以下内容，指出语法错误、逻辑矛盾或可以改进的地方：',
+  }
+  const prompt = map[action]
+  if (prompt) runQuickAction(action, prompt)
 })
-
-onMounted(() => { if (props.projectRoot) loadMessages() })
-
-// 消息变化后防抖保存
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-watch(messages, () => {
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(saveMessages, 2000)
-}, { deep: true })
-
-const quickActions = [
-  { label: '续写', prompt: '请续写以下内容，保持风格一致，直接给出续写结果：' },
-  { label: '润色', prompt: '请润色以下文字，保持原意不变，优化表达和节奏：' },
-  { label: '扩写', prompt: '请对以下内容进行扩写，增加细节和描写，但不要偏离原意：' },
-  { label: '检查', prompt: '请检查以下内容，指出语法错误、逻辑矛盾或可以改进的地方：' },
-]
 
 async function readFileContent(): Promise<string> {
   if (!props.activeFile?.path) return ''
@@ -129,33 +90,43 @@ async function readFileContent(): Promise<string> {
 
 function handleSend() {
   const text = inputText.value.trim()
-  if (!text) return
+  if (!text || chatStore.streaming) return
   send(text, '')
 }
 
-async function runQuickAction(action: typeof quickActions[number]) {
+async function runQuickAction(label: string, prompt: string) {
   const fileContent = await readFileContent()
   const context = fileContent
-    ? `${action.prompt}\n\n---\n${fileContent.slice(-3000)}\n---`
-    : action.prompt
-  send(context, action.label)
+    ? `${prompt}\n\n---\n${fileContent.slice(-3000)}\n---`
+    : prompt
+  send(context, label)
 }
 
 async function send(content: string, prefix: string) {
   if (!settings.aiApiKey) return
-  if (prefix) {
-    messages.value.push({ role: 'user', content: `[${prefix}]` })
-  } else {
-    messages.value.push({ role: 'user', content })
-  }
+
+  let conv = activeConversation.value
+  if (!conv) conv = chatStore.createConversation(undefined, props.activeFile?.path)
+  const convId = conv.id
   inputText.value = ''
+
+  const displayMsg = prefix ? `[${prefix}]` : content
+  chatStore.addMessage(convId, { role: 'user', content: displayMsg })
+  chatStore.addMessage(convId, { role: 'assistant', content: '' })
+  chatStore.streaming = true
   loading.value = true
 
   try {
+    // 把历史对话作为上下文一起发送
+    const history = conv.messages
+      .filter(m => m.content !== '')
+      .map(m => ({ role: m.role, content: m.content }))
+
     const isClaude = settings.aiProvider === 'claude'
+    const apiMessages = [...history, { role: 'user', content }]
     const body = isClaude
-      ? { model: settings.aiModel, max_tokens: 2048, messages: [{ role: 'user', content }] }
-      : { model: settings.aiModel, messages: [{ role: 'user', content }], stream: true }
+      ? { model: settings.aiModel, max_tokens: 4096, messages: apiMessages }
+      : { model: settings.aiModel, messages: apiMessages, stream: true }
     const url = isClaude
       ? `${getAiEndpoint()}/messages`
       : `${getAiEndpoint()}/chat/completions`
@@ -167,21 +138,19 @@ async function send(content: string, prefix: string) {
     })
 
     if (!res.ok) {
-      messages.value.push({ role: 'assistant', content: `错误 ${res.status}` })
+      chatStore.updateLastMessage(convId, `请求失败 (${res.status})`)
       return
     }
 
-    messages.value.push({ role: 'assistant', content: '' })
-    const last = messages.value[messages.value.length - 1]
-
     if (isClaude) {
       const data = await res.json()
-      last.content = data?.content?.[0]?.text ?? '(无响应)'
+      chatStore.updateLastMessage(convId, data?.content?.[0]?.text ?? '(无响应)')
     } else {
       const reader = res.body?.getReader()
-      if (!reader) return
+      if (!reader) { chatStore.updateLastMessage(convId, '(无法读取响应)'); return }
       const decoder = new TextDecoder()
       let buffer = ''
+      let result = ''
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -192,14 +161,16 @@ async function send(content: string, prefix: string) {
           if (!line.startsWith('data: ') || line === 'data: [DONE]') continue
           try {
             const chunk = JSON.parse(line.slice(6))
-            last.content += chunk.choices?.[0]?.delta?.content ?? ''
+            result += chunk.choices?.[0]?.delta?.content ?? ''
+            chatStore.updateLastMessage(convId, result)
           } catch { /* skip */ }
         }
       }
     }
-  } catch (e) {
-    messages.value.push({ role: 'assistant', content: `请求失败` })
+  } catch {
+    chatStore.updateLastMessage(convId, '网络请求失败')
   } finally {
+    chatStore.streaming = false
     loading.value = false
     nextTick(() => { chatEl.value?.scrollTo(0, chatEl.value.scrollHeight) })
   }
@@ -214,12 +185,6 @@ async function send(content: string, prefix: string) {
   color: var(--color-text-muted); background: none; border: none; cursor: pointer; font-size: 12px;
 }
 .ai-btn:hover { background: var(--color-bg-surface-hover); color: var(--color-text-primary); }
-.quick-action-btn {
-  padding: 3px 8px; border-radius: var(--radius-sm); font-size: 11px; font-family: inherit;
-  color: var(--color-text-secondary); background: var(--color-bg-surface);
-  border: 1px solid var(--color-border); cursor: pointer;
-}
-.quick-action-btn:hover { background: var(--color-bg-surface-hover); }
 .chat-user, .chat-ai { margin-bottom: 8px; }
 .chat-role { font-size: 10px; font-weight: 600; margin-bottom: 2px; color: var(--color-text-muted); }
 .chat-ai .chat-role { color: var(--color-accent); }

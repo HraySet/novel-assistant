@@ -35,6 +35,7 @@
 
       <!-- 编辑器 -->
       <main class="flex-1 min-w-0 flex flex-col">
+        <EditorTabs />
         <MdEditor v-if="activeFile" ref="editorRef" :content="activeFile.content" @update:content="handleContentChange"
           @save="fileStore.handleSave()" />
         <div v-else class="flex-1 flex items-center justify-center text-text-muted text-sm">
@@ -45,7 +46,7 @@
       <!-- 右侧推挤面板：AI 紧凑面板 -->
       <Transition name="slide-right">
         <AiPanel v-if="showAiPanel" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
-          @expand="view = 'ai-chat'" />
+          :quick-action="quickAction" @expand="view = 'ai-chat'" />
       </Transition>
 
       <!-- 右侧图标轨 -->
@@ -151,6 +152,7 @@ import AiChatView from './components/AiChatView.vue'
 import LeftSidebar from './components/LeftSidebar.vue'
 import SearchModal from './components/SearchModal.vue'
 import GlobalContextMenu from './components/GlobalContextMenu.vue'
+import EditorTabs from './components/EditorTabs.vue'
 import SettingsNav from './components/SettingsNav.vue'
 import SettingsContent from './components/SettingsContent.vue'
 
@@ -174,6 +176,9 @@ const currentProject = ref<ProjectEntry | null>(null)
 const proj = useProjectOperations({ view, projects, currentProject })
 const { showNewProjectDialog, newProjectPath, newProjectName, confirmNewProject } = proj
 
+// 快捷操作：触发 AiPanel 的快速动作
+const quickAction = ref<string | null>(null)
+
 
 // ── File operations ──
 
@@ -196,8 +201,8 @@ async function handleGoForward() {
 // ── AI ──
 
 function runQuickAction(action: string) {
-  // TODO: 一键 AI 操作，不打开面板
-  console.log('Quick action:', action)
+  quickAction.value = action
+  showAiPanel.value = true
 }
 
 function handleAiInsert(text: string) {

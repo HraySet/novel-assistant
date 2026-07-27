@@ -151,8 +151,9 @@ async function send(text: string, prefix: string, contextPrompt?: string) {
   const displayMsg = prefix ? `[${prefix}]` : text
   chatStore.addMessage(convId, { role: 'user', content: displayMsg })
 
-  // 快捷操作时保存原始文件内容，供 DiffView 对比
-  const originalContent = prefix ? (props.activeFile?.content ?? '') : undefined
+  // 仅编辑类操作（润色/扩写）保留原始文件供 DiffView 对比；续写和检查不对比
+  const DIFF_ACTIONS = new Set(['润色', '扩写'])
+  const originalContent = DIFF_ACTIONS.has(prefix) ? (props.activeFile?.content ?? '') : undefined
   chatStore.addMessage(convId, { role: 'assistant', content: '', originalContent })
 
   try {

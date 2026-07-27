@@ -24,14 +24,7 @@
         <span class="diff-gutter diff-gutter--old">{{ line.oldLine ?? '' }}</span>
         <span class="diff-gutter diff-gutter--new">{{ line.newLine ?? '' }}</span>
         <span class="diff-marker">{{ marker(line.type) }}</span>
-        <span v-if="line.chars" class="diff-content" :class="{ 'diff-content--off': toggledOff.has(i) }">
-          <span
-            v-for="(c, ci) in line.chars"
-            :key="ci"
-            :class="'char-' + c.type"
-          >{{ c.text }}</span>
-        </span>
-        <span v-else class="diff-content" :class="{ 'diff-content--off': toggledOff.has(i) }">{{ line.content }}</span>
+        <span class="diff-content" :class="{ 'diff-content--off': toggledOff.has(i) }">{{ line.content }}</span>
       </div>
     </div>
 
@@ -190,18 +183,6 @@ function marker(type: DiffLine['type']): string {
   overflow-x: auto;
   color: var(--color-text-primary);
 }
-
-/* 字级高亮 */
-.char-add {
-  background: rgba(34, 197, 94, 0.2);
-  color: var(--color-success, #16a34a);
-}
-.char-remove {
-  background: rgba(239, 68, 68, 0.2);
-  color: var(--color-danger, #dc2626);
-  text-decoration: line-through;
-}
-.char-normal { color: var(--color-text-primary); }
 
 .diff-footer {
   display: flex; align-items: center; justify-content: flex-end; gap: 8px;

@@ -1,191 +1,79 @@
 <template>
   <div class="file-tree-node">
-    <div v-if="node.isDir" class="node-row"
-      :class="{ 'node-row--expanded': expanded, 'node-row--drop-target': dragOver }"
-      :style="{ paddingLeft: depth * 14 + 4 + 'px' }" @click="handleToggleExpand"
+    <!-- Directory node -->
+    <div v-if="node.isDir" class="node-row" :class="{
+      'node-row--expanded': isExpanded,
+      'node-row--drop-target': dragOver,
+      'node-row--active': fileStore.selectedPath === node.path,
+    }" :style="{ paddingLeft: depth * 14 + 4 + 'px' }" @click="fileStore.handleDirectoryClick(node.path)"
+      @dblclick.stop="fileStore.startRename(node.path)"
       @contextmenu.prevent="openMenu($event, 'dir')" draggable="true" @dragstart="handleDragStart($event, node.path)"
-      @dragover.prevent="handleDragOver($event)" @dragleave="handleDragLeave"
+      @dragend="handleDragEnd" @dragenter.prevent="handleDragEnter($event)" @dragover.prevent="handleDragOver($event)" @dragleave="handleDragLeave"
       @drop.prevent="handleDrop($event, node.path)">
-      <span class="node-arrow">{{ expanded ? '▾' : '▸' }}</span>
+      <span class="node-arrow">{{ isExpanded ? '▾' : '▸' }}</span>
       <Folder :size="14" class="text-text-muted shrink-0" />
-      <span v-if="!renaming" class="node-name">{{ node.name }}</span>
+      <span v-if="fileStore.renamingPath !== node.path" class="node-name">{{ node.name }}</span>
       <input v-else ref="renameInputRef" v-model="renameValue" class="rename-input" spellcheck="false" @click.stop
-        @keydown.enter="confirmRename(node.name, (newName) => emit('rename', node.path, newName))"
-        @keydown.escape="cancelRename"
-        @blur="confirmRename(node.name, (newName) => emit('rename', node.path, newName))" />
-      <span class="node-count" v-if="!renaming && node.children?.length">{{ node.children.length }}</span>
+        @keydown.enter="handleConfirm" @keydown.escape="handleCancel" @blur="handleConfirm" />
+      <span v-if="fileStore.renamingPath !== node.path && node.children?.length" class="node-count">
+        {{ node.children.length }}
+      </span>
     </div>
 
-    <div v-else class="node-row" :class="{ 'node-row--active': activeFile === node.path }"
-      :style="{ paddingLeft: depth * 14 + 4 + 'px' }" @click="handleFileClick"
-      @contextmenu.prevent="openMenu($event, 'file')" draggable="true" @dragstart="handleDragStart($event, node.path)">
+    <!-- File node -->
+    <div v-else class="node-row" :class="{ 'node-row--active': fileStore.selectedPath === node.path }"
+      :style="{ paddingLeft: depth * 14 + 4 + 'px' }" @click="fileStore.handleFileSelect(node.path)"
+      @dblclick.stop="fileStore.startRename(node.path)"
+      @contextmenu.prevent="openMenu($event, 'file')" draggable="true" @dragstart="handleDragStart($event, node.path)"
+      @dragend="handleDragEnd">
       <span class="node-arrow invisible">▸</span>
       <FileText :size="14" class="text-text-muted shrink-0" />
-      <span v-if="!renaming" class="node-name">{{ node.name }}</span>
+      <span v-if="fileStore.renamingPath !== node.path" class="node-name">{{ node.name }}</span>
       <input v-else ref="renameInputRef" v-model="renameValue" class="rename-input" spellcheck="false" @click.stop
-        @keydown.enter="confirmRename(node.name, (newName) => emit('rename', node.path, newName))"
-        @keydown.escape="cancelRename"
-        @blur="confirmRename(node.name, (newName) => emit('rename', node.path, newName))" />
+        @keydown.enter="handleConfirm" @keydown.escape="handleCancel" @blur="handleConfirm" />
     </div>
 
-    <template v-if="expanded && node.children">
-      <DraftRow v-if="draft && draft.parentPath === node.path" :type="draft.type" :default-name="draftDefaultName ?? ''"
-        :depth="depth + 1" @confirm="(name: string) => $emit('confirmDraft', name)" @cancel="$emit('cancelDraft')" />
-      <FileTreeNode v-for="child in node.children" :key="child.path" :node="child" :active-file="activeFile"
-        :depth="depth + 1" :draft="draft" :draft-default-name="draftDefaultName"
-        @select-file="(path: string) => $emit('selectFile', path)"
-        @start-create="(type: 'file' | 'dir', path: string) => $emit('startCreate', type, path)"
-        @confirm-draft="(name: string) => $emit('confirmDraft', name)" @cancel-draft="$emit('cancelDraft')"
-        @delete="(path: string) => $emit('delete', path)"
-        @rename="(path: string, name: string) => $emit('rename', path, name)"
-        @move="(source: string, destDir: string) => $emit('move', source, destDir)" />
+    <!-- Expanded children -->
+    <template v-if="isExpanded && node.children">
+      <!-- Draft row at this level -->
+      <DraftRow v-if="draftState && draftState.parentPath === node.path" :type="draftState.type"
+        :default-name="draftState.defaultName" :depth="depth + 1" @confirm="fileStore.confirmDraft($event)"
+        @cancel="fileStore.cancelDraft()" />
+      <FileTreeNode v-for="child in node.children" :key="child.path" :node="child" :depth="depth + 1" />
     </template>
-
-    <TreeContextMenu v-model="menuVisible" :x="menuX" :y="menuY">
-      <button v-if="menuType === 'dir'" class="context-menu-item" @click="startCreateHere('file')">
-        <FilePlus :size="14" />
-        <span>新建文件</span>
-      </button>
-      <button v-if="menuType === 'dir'" class="context-menu-item" @click="startCreateHere('dir')">
-        <FolderPlus :size="14" />
-        <span>新建文件夹</span>
-      </button>
-      <div v-if="menuType === 'dir'" class="context-divider" />
-      <button class="context-menu-item" @click="closeMenu(); startRename(node.name, node.isDir)">
-        <Pencil :size="14" />
-        <span>重命名</span>
-      </button>
-      <button class="context-menu-item" @click="handleCopyPath">
-        <Copy :size="14" />
-        <span>复制路径</span>
-      </button>
-      <div class="context-divider" />
-      <button class="context-menu-item context-menu-item--danger" @click="handleDelete">
-        删除
-      </button>
-    </TreeContextMenu>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { FileText, Folder, FilePlus, FolderPlus, Pencil, Copy } from 'lucide-vue-next'
+import { computed } from 'vue'
+import { FileText, Folder } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
-import type { FileNode } from '../stores/file'
+import type { FileNode } from '../types/file'
 import { useFileStore } from '../stores/file'
+import { useRename } from '../composables/useRename'
+import { useFileTreeDrag } from '../composables/useFileTreeDrag'
 import DraftRow from './DraftRow.vue'
-import TreeContextMenu from './TreeContextMenu.vue'
-import { useFileTreeNodeInteractions } from '../composables/useFileTreeNodeInteractions'
 
 const props = defineProps<{
   node: FileNode
-  activeFile?: string
   depth: number
-  draft?: { type: 'file' | 'dir'; parentPath: string } | null
-  draftDefaultName?: string
-}>()
-
-const emit = defineEmits<{
-  selectFile: [path: string]
-  startCreate: [type: 'file' | 'dir', parentPath: string]
-  confirmDraft: [name: string]
-  cancelDraft: []
-  delete: [path: string]
-  rename: [path: string, newName: string]
-  copyPath: [path: string]
-  move: [source: string, destDir: string]
 }>()
 
 const fileStore = useFileStore()
-const { expandedPaths, selectedPath } = storeToRefs(fileStore)
+const { draft: draftState } = storeToRefs(fileStore)
 
-const expanded = computed({
-  get: () => fileStore.isExpanded(props.node.path),
-  set: (value: boolean) => {
-    if (value) fileStore.expandPath(props.node.path)
-    else fileStore.toggleExpanded(props.node.path)
-  },
-})
+const isExpanded = computed(() => fileStore.isExpanded(props.node.path))
 
-const {
-  renaming,
-  renameValue,
-  renameInputRef,
-  dragOver,
-  startRename,
-  confirmRename,
-  cancelRename,
-  handleDragStart,
-  handleDragOver,
-  handleDragLeave,
-  handleDrop: handleDropInteraction,
-} = useFileTreeNodeInteractions()
+const { renameValue, renameInputRef, handleConfirm, handleCancel } = useRename(
+  props.node.path,
+  props.node.name,
+  props.node.isDir
+)
 
-function handleFileClick() {
-  if (renaming.value) return
-  if (props.activeFile === props.node.path) {
-    startRename(props.node.name, props.node.isDir)
-    return
-  }
-  emit('selectFile', props.node.path)
-  fileStore.setSelectedPath(props.node.path)
-}
+const { dragOver, handleDragStart, handleDragEnter, handleDragOver, handleDragLeave, handleDragEnd, handleDrop } = useFileTreeDrag()
 
-function handleToggleExpand() {
-  if (!props.node.isDir) return
-  if (expanded.value) {
-    fileStore.toggleExpanded(props.node.path)
-  } else {
-    fileStore.expandPath(props.node.path)
-  }
-}
-
-async function handleCopyPath() {
-  closeMenu()
-  try {
-    await navigator.clipboard.writeText(props.node.path)
-    emit('copyPath', props.node.path)
-  } catch (e) {
-    console.error('复制路径失败:', e)
-  }
-}
-
-const menuVisible = ref(false)
-const menuX = ref(0)
-const menuY = ref(0)
-const menuType = ref<'dir' | 'file' | null>(null)
-
-function openMenu(e: MouseEvent, type: 'dir' | 'file') {
-  menuType.value = type
-  menuVisible.value = true
-  menuX.value = e.clientX
-  menuY.value = e.clientY
-}
-
-function closeMenu() {
-  menuVisible.value = false
-}
-
-function startCreateHere(type: 'file' | 'dir') {
-  closeMenu()
-  if (!expanded.value) {
-    fileStore.expandPath(props.node.path)
-  }
-  emit('startCreate', type, props.node.path)
-}
-
-function handleDelete() {
-  closeMenu()
-  emit('delete', props.node.path)
-}
-
-function handleDrop(event: DragEvent, nodePath: string) {
-  handleDropInteraction(event, nodePath, (sourcePath, destDir) => {
-    if (!expanded.value) {
-      fileStore.expandPath(props.node.path)
-    }
-    emit('move', sourcePath, destDir)
-  })
+function openMenu(e: MouseEvent, type: 'file' | 'dir') {
+  fileStore.openContextMenu(e.clientX, e.clientY, props.node.path, type)
 }
 </script>
 
@@ -255,35 +143,5 @@ function handleDrop(event: DragEvent, nodePath: string) {
   border-radius: var(--radius-sm);
   padding: 1px 4px;
   outline: none;
-}
-
-.context-menu-item {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--color-text-primary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-}
-
-.context-menu-item:hover {
-  background: var(--color-bg-surface-hover);
-}
-
-.context-menu-item--danger {
-  color: var(--color-danger);
-}
-
-.context-divider {
-  height: 1px;
-  margin: 4px 0;
-  background: var(--color-border);
 }
 </style>

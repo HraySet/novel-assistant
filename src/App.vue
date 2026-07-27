@@ -7,7 +7,7 @@
   <!-- ===== 编辑器视图 ===== -->
   <div v-else-if="view === 'editor'" class="h-screen flex flex-col overflow-hidden bg-bg-page">
     <!-- 顶栏 -->
-    <TopBar :project-name="currentProject?.name ?? ''" :file-name="activeFile?.name" :is-dirty="isDirty"
+    <TopBar :project-name="currentProject?.name ?? ''" :file-name="activeFile?.name" :is-dirty="activeFile?.isDirty ?? false"
       :has-back="fileStore.hasBack()" :has-forward="fileStore.hasForward()" @go-library="view = 'library'"
       @go-back="handleGoBack" @go-forward="handleGoForward" @toggle-theme="toggleTheme" />
 
@@ -26,15 +26,13 @@
 
       <!-- 左侧推挤面板：文件树 -->
       <Transition name="slide-left">
-        <LeftSidebar v-if="showSidebar" :root-path="currentProject?.path ?? ''" :active-file="activeFile?.path"
-          :files="fileTree" @select-file="handleFileSelect" @create-file="handleCreateFile"
-          @create-dir="handleCreateDir" @delete="handleDelete" @rename="handleRename" @move="handleMove" />
+        <LeftSidebar v-if="showSidebar" />
       </Transition>
 
       <!-- 编辑器 -->
       <main class="flex-1 min-w-0 flex flex-col">
         <MdEditor v-if="activeFile" ref="editorRef" :content="activeFile.content" @update:content="handleContentChange"
-          @save="handleSave" />
+          @save="fileStore.handleSave()" />
         <div v-else class="flex-1 flex items-center justify-center text-text-muted text-sm">
           打开一个文件开始写作
         </div>
@@ -96,7 +94,11 @@
     </Teleport>
 
     <!-- 搜索浮层 -->
-    <SearchModal :show="showSearch" :files="fileTree" @close="showSearch = false" @select-file="handleFileSelect" />
+    <SearchModal :show="showSearch" :files="fileTree" @close="showSearch = false"
+      @select-file="(path: string) => fileStore.handleFileSelect(path)" />
+
+    <!-- 全局右键菜单 -->
+    <GlobalContextMenu />
   </div>
 
   <!-- ===== AI 全屏对话 ===== -->
@@ -105,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { FolderOpen, Search, Sparkles, X } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useProjectStore } from './stores/project'
@@ -120,6 +122,7 @@ import AiPanel from './components/AiPanel.vue'
 import AiChatView from './components/AiChatView.vue'
 import LeftSidebar from './components/LeftSidebar.vue'
 import SearchModal from './components/SearchModal.vue'
+import GlobalContextMenu from './components/GlobalContextMenu.vue'
 
 // ── State ──
 
@@ -139,7 +142,6 @@ const { openFile: activeFile, tree: fileTree } = storeToRefs(fileStore)
 
 const projects = ref<ProjectEntry[]>([])
 const currentProject = ref<ProjectEntry | null>(null)
-const isDirty = ref(false)
 
 // ── Project operations ──
 
@@ -244,89 +246,20 @@ async function loadFileTree() {
   }
 }
 
-async function handleFileSelect(path: string) {
-  await editorRef.value?.flushPendingSave()
-  try {
-    const content = await api.readFile(path)
-    const name = path.split(/[/\\]/).pop() || path
-    const nextFile = { path, name, content, isDirty: false }
-    isDirty.value = false
-    fileStore.setOpenFile(nextFile)
-  } catch (e) {
-    console.error('读取文件失败:', e)
-  }
-}
-
-async function handleCreateFile(parentPath: string, name: string) {
-  if (!name.trim()) return
-  try {
-    const filepath = await fileStore.createFile(parentPath, name)
-    await handleFileSelect(filepath)
-  } catch (e) {
-    console.error('创建文件失败:', e)
-  }
-}
-
-async function handleCreateDir(parentPath: string, name: string) {
-  if (!name.trim()) return
-  try {
-    await fileStore.createDir(parentPath, name)
-  } catch (e) {
-    console.error('创建文件夹失败:', e)
-  }
-}
-
-async function handleDelete(path: string) {
-  if (!confirm('确定要删除吗？（会移到 .trash）')) return
-  try {
-    await fileStore.deletePath(path)
-  } catch (e) {
-    console.error('删除失败:', e)
-  }
-}
-
-async function handleMove(source: string, destDir: string) {
-  try {
-    await fileStore.movePath(source, destDir)
-  } catch (e) {
-    console.error('移动失败:', e)
-  }
-}
-
-async function handleRename(path: string, newName: string) {
-  try {
-    await fileStore.renamePath(path, newName)
-  } catch (e) {
-    console.error('重命名失败:', e)
-  }
-}
-
 function handleContentChange(content: string) {
   if (activeFile.value) {
     fileStore.updateActiveFile({ content, isDirty: true })
-    isDirty.value = true
-  }
-}
-
-async function handleSave() {
-  if (!activeFile.value) return
-  try {
-    await api.writeFile(activeFile.value.path, activeFile.value.content)
-    isDirty.value = false
-    fileStore.updateActiveFile({ isDirty: false })
-  } catch (e) {
-    console.error('保存失败:', e)
   }
 }
 
 async function handleGoBack() {
   const path = fileStore.goBack()
-  if (path) await handleFileSelect(path)
+  if (path) await fileStore.handleFileSelect(path)
 }
 
 async function handleGoForward() {
   const path = fileStore.goForward()
-  if (path) await handleFileSelect(path)
+  if (path) await fileStore.handleFileSelect(path)
 }
 
 // ── AI ──
@@ -346,8 +279,6 @@ function toggleTheme() {
   const current = document.documentElement.getAttribute('data-theme')
   document.documentElement.setAttribute('data-theme', current === 'warm-paper' ? 'warm-paper-dark' : 'warm-paper')
 }
-
-// ── Init ──
 
 // ── Keyboard shortcuts ──
 

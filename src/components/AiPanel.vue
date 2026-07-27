@@ -148,9 +148,6 @@ async function send(text: string, prefix: string, contextPrompt?: string) {
           ],
           stream: true,
         }
-    const body = isClaude
-      ? { model: settings.aiModel, max_tokens: 4096, messages: apiMessages, stream: true }
-      : { model: settings.aiModel, messages: apiMessages, stream: true }
     const url = isClaude
       ? `${getAiEndpoint()}/messages`
       : `${getAiEndpoint()}/chat/completions`

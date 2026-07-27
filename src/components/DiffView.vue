@@ -17,17 +17,21 @@
         class="diff-line"
         :class="'diff-line--' + line.type"
       >
+        <span v-if="editable && line.type !== 'equal'" class="diff-toggle" @click.stop="toggle(i)">
+          <Check v-if="!toggledOff.has(i)" :size="12" />
+        </span>
+        <span v-else class="diff-toggle" />
         <span class="diff-gutter diff-gutter--old">{{ line.oldLine ?? '' }}</span>
         <span class="diff-gutter diff-gutter--new">{{ line.newLine ?? '' }}</span>
         <span class="diff-marker">{{ marker(line.type) }}</span>
-        <span v-if="line.chars" class="diff-content">
+        <span v-if="line.chars" class="diff-content" :class="{ 'diff-content--off': toggledOff.has(i) }">
           <span
             v-for="(c, ci) in line.chars"
             :key="ci"
             :class="'char-' + c.type"
           >{{ c.text }}</span>
         </span>
-        <span v-else class="diff-content">{{ line.content }}</span>
+        <span v-else class="diff-content" :class="{ 'diff-content--off': toggledOff.has(i) }">{{ line.content }}</span>
       </div>
     </div>
 
@@ -36,7 +40,7 @@
       <button class="diff-btn diff-btn--reject" @click="$emit('reject')">
         <X :size="14" /> 放弃
       </button>
-      <button class="diff-btn diff-btn--accept" @click="$emit('accept')">
+      <button class="diff-btn diff-btn--accept" @click="handleAccept">
         <Check :size="14" /> 应用修改
       </button>
     </div>
@@ -44,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { X, Check } from 'lucide-vue-next'
 import { computeDiff, type DiffLine } from '../composables/useDiff'
 
@@ -52,10 +56,11 @@ const props = defineProps<{
   oldText: string
   newText: string
   title?: string
+  editable?: boolean
 }>()
 
-defineEmits<{
-  accept: []
+const emit = defineEmits<{
+  accept: [finalText: string]
   reject: []
 }>()
 
@@ -63,6 +68,50 @@ const diffLines = computed(() => computeDiff(props.oldText, props.newText))
 
 const addCount = computed(() => diffLines.value.filter(l => l.type === 'add').length)
 const removeCount = computed(() => diffLines.value.filter(l => l.type === 'remove').length)
+
+// ── 局部接受：toggle 状态 ──
+
+const toggledOff = ref(new Set<number>())
+
+// oldText / newText 变化时重置所有 toggle 为开
+watch(() => [props.oldText, props.newText], () => {
+  toggledOff.value = new Set()
+})
+
+function toggle(i: number) {
+  const next = new Set(toggledOff.value)
+  if (next.has(i)) next.delete(i)
+  else next.add(i)
+  toggledOff.value = next
+}
+
+function isOn(i: number) { return !toggledOff.value.has(i) }
+
+// 根据 toggle 状态合并最终文本
+function computeMerged(): string {
+  const lines: string[] = []
+  const state = diffLines.value
+  for (let i = 0; i < state.length; i++) {
+    const line = state[i]
+    if (line.type === 'equal') {
+      lines.push(line.content)
+    } else if (line.type === 'add') {
+      if (isOn(i)) lines.push(line.content)
+    } else if (line.type === 'remove') {
+      if (isOn(i)) {
+        // 真的删了：不推入
+      } else {
+        // 撤销删除：保留原行
+        lines.push(line.content)
+      }
+    }
+  }
+  return lines.join('\n')
+}
+
+function handleAccept() {
+  emit('accept', computeMerged())
+}
 
 function marker(type: DiffLine['type']): string {
   return type === 'add' ? '+' : type === 'remove' ? '−' : ' '
@@ -102,6 +151,18 @@ function marker(type: DiffLine['type']): string {
 .diff-line--add { background: rgba(34, 197, 94, 0.08); }
 .diff-line--remove { background: rgba(239, 68, 68, 0.08); }
 .diff-line--equal { background: transparent; }
+
+.diff-toggle {
+  width: 20px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; flex-shrink: 0;
+  color: var(--color-text-muted);
+  opacity: 0.3;
+  transition: opacity 0.1s;
+}
+.diff-toggle:hover { opacity: 1; }
+
+.diff-content--off { opacity: 0.3; text-decoration: line-through; }
 
 .diff-gutter {
   width: 36px;

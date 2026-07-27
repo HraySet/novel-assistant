@@ -31,6 +31,6 @@ withDefaults(
 
 defineEmits<{ (e: "update:modelValue", v: string | number): void }>();
 
-const activeStyle = { backgroundColor: "var(--accent)", color: "#fff" };
-const inactiveStyle = { backgroundColor: "var(--surface-2)", color: "var(--text-secondary)" };
+const activeStyle = { backgroundColor: "var(--color-accent)", color: "var(--color-text-on-accent)" };
+const inactiveStyle = { backgroundColor: "var(--color-bg-surface)", color: "var(--color-text-secondary)" };
 </script>

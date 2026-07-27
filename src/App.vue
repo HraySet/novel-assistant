@@ -22,6 +22,10 @@
         <button class="icon-bar-btn" title="搜索文件" @click="showSearch = true">
           <Search :size="16" />
         </button>
+        <div class="flex-1" />
+        <button class="icon-bar-btn" title="设置" @click="showSettings = true; settingsSection = 'writing'">
+          <Settings :size="16" />
+        </button>
       </div>
 
       <!-- 左侧推挤面板：文件树 -->
@@ -97,6 +101,30 @@
     <SearchModal :show="showSearch" :files="fileTree" @close="showSearch = false"
       @select-file="(path: string) => fileStore.handleFileSelect(path)" />
 
+    <!-- 设置弹窗 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showSettings" class="dialog-overlay" @click.self="showSettings = false">
+          <div class="settings-modal">
+            <div class="settings-modal-header">
+              <span class="text-sm font-medium text-text-primary">设置</span>
+              <button class="dialog-close" @click="showSettings = false">
+                <X :size="14" />
+              </button>
+            </div>
+            <div class="settings-modal-body">
+              <div class="settings-nav-col">
+                <SettingsNav :section="settingsSection" @update:model-value="settingsSection = $event" />
+              </div>
+              <div class="settings-content-col">
+                <SettingsContent :section="settingsSection" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- 全局右键菜单 -->
     <GlobalContextMenu />
   </div>
@@ -108,7 +136,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { FolderOpen, Search, Sparkles, X } from 'lucide-vue-next'
+import { FolderOpen, Search, Sparkles, X, Settings } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
@@ -123,6 +151,8 @@ import AiChatView from './components/AiChatView.vue'
 import LeftSidebar from './components/LeftSidebar.vue'
 import SearchModal from './components/SearchModal.vue'
 import GlobalContextMenu from './components/GlobalContextMenu.vue'
+import SettingsNav from './components/SettingsNav.vue'
+import SettingsContent from './components/SettingsContent.vue'
 
 // ── State ──
 
@@ -134,6 +164,8 @@ const newProjectPath = ref('')
 const newProjectName = ref('')
 const showAiPanel = ref(false)
 const showSearch = ref(false)
+const showSettings = ref(false)
+const settingsSection = ref('general')
 const editorRef = ref<InstanceType<typeof MdEditor>>()
 
 const projectStore = useProjectStore()
@@ -288,12 +320,19 @@ function isEditorFocused(): boolean {
 }
 
 function isAnyOverlayOpen(): boolean {
-  return showNewProjectDialog.value || showSearch.value
+  return showNewProjectDialog.value || showSearch.value || showSettings.value
 }
 
 function handleGlobalKeydown(e: KeyboardEvent) {
   // 弹窗打开时只允许 Esc，其他快捷键都不触发
-  if (isAnyOverlayOpen() && e.key !== 'Escape') return
+  if (isAnyOverlayOpen()) {
+    if (e.key === 'Escape') {
+      showSettings.value = false
+      showSearch.value = false
+      showNewProjectDialog.value = false
+    }
+    return
+  }
 
   // AI 全屏对话页也支持跳回
   if (view.value === 'ai-chat') {
@@ -320,6 +359,12 @@ function handleGlobalKeydown(e: KeyboardEvent) {
   if (e.ctrlKey && e.shiftKey && e.key === 'A') {
     e.preventDefault()
     view.value = 'ai-chat'
+  }
+  // Ctrl+, — 设置
+  if (e.ctrlKey && e.key === ',') {
+    e.preventDefault()
+    showSettings.value = true
+    settingsSection.value = 'writing'
   }
   // Ctrl+P — 搜索（始终拦截浏览器的打印行为）
   if (e.ctrlKey && e.key === 'p') {
@@ -508,5 +553,59 @@ onUnmounted(() => {
 .btn-dialog-accent:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* ── Settings Modal ── */
+
+.settings-modal {
+  width: 800px;
+  max-height: 620px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.settings-modal-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-nav-col {
+  width: 172px;
+  padding: 12px;
+  border-right: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.settings-content-col {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Slide Left ── */
+
+.slide-left-enter-active,
+.slide-left-leave-active {
+  transition: width 0.2s ease, opacity 0.15s ease;
+}
+
+.slide-left-enter-from,
+.slide-left-leave-to {
+  width: 0 !important;
+  opacity: 0;
 }
 </style>

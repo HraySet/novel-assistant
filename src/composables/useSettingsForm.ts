@@ -1,20 +1,9 @@
 import { ref, computed } from "vue";
 import { useSettingsStore } from "../stores/settings";
-import { useBooksStore } from "../stores/books";
 import { buildAiHeaders } from "./useAiApi";
 
 export function useSettingsForm() {
   const store = useSettingsStore();
-  const booksStore = useBooksStore();
-
-  const darkPresets = computed(() => store.colorPresets.filter((p) => p.dark));
-  const lightPresets = computed(() => store.colorPresets.filter((p) => !p.dark));
-
-  const aiProviders = [
-    { key: "openai" as const, label: "OpenAI" },
-    { key: "claude" as const, label: "Claude" },
-    { key: "deepseek" as const, label: "DeepSeek" },
-  ];
 
   const testing = ref(false);
   const fetching = ref(false);
@@ -66,22 +55,10 @@ export function useSettingsForm() {
   const fontSize = computed(() => store.editorFontSize);
   function setFontSize(s: string) { store.setEditorFontSize(s); }
 
-  async function pickFolder() {
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const chosen = await open({ directory: true, multiple: false, title: "选择工作区目录" });
-      if (chosen) {
-        const path = typeof chosen === "string" ? chosen : String(chosen);
-        await booksStore.initWorkspace(path);
-      }
-    } catch { /* non-Tauri env */ }
-  }
-
   return {
-    darkPresets, lightPresets, aiProviders,
     testing, fetching, testResult, testOk, modelList,
     testConnection, fetchModels,
     wordTargetPreset, customTarget, setWordTarget, setCustomTarget,
-    fontSize, setFontSize, pickFolder,
+    fontSize, setFontSize,
   };
 }

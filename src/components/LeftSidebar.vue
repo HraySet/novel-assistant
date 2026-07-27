@@ -27,7 +27,6 @@
       @dragleave.self="handleRootDragLeave"
       @drop.self.prevent="handleRootDrop($event)"
     >
-      <!-- 根目录下正在创建的草稿行 -->
       <DraftRow
         v-if="draftState && draftState.parentPath === fileStore.projectRoot"
         :type="draftState.type"
@@ -43,7 +42,6 @@
         :depth="0"
       />
 
-      <!-- 撑满剩余高度，保证列表短时也有可右键的空白区 -->
       <div class="flex-1 min-h-[80px]" @contextmenu.self.prevent="fileStore.openContextMenu($event.clientX, $event.clientY, '', 'blank')" />
     </div>
 
@@ -68,25 +66,15 @@ function handleCreate(type: 'file' | 'dir') {
   fileStore.startDraft(type, parentPath)
 }
 
-// ── 根级拖放 ──
 const dragOverRoot = ref(false)
 
 function handleRootDragEnter(e: DragEvent) {
-  if (e.dataTransfer?.types.includes('text/plain')) {
-    dragOverRoot.value = true
-  }
+  if (e.dataTransfer?.types.includes('text/plain')) dragOverRoot.value = true
 }
-
 function handleRootDragOver(e: DragEvent) {
-  if (e.dataTransfer?.types.includes('text/plain')) {
-    e.dataTransfer.dropEffect = 'move'
-  }
+  if (e.dataTransfer?.types.includes('text/plain')) e.dataTransfer.dropEffect = 'move'
 }
-
-function handleRootDragLeave() {
-  dragOverRoot.value = false
-}
-
+function handleRootDragLeave() { dragOverRoot.value = false }
 function handleRootDrop(e: DragEvent) {
   dragOverRoot.value = false
   const sourcePath = e.dataTransfer?.getData('text/plain')
@@ -96,31 +84,15 @@ function handleRootDrop(e: DragEvent) {
 </script>
 
 <style scoped>
-.sidebar {
-  font-size: 13px;
-}
+.sidebar { font-size: 13px; }
 
 .header-action-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-secondary);
-  background: none;
-  border: none;
-  cursor: pointer;
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--color-text-secondary); background: none; border: none; cursor: pointer;
   transition: background 0.1s ease, color 0.1s ease;
 }
+.header-action-btn:hover { background: var(--color-bg-surface-hover); color: var(--color-accent); }
 
-.header-action-btn:hover {
-  background: var(--color-bg-surface-hover);
-  color: var(--color-accent);
-}
-
-.drop-root {
-  outline: 2px dashed var(--color-accent-border);
-  outline-offset: -4px;
-}
+.drop-root { outline: 2px dashed var(--color-accent-border); outline-offset: -4px; }
 </style>

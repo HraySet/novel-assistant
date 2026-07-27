@@ -5,6 +5,8 @@ import * as api from '../api/files'
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
+  /** 原始文件内容（快捷操作时保存，用于 DiffView 对比） */
+  originalContent?: string
 }
 
 export interface ChatConversation {

@@ -52,10 +52,18 @@
           </div>
 
           <div v-for="(msg, i) in activeConversation?.messages || []" :key="i" class="chat-msg"
-            :class="msg.role === 'user' ? 'chat-msg--user' : 'chat-msg--ai'">
+            :class="[msg.role === 'user' ? 'chat-msg--user' : 'chat-msg--ai', msg.originalContent ? 'chat-msg--diff' : '']">
             <div class="chat-msg-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
-            <div class="chat-msg-content" v-html="sanitizeHtml(renderMarkdown(msg.content))" />
-            <div v-if="msg.role === 'assistant' && msg.content" class="chat-msg-actions">
+            <DiffView
+              v-if="msg.originalContent && msg.content"
+              :editable="true"
+              :old-text="msg.originalContent"
+              :new-text="msg.content"
+              @accept="(merged) => handleApplyDiff(merged)"
+              @reject="console.log('diff rejected')"
+            />
+            <div v-else class="chat-msg-content" v-html="sanitizeHtml(renderMarkdown(msg.content))" />
+            <div v-if="msg.role === 'assistant' && msg.content && !msg.originalContent" class="chat-msg-actions">
               <button class="chat-action-btn" @click="$emit('insert', msg.content)">插入编辑器</button>
             </div>
           </div>
@@ -100,6 +108,9 @@ import { useSettingsStore } from '../stores/settings'
 import { buildAiHeaders, getAiEndpoint } from '../composables/useAiApi'
 import { renderMarkdown } from '../composables/useMarkdown'
 import { useAiContext } from '../composables/useAiContext'
+import DiffView from './DiffView.vue'
+import { useFileStore } from '../stores/file'
+import * as api from '../api/files'
 
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
@@ -113,8 +124,20 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const settings = useSettingsStore()
+const fileStore = useFileStore()
 const { conversations, activeId } = storeToRefs(chatStore)
 const activeConversation = computed(() => chatStore.activeConversation())
+
+async function handleApplyDiff(merged: string) {
+  const path = props.activeFile?.path
+  if (!path) return
+  try {
+    await api.writeFile(path, merged)
+    fileStore.updateActiveFile({ content: merged, isDirty: false })
+  } catch (e) {
+    console.error('应用修改失败:', e)
+  }
+}
 
 const inputText = ref('')
 const chatEl = ref<HTMLElement>()
@@ -328,6 +351,8 @@ async function handleSend() {
 .chat-msg--user { text-align: right; }
 .chat-msg-role { font-size: 11px; font-weight: 600; margin-bottom: 4px; color: var(--color-accent); }
 .chat-msg--user .chat-msg-role { color: var(--color-text-muted); }
+.chat-msg--diff { max-width: none; }
+.chat-msg--diff .chat-msg-role { margin-bottom: 6px; }
 .chat-msg-content { font-size: 14px; line-height: 1.7; color: var(--color-text-primary); white-space: pre-wrap; word-break: break-word; }
 .chat-msg--user .chat-msg-content { color: var(--color-text-secondary); }
 .chat-msg-actions { margin-top: 6px; }

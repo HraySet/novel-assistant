@@ -24,9 +24,17 @@
         点击右侧 续/润/扩/查 开始，或直接输入对话
       </div>
       <div v-for="(msg, i) in (activeConversation?.messages || [])" :key="i"
-        :class="msg.role === 'user' ? 'chat-user' : 'chat-ai'">
+        :class="[msg.role === 'user' ? 'chat-user' : 'chat-ai', msg.originalContent ? 'chat-msg--diff' : '']">
         <div class="chat-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
-        <div class="chat-content" v-html="sanitizeHtml(renderMarkdown(msg.content))" />
+        <DiffView
+          v-if="msg.originalContent && msg.content"
+          :editable="true"
+          :old-text="msg.originalContent"
+          :new-text="msg.content"
+          @accept="(merged) => handleApplyDiff(merged)"
+          @reject="console.log('diff rejected')"
+        />
+        <div v-else class="chat-content" v-html="sanitizeHtml(renderMarkdown(msg.content))" />
       </div>
       <div v-if="loading" class="text-xs text-text-muted">...</div>
     </div>
@@ -53,6 +61,9 @@ import DOMPurify from 'dompurify'
 import { Expand, Square } from 'lucide-vue-next'
 import { renderMarkdown } from '../composables/useMarkdown'
 import { useAiContext } from '../composables/useAiContext'
+import DiffView from './DiffView.vue'
+import { useFileStore } from '../stores/file'
+import * as api from '../api/files'
 
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
@@ -63,7 +74,19 @@ const emit = defineEmits<{ expand: [] }>()
 
 const settings = useSettingsStore()
 const chatStore = useChatStore()
+const fileStore = useFileStore()
 const activeConversation = computed(() => chatStore.activeConversation())
+
+async function handleApplyDiff(merged: string) {
+  const path = props.activeFile?.path
+  if (!path) return
+  try {
+    await api.writeFile(path, merged)
+    fileStore.updateActiveFile({ content: merged, isDirty: false })
+  } catch (e) {
+    console.error('应用修改失败:', e)
+  }
+}
 
 function sanitizeHtml(html: string): string { return DOMPurify.sanitize(html) }
 
@@ -121,14 +144,16 @@ async function send(text: string, prefix: string, contextPrompt?: string) {
   inputText.value = ''
   loading.value = true
 
-  // ★ 本轮之前的历史（不含即将加入的新消息）
   const priorHistory = conv.messages
     .filter(m => m.content !== '')
     .map(m => ({ role: m.role, content: m.content }))
 
   const displayMsg = prefix ? `[${prefix}]` : text
   chatStore.addMessage(convId, { role: 'user', content: displayMsg })
-  chatStore.addMessage(convId, { role: 'assistant', content: '' })
+
+  // 快捷操作时保存原始文件内容，供 DiffView 对比
+  const originalContent = prefix ? (props.activeFile?.content ?? '') : undefined
+  chatStore.addMessage(convId, { role: 'assistant', content: '', originalContent })
 
   try {
     const isClaude = settings.aiProvider === 'claude'
@@ -237,6 +262,8 @@ async function send(text: string, prefix: string, contextPrompt?: string) {
 }
 .ai-btn:hover { background: var(--color-bg-surface-hover); color: var(--color-text-primary); }
 .chat-user, .chat-ai { margin-bottom: 8px; }
+.chat-msg--diff { max-width: none; }
+.chat-msg--diff .chat-role { margin-bottom: 6px; }
 .chat-role { font-size: 10px; font-weight: 600; margin-bottom: 2px; color: var(--color-text-muted); }
 .chat-ai .chat-role { color: var(--color-accent); }
 .chat-content { font-size: 12px; line-height: 1.6; color: var(--color-text-primary); white-space: pre-wrap; word-break: break-word; }

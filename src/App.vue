@@ -1,8 +1,8 @@
 <template>
   <!-- ===== 项目库视图 ===== -->
-  <ProjectLibrary v-if="view === 'library'" :projects="projects" @select="openProject" @new-project="handleNewProject"
-    @open-project="handleOpenProject" @add-project="handleAddProject" @locate="handleLocate" @relocate="handleRelocate"
-    @remove="handleRemoveProject" />
+  <ProjectLibrary v-if="view === 'library'" :projects="projects" @select="proj.openProject" @new-project="proj.handleNewProject"
+    @open-project="proj.handleAddProject" @add-project="proj.handleAddProject"
+    @remove="proj.handleRemoveProject" />
 
   <!-- ===== 编辑器视图 ===== -->
   <div v-else-if="view === 'editor'" class="h-screen flex flex-col overflow-hidden bg-bg-page">
@@ -81,7 +81,7 @@
               </button>
             </div>
             <label class="block text-xs text-text-secondary mb-1">项目名称</label>
-            <input ref="newProjectInput" v-model="newProjectName" class="dialog-input" placeholder="输入项目名称"
+            <input v-model="newProjectName" class="dialog-input" placeholder="输入项目名称"
               @keydown.enter="confirmNewProject" @keydown.escape="showNewProjectDialog = false" />
             <div class="text-[10px] text-text-muted mt-1">
               位置：{{ newProjectPath }}
@@ -138,13 +138,12 @@
 import { ref, onMounted } from 'vue'
 import { FolderOpen, Search, Sparkles, X, Settings } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
+import { useProjectOperations } from './composables/useProjectOperations'
 import { storeToRefs } from 'pinia'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
-import { pickCoverColor } from './types/project'
-import * as api from './api/files'
 import TopBar from './components/TopBar.vue'
 import MdEditor from './components/MdEditor.vue'
 import AiPanel from './components/AiPanel.vue'
@@ -160,124 +159,23 @@ import SettingsContent from './components/SettingsContent.vue'
 type View = 'library' | 'editor' | 'ai-chat'
 const view = ref<View>('library')
 const showSidebar = ref(false)
-const showNewProjectDialog = ref(false)
-const newProjectPath = ref('')
-const newProjectName = ref('')
 const showAiPanel = ref(false)
 const showSearch = ref(false)
 const showSettings = ref(false)
-const settingsSection = ref('general')
+const settingsSection = ref('writing')
 const editorRef = ref<InstanceType<typeof MdEditor>>()
 
-const projectStore = useProjectStore()
 const fileStore = useFileStore()
 const { openFile: activeFile, tree: fileTree } = storeToRefs(fileStore)
 
 const projects = ref<ProjectEntry[]>([])
 const currentProject = ref<ProjectEntry | null>(null)
 
-// ── Project operations ──
+const proj = useProjectOperations({ view, projects, currentProject })
+const { showNewProjectDialog, newProjectPath, newProjectName, confirmNewProject } = proj
 
-async function openProject(project: ProjectEntry) {
-  currentProject.value = project
-  projectStore.markOpened(project.path)
-  view.value = 'editor'
-  try {
-    await api.setProjectPath(project.path)
-    await loadFileTree()
-  } catch (e) {
-    console.error('打开项目失败:', e)
-  }
-}
-
-async function handleNewProject() {
-  try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const folder = await open({ directory: true, title: '选择新项目的存放位置' })
-    if (!folder) return
-
-    newProjectPath.value = typeof folder === 'string' ? folder : String(folder)
-    newProjectName.value = ''
-    showNewProjectDialog.value = true
-  } catch (e) {
-    console.error('新建项目失败:', e)
-  }
-}
-
-async function confirmNewProject() {
-  const name = newProjectName.value.trim()
-  if (!name) return
-
-  showNewProjectDialog.value = false
-  const projectPath = `${newProjectPath.value}/${name}`
-
-  const project: ProjectEntry = {
-    path: projectPath,
-    name,
-    lastOpened: new Date().toISOString(),
-    wordCount: 0,
-    color: pickCoverColor(projects.value.length),
-  }
-
-  projects.value = [...projects.value, project]
-  projectStore.addProject(project)
-  await openProject(project)
-}
-
-async function handleOpenProject() {
-  handleAddProject()
-}
-
-async function handleAddProject() {
-  try {
-    const { open } = await import('@tauri-apps/plugin-dialog')
-    const folder = await open({ directory: true, title: '选择已有项目文件夹' })
-    if (!folder) return
-
-    const path = typeof folder === 'string' ? folder : String(folder)
-    const name = path.split(/[/\\]/).pop() || '未命名'
-
-    const project: ProjectEntry = {
-      path,
-      name,
-      lastOpened: new Date().toISOString(),
-      wordCount: 0,
-      color: pickCoverColor(projects.value.length),
-    }
-
-    projects.value = [...projects.value, project]
-    projectStore.addProject(project)
-    await openProject(project)
-  } catch (e) {
-    console.error('打开项目失败:', e)
-  }
-}
-
-function handleLocate(_project: ProjectEntry) {
-  // TODO: 调用系统文件管理器
-}
-
-function handleRelocate(project: ProjectEntry) {
-  handleAddProject().then(() => {
-    handleRemoveProject(project)
-  })
-}
-
-function handleRemoveProject(project: ProjectEntry) {
-  projects.value = projects.value.filter(p => p.path !== project.path)
-  projectStore.removeProject(project.path)
-}
 
 // ── File operations ──
-
-async function loadFileTree() {
-  if (!currentProject.value) return
-  try {
-    await fileStore.loadTree(currentProject.value.path)
-  } catch (e) {
-    console.error('加载文件树失败:', e)
-  }
-}
 
 function handleContentChange(content: string) {
   if (activeFile.value) {
@@ -317,8 +215,9 @@ function toggleTheme() {
 useKeyboardShortcuts({ view, showSidebar, showAiPanel, showSearch, showSettings, settingsSection, showNewProjectDialog })
 
 onMounted(() => {
-  projectStore.loadIndex()
-  projects.value = projectStore.projects
+  const ps = useProjectStore()
+  ps.loadIndex()
+  projects.value = ps.projects
 })
 </script>
 

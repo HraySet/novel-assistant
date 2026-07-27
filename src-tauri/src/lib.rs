@@ -49,14 +49,10 @@ fn should_skip(name: &str) -> bool {
 /// 统计中英文混排文本的字数：每个 CJK 字符计为 1 字，英文按空格分词计数
 fn count_words(text: &str) -> usize {
     let mut count = 0;
-    let mut in_cjk = false;
+    let mut in_word = false;
 
     for ch in text.chars() {
-        if ch.is_whitespace() {
-            in_cjk = false;
-            continue;
-        }
-        // CJK 统一表意文字区间 + 中文标点
+        
         let is_cjk = matches!(ch,
             '\u{4E00}'..='\u{9FFF}'   // CJK 统一表意文字
             | '\u{3400}'..='\u{4DBF}' // CJK 扩展 A
@@ -66,16 +62,9 @@ fn count_words(text: &str) -> usize {
             | '\u{2E80}'..='\u{2EFF}' // CJK 部首补充
             | '\u{31C0}'..='\u{31EF}' // CJK 笔画
         );
-        if is_cjk {
-            count += 1;
-            in_cjk = true;
-        } else if !in_cjk && ch.is_alphanumeric() {
-            // 英文单词开头字母：累加一个单词
-            count += 1;
-            in_cjk = false;
-        }
+        if is_cjk { count += 1; in_word = false; } else if ch.is_alphanumeric() { if !in_word { count += 1; in_word = true; } } else { in_word = false; }
     }
-    // 至少返回 0 而不是负数
+    
     count
 }
 

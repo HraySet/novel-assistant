@@ -321,10 +321,13 @@ function handleGlobalKeydown(e: KeyboardEvent) {
     e.preventDefault()
     view.value = 'ai-chat'
   }
-  // Ctrl+P — 搜索（编辑器内不拦截）
-  if (e.ctrlKey && e.key === 'p' && !isEditorFocused()) {
+  // Ctrl+P — 搜索（始终拦截浏览器的打印行为）
+  if (e.ctrlKey && e.key === 'p') {
     e.preventDefault()
-    showSearch.value = true
+    // 编辑器内不打开搜索面板，留给编辑器自身的快捷键
+    if (!isEditorFocused()) {
+      showSearch.value = true
+    }
   }
 }
 

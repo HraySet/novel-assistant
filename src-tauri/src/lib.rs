@@ -13,6 +13,9 @@ pub struct DirEntry {
     pub is_dir: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<DirEntry>>,
+    /// 字数（仅文件，目录不返回此字段）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub word_count: Option<usize>,
 }
 
 // ── Helpers ──
@@ -43,6 +46,39 @@ fn should_skip(name: &str) -> bool {
     name.starts_with('.') || name == ".backups" || name == ".trash" || name == ".chatlog"
 }
 
+/// 统计中英文混排文本的字数：每个 CJK 字符计为 1 字，英文按空格分词计数
+fn count_words(text: &str) -> usize {
+    let mut count = 0;
+    let mut in_cjk = false;
+
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            in_cjk = false;
+            continue;
+        }
+        // CJK 统一表意文字区间 + 中文标点
+        let is_cjk = matches!(ch,
+            '\u{4E00}'..='\u{9FFF}'   // CJK 统一表意文字
+            | '\u{3400}'..='\u{4DBF}' // CJK 扩展 A
+            | '\u{F900}'..='\u{FAFF}' // CJK 兼容表意文字
+            | '\u{3000}'..='\u{303F}' // CJK 标点
+            | '\u{FF00}'..='\u{FFEF}' // 全角形式
+            | '\u{2E80}'..='\u{2EFF}' // CJK 部首补充
+            | '\u{31C0}'..='\u{31EF}' // CJK 笔画
+        );
+        if is_cjk {
+            count += 1;
+            in_cjk = true;
+        } else if !in_cjk && ch.is_alphanumeric() {
+            // 英文单词开头字母：累加一个单词
+            count += 1;
+            in_cjk = false;
+        }
+    }
+    // 至少返回 0 而不是负数
+    count
+}
+
 fn list_entries(dir_path: &Path) -> Result<Vec<DirEntry>, String> {
     let mut entries: Vec<DirEntry> = Vec::new();
     let dir_iter = fs::read_dir(dir_path).map_err(|e| e.to_string())?;
@@ -64,11 +100,19 @@ fn list_entries(dir_path: &Path) -> Result<Vec<DirEntry>, String> {
             None
         };
 
+        let word_count = if !is_dir {
+            // 读取文件内容统计字数（忽略读取失败，返回 None）
+            fs::read_to_string(&path).ok().map(|content| count_words(&content))
+        } else {
+            None
+        };
+
         entries.push(DirEntry {
             name,
             path: path_str,
             is_dir,
             children,
+            word_count,
         });
     }
 

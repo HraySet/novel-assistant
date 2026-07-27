@@ -4,6 +4,29 @@ import * as api from '../api/files'
 import type { FileNode, OpenFile, ContextMenuState, DraftState } from '../types/file'
 
 const EXPANDED_STORAGE_PREFIX = 'file-tree-expanded:'
+const FAVORITES_STORAGE_PREFIX = 'file-favorites:'
+
+// ── 自然排序（数字感知）：第1章 < 第2章 < 第10章，而非字典序 ──
+let _naturalCollator: Intl.Collator | null = null
+
+function getNaturalCollator(): Intl.Collator {
+  if (!_naturalCollator) {
+    _naturalCollator = new Intl.Collator(undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    })
+  }
+  return _naturalCollator
+}
+
+function sortNodes(nodes: FileNode[]): FileNode[] {
+  const collator = getNaturalCollator()
+  return nodes.sort((a, b) => {
+    // 文件夹始终排在文件前面
+    if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+    return collator.compare(a.name, b.name)
+  })
+}
 
 function joinPath(parentPath: string, name: string) {
   const sep = parentPath.includes('\\') ? '\\' : '/'
@@ -18,12 +41,16 @@ function dirname(path: string) {
 }
 
 function normalizeTree(nodes: FileNode[], parentPath = ''): FileNode[] {
-  return nodes.map((node) => ({
+  const normalized = nodes.map((node) => ({
     ...node,
     parentPath: node.parentPath || parentPath,
     meta: node.meta ?? {},
-    children: node.children && node.children.length > 0 ? normalizeTree(node.children, node.path) : undefined,
+    children: node.children && node.children.length > 0
+      ? normalizeTree(node.children, node.path)
+      : undefined,
   }))
+  // 每层应用自然排序
+  return sortNodes(normalized)
 }
 
 function getExpandedStorageKey(projectPath: string) {
@@ -52,6 +79,50 @@ export const useFileStore = defineStore('file', () => {
   const renamingPath = ref<string | null>(null)
   const draft = ref<DraftState | null>(null)
   const dragSource = ref<string | null>(null)
+  // 收藏路径集合（以 projectRoot 为 key 持久化到 localStorage）
+  const favoritePaths = ref<Set<string>>(new Set())
+
+  // ── Favorites persistence ──
+
+  function loadFavorites(projectPath: string) {
+    if (typeof window === 'undefined') return
+    try {
+      const stored = window.localStorage.getItem(FAVORITES_STORAGE_PREFIX + projectPath)
+      favoritePaths.value = stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch {
+      favoritePaths.value = new Set()
+    }
+  }
+
+  function persistFavorites() {
+    if (typeof window === 'undefined' || !projectRoot.value) return
+    window.localStorage.setItem(
+      FAVORITES_STORAGE_PREFIX + projectRoot.value,
+      JSON.stringify([...favoritePaths.value]),
+    )
+  }
+
+  function isFavorite(path: string): boolean {
+    return favoritePaths.value.has(path)
+  }
+
+  function toggleFavorite(path: string) {
+    const next = new Set(favoritePaths.value)
+    if (next.has(path)) {
+      next.delete(path)
+    } else {
+      next.add(path)
+    }
+    favoritePaths.value = next
+    persistFavorites()
+  }
+
+  // ── Collapse all ──
+
+  function collapseAll() {
+    expandedPaths.value = []
+    persistExpandedState()
+  }
 
   // ── Expanded state persistence ──
 
@@ -77,12 +148,14 @@ export const useFileStore = defineStore('file', () => {
     if (currentProjectPath) {
       projectRoot.value = currentProjectPath
       loadExpandedState(currentProjectPath)
+      loadFavorites(currentProjectPath)
     }
   }
 
   function setProjectRoot(path: string) {
     projectRoot.value = path
     loadExpandedState(path)
+    loadFavorites(path)
   }
 
   function toggleExpanded(path: string) {
@@ -430,6 +503,19 @@ export const useFileStore = defineStore('file', () => {
     return `${base} ${i}${ext}`
   }
 
+  // ── 文件状态查询（供树节点渲染使用） ──
+
+  /** 检查文件是否已打开 */
+  function isFileOpen(path: string): boolean {
+    return openFiles.value.some(f => f.path === path)
+  }
+
+  /** 检查已打开文件是否有未保存的修改 */
+  function isFileDirty(path: string): boolean {
+    const f = openFiles.value.find(f => f.path === path)
+    return f?.isDirty ?? false
+  }
+
   return {
     // Core state
     tree,
@@ -445,6 +531,7 @@ export const useFileStore = defineStore('file', () => {
     renamingPath,
     draft,
     dragSource,
+    favoritePaths,
     // Tree management
     setTree,
     setProjectRoot,
@@ -462,6 +549,7 @@ export const useFileStore = defineStore('file', () => {
     toggleExpanded,
     expandPath,
     isExpanded,
+    collapseAll,
     // Navigation
     goBack,
     goForward,
@@ -487,6 +575,12 @@ export const useFileStore = defineStore('file', () => {
     // Save
     handleSave,
     saveFile,
+    // Favorites
+    isFavorite,
+    toggleFavorite,
+    // File status
+    isFileOpen,
+    isFileDirty,
     // Utilities
     getChildrenOf,
     findNode,

@@ -1,6 +1,7 @@
 <template>
   <aside class="sidebar w-sidebar shrink-0 border-r flex flex-col bg-bg-surface"
     style="border-color: var(--color-border)">
+    <!-- 标题栏 -->
     <div class="px-3 pt-3 pb-2 flex items-center justify-between">
       <span class="text-xs font-medium text-text-secondary uppercase tracking-wide">文件</span>
       <div class="flex gap-1">
@@ -9,6 +10,9 @@
         </button>
         <button class="header-action-btn" title="新建文件夹" @click="handleCreate('dir')">
           <FolderPlus :size="16" />
+        </button>
+        <button class="header-action-btn" title="折叠全部" @click="fileStore.collapseAll()">
+          <FoldVertical :size="16" />
         </button>
       </div>
     </div>
@@ -49,7 +53,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { FilePlus, FolderPlus } from 'lucide-vue-next'
+import { FilePlus, FolderPlus, FoldVertical } from 'lucide-vue-next'
 import { useFileStore } from '../stores/file'
 import FileTreeNode from './FileTreeNode.vue'
 import DraftRow from './DraftRow.vue'
@@ -64,7 +68,7 @@ function handleCreate(type: 'file' | 'dir') {
   fileStore.startDraft(type, parentPath)
 }
 
-// ── 根级拖放：把文件拖回项目根目录 ──
+// ── 根级拖放 ──
 const dragOverRoot = ref(false)
 
 function handleRootDragEnter(e: DragEvent) {

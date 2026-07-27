@@ -5,6 +5,7 @@ export interface DirEntry {
   path: string
   isDir: boolean
   children?: DirEntry[]
+  wordCount?: number
 }
 
 export async function listDir(path: string): Promise<DirEntry[]> {

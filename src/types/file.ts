@@ -13,6 +13,8 @@ export interface FileNode {
   children?: FileNode[]
   parentPath?: string
   meta?: FileMeta
+  /** 字数统计（仅文件，来自后端 list_dir） */
+  wordCount?: number
 }
 
 export interface OpenFile {

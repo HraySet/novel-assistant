@@ -38,6 +38,11 @@
           <span>复制路径</span>
         </button>
         <div class="context-divider" />
+        <button class="context-menu-item" @click="handleToggleFavorite">
+          <Star :size="14" />
+          <span>{{ isCurrentFavorite ? '取消收藏' : '收藏' }}</span>
+        </button>
+        <div class="context-divider" />
         <button class="context-menu-item context-menu-item--danger" @click="handleDelete">
           删除
         </button>
@@ -54,6 +59,11 @@
           <span>复制路径</span>
         </button>
         <div class="context-divider" />
+        <button class="context-menu-item" @click="handleToggleFavorite">
+          <Star :size="14" />
+          <span>{{ isCurrentFavorite ? '取消收藏' : '收藏' }}</span>
+        </button>
+        <div class="context-divider" />
         <button class="context-menu-item context-menu-item--danger" @click="handleDelete">
           删除
         </button>
@@ -65,7 +75,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { onClickOutside } from '@vueuse/core'
-import { FilePlus, FolderPlus, Pencil, Copy } from 'lucide-vue-next'
+import { FilePlus, FolderPlus, Pencil, Copy, Star } from 'lucide-vue-next'
 import { useFileStore } from '../stores/file'
 import { storeToRefs } from 'pinia'
 
@@ -143,6 +153,18 @@ function handleDelete() {
   fileStore.closeContextMenu()
   if (!confirm('确定要删除吗？（会移到 .trash）')) return
   fileStore.deletePath(path)
+}
+
+const isCurrentFavorite = computed(() => {
+  const path = contextMenu.value.nodePath
+  return path ? fileStore.isFavorite(path) : false
+})
+
+function handleToggleFavorite() {
+  const path = contextMenu.value.nodePath
+  if (!path) return
+  fileStore.closeContextMenu()
+  fileStore.toggleFavorite(path)
 }
 </script>
 

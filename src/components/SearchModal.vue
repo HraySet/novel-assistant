@@ -56,10 +56,10 @@
             </template>
 
             <!-- 内容匹配 -->
-            <template v-if="contentResults.length">
-              <div class="results-label">文件内容 ({{ contentResults.length }})</div>
+            <template v-if="contentMatches.length">
+              <div class="results-label">文件内容 ({{ contentMatches.length }})</div>
               <div
-                v-for="(item, i) in contentResults"
+                v-for="(item, i) in contentMatches"
                 :key="'content-' + item.path"
                 class="search-item search-item--content"
                 :class="{ 'search-item--active': searchIndex === i + offsetForContent }"

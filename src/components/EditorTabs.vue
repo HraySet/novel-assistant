@@ -1,14 +1,17 @@
 <template>
   <div v-if="openFiles.length > 0" class="tabs-bar">
     <div class="tabs-scroll" ref="scrollRef">
-      <button
+      <div
         v-for="file in openFiles"
         :key="file.path"
         class="tab-item"
         :class="{ 'tab-item--active': openFile?.path === file.path }"
         :title="file.path"
+        role="button"
+        tabindex="0"
         @click="switchTab(file.path)"
         @auxclick.middle.prevent="closeTab(file.path)"
+        @keydown.enter="switchTab(file.path)"
       >
         <span v-if="file.isDirty" class="tab-dirty" />
         <span class="tab-name">{{ file.name }}</span>
@@ -17,7 +20,7 @@
           @click.stop="closeTab(file.path)"
           title="关闭"
         >&times;</button>
-      </button>
+      </div>
     </div>
   </div>
 </template>

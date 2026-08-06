@@ -113,22 +113,22 @@
       </span>
     </div>
 
-    <!-- Expanded children -->
-    <template v-if="isExpanded && node.children">
-      <DraftRow
-        v-if="draftState && draftState.parentPath === node.path"
-        :type="draftState.type"
-        :default-name="draftState.defaultName"
-        :depth="depth + 1"
-        @confirm="fileStore.confirmDraft($event)"
-        @cancel="fileStore.cancelDraft()"
-      />
-      <FileTreeNode
-        v-for="child in node.children"
-        :key="child.path"
-        :node="child"
-        :depth="depth + 1"
-      />
+    <!-- Expanded children -->
+    <template v-if="isExpanded">
+      <DraftRow
+        v-if="draftState && draftState.parentPath === node.path"
+        :type="draftState.type"
+        :default-name="draftState.defaultName"
+        :depth="depth + 1"
+        @confirm="fileStore.confirmDraft($event)"
+        @cancel="fileStore.cancelDraft()"
+      />
+      <FileTreeNode
+        v-for="child in node.children"
+        :key="child.path"
+        :node="child"
+        :depth="depth + 1"
+      />
     </template>
   </div>
 </template>

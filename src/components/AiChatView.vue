@@ -9,19 +9,22 @@
         </button>
       </div>
       <div class="chat-sidebar-list">
-        <button
+        <div
           v-for="conv in conversations"
           :key="conv.id"
           class="chat-sidebar-item"
           :class="{ 'chat-sidebar-item--active': conv.id === activeId }"
+          role="button"
+          tabindex="0"
           @click="chatStore.switchConversation(conv.id)"
+          @keydown.enter="chatStore.switchConversation(conv.id)"
         >
           <span class="chat-sidebar-title">{{ conv.title }}</span>
           <span class="chat-sidebar-date">{{ formatDate(conv.updatedAt) }}</span>
           <button class="chat-sidebar-del" @click.stop="handleDelete(conv.id)">
             <X :size="10" />
           </button>
-        </button>
+        </div>
         <div v-if="conversations.length === 0" class="text-xs text-text-muted text-center py-8">
           还没有对话
         </div>

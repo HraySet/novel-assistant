@@ -18,8 +18,8 @@ function computeLCS<T>(a: T[], b: T[], eq: (x: T, y: T) => boolean = (x, y) => x
   return dp
 }
 
-function backtrack<T>(a: T[], b: T[], dp: number[][], makeResult: (type: 'add' | 'remove' | 'equal', i: number, j: number) => T): T[] {
-  const result: T[] = []
+function backtrack<T, R>(a: T[], b: T[], dp: number[][], makeResult: (type: 'add' | 'remove' | 'equal', i: number, j: number) => R): R[] {
+  const result: R[] = []
   let i = a.length, j = b.length
   while (i > 0 || j > 0) {
     if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {

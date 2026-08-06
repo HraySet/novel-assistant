@@ -208,7 +208,7 @@ function runQuickAction(action: string) {
 }
 
 function handleAiInsert(text: string) {
-  // TODO: 插入到编辑器
+  editorRef.value?.insertAtCursor(text)
 }
 
 // ── Theme ──

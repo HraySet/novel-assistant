@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
+
+use std::collections::HashMap;
+
 use std::fs;
+
 use std::path::{Path, PathBuf};
+
+use std::sync::Mutex;
+
+use std::time::SystemTime;
+
 use tauri::Manager;
 
 // ── Types ──
@@ -66,43 +75,137 @@ fn count_words(text: &str) -> usize {
     }
     
     count
+
 }
 
-fn list_entries(dir_path: &Path) -> Result<Vec<DirEntry>, String> {
-    let mut entries: Vec<DirEntry> = Vec::new();
-    let dir_iter = fs::read_dir(dir_path).map_err(|e| e.to_string())?;
 
-    for entry in dir_iter {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if should_skip(&name) {
-            continue;
+
+// ── Word Count Cache ──
+
+
+
+type WordCountCache = Mutex<HashMap<PathBuf, (SystemTime, usize)>>;
+
+
+
+/// 从缓存获取字数，若 mtime 变化或缓存未命中则重新计算并缓存
+
+fn get_or_compute_word_count(path: &Path, cache: &WordCountCache) -> Option<usize> {
+
+    let modified = path.metadata().ok()?.modified().ok()?;
+
+
+
+    // 检查缓存（先释放锁再计算，避免阻塞）
+
+    {
+
+        let cache_lock = cache.lock().ok()?;
+
+        if let Some(&(cached_mtime, count)) = cache_lock.get(path) {
+
+            if cached_mtime == modified {
+
+                return Some(count);
+
+            }
+
         }
 
+    }
+
+
+
+    // 缓存未命中或已过期 → 重新计算
+
+    let content = fs::read_to_string(path).ok()?;
+
+    let count = count_words(&content);
+
+
+
+    if let Ok(mut cache_lock) = cache.lock() {
+
+        cache_lock.insert(path.to_path_buf(), (modified, count));
+
+    }
+
+
+
+    Some(count)
+
+}
+
+
+
+fn list_entries(dir_path: &Path, cache: &WordCountCache) -> Result<Vec<DirEntry>, String> {
+
+    let mut entries: Vec<DirEntry> = Vec::new();
+
+    let dir_iter = fs::read_dir(dir_path).map_err(|e| e.to_string())?;
+
+
+
+    for entry in dir_iter {
+
+        let entry = entry.map_err(|e| e.to_string())?;
+
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        if should_skip(&name) {
+
+            continue;
+
+        }
+
+
+
         let path = entry.path();
+
         let is_dir = path.is_dir();
+
         let path_str = path.to_string_lossy().to_string();
 
+
+
         let children = if is_dir {
-            Some(list_entries(&path)?)
+
+            Some(list_entries(&path, cache)?)
+
         } else {
+
             None
+
         };
+
+
 
         let word_count = if !is_dir {
-            // 读取文件内容统计字数（忽略读取失败，返回 None）
-            fs::read_to_string(&path).ok().map(|content| count_words(&content))
+
+            get_or_compute_word_count(&path, cache)
+
         } else {
+
             None
+
         };
 
+
+
         entries.push(DirEntry {
+
             name,
+
             path: path_str,
+
             is_dir,
+
             children,
+
             word_count,
+
         });
+
     }
 
     // 文件夹排前，文件排后，各自按名称排序
@@ -151,12 +254,19 @@ fn set_project_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
 // ── File Operations ──
 
 #[tauri::command]
-fn list_dir(path: String) -> Result<Vec<DirEntry>, String> {
+
+fn list_dir(path: String, cache: tauri::State<'_, WordCountCache>) -> Result<Vec<DirEntry>, String> {
+
     let dir_path = Path::new(&path);
+
     if !dir_path.exists() {
+
         return Ok(vec![]);
+
     }
-    list_entries(dir_path)
+
+    list_entries(dir_path, &cache)
+
 }
 
 #[tauri::command]
@@ -165,16 +275,43 @@ fn read_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn write_file(path: String, content: String) -> Result<(), String> {
+
+fn write_file(path: String, content: String, cache: tauri::State<'_, WordCountCache>) -> Result<(), String> {
+
     let filepath = Path::new(&path);
+
     // 确保父目录存在
+
     if let Some(parent) = filepath.parent() {
+
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+
     }
+
     // 备份
+
     backup_file(filepath)?;
+
     // 写入
-    fs::write(filepath, &content).map_err(|e| e.to_string())
+
+    fs::write(filepath, &content).map_err(|e| e.to_string())?;
+
+    // 写入后更新缓存（下次 list_dir 用最新字数）
+
+    if let Ok(mut cache_lock) = cache.lock() {
+
+        let count = count_words(&content);
+
+        if let Ok(modified) = filepath.metadata().and_then(|m| m.modified()) {
+
+            cache_lock.insert(filepath.to_path_buf(), (modified, count));
+
+        }
+
+    }
+
+    Ok(())
+
 }
 
 #[tauri::command]
@@ -269,8 +406,9 @@ fn save_ai_config(app: tauri::AppHandle, ai_config: serde_json::Value) -> Result
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(WordCountCache::default())
         .invoke_handler(tauri::generate_handler![
             get_project_path,
             set_project_path,

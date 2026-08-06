@@ -20,7 +20,6 @@ import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { EditorView, keymap, lineNumbers, highlightActiveLine } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
-import { languages } from '@codemirror/language'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { defaultKeymap, indentWithTab } from '@codemirror/commands'
 
@@ -72,7 +71,15 @@ function flushPendingSave() {
   }
 }
 
-defineExpose({ flushPendingSave })
+function insertAtCursor(text: string) {
+  if (!view) return
+  view.dispatch({
+    changes: { from: view.state.selection.main.head, insert: text },
+  })
+  view.focus()
+}
+
+defineExpose({ flushPendingSave, insertAtCursor })
 
 onMounted(() => {
   if (!editorEl.value) return
@@ -165,6 +172,7 @@ onMounted(() => {
       customTheme,
       lineNumbers(),
       highlightActiveLine(),
+      EditorView.lineWrapping,
       keymap.of([...defaultKeymap, indentWithTab]),
       markdown({ base: markdownLanguage }),
       EditorView.updateListener.of(update => {

@@ -8,15 +8,8 @@
       <Folder :size="13" class="text-accent shrink-0" />
       <span class="draft-label">新文件夹</span>
     </template>
-    <input
-      ref="inputRef"
-      v-model="value"
-      class="draft-input"
-      spellcheck="false"
-      @keydown.enter="confirm"
-      @keydown.escape="cancel"
-      @blur="confirm"
-    />
+    <input ref="inputRef" v-model="value" class="draft-input" spellcheck="false" @keydown.enter="confirm"
+      @keydown.escape="cancel" @blur="confirm" />
   </div>
 </template>
 
@@ -24,11 +17,11 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { FileText, Folder } from 'lucide-vue-next'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   type: 'file' | 'dir'
   defaultName: string
   depth?: number
-}>()
+}>(), { depth: 0 })
 
 const emit = defineEmits<{
   confirm: [name: string]

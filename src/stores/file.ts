@@ -236,7 +236,7 @@ export const useFileStore = defineStore('file', () => {
     const filePath = joinPath(parentPath, name)
     await api.createFile(filePath)
     expandPath(parentPath)
-    await loadTree(projectRoot.value)
+    insertNodeLocally(parentPath, { name, path: filePath, isDir: false, wordCount: 0 })
     return filePath
   }
 
@@ -244,7 +244,7 @@ export const useFileStore = defineStore('file', () => {
     const dirPath = joinPath(parentPath, name)
     await api.createDir(dirPath)
     expandPath(parentPath)
-    await loadTree(projectRoot.value)
+    insertNodeLocally(parentPath, { name, path: dirPath, isDir: true })
     return dirPath
   }
 
@@ -375,13 +375,18 @@ export const useFileStore = defineStore('file', () => {
   async function confirmDraft(name: string) {
     if (!draft.value) return
     const finalName = name.trim() || draft.value.defaultName
-    if (draft.value.type === 'file') {
-      const filePath = await createFile(draft.value.parentPath, finalName)
-      await handleFileSelect(filePath)
-    } else {
-      await createDir(draft.value.parentPath, finalName)
+    try {
+      if (draft.value.type === 'file') {
+        const filePath = await createFile(draft.value.parentPath, finalName)
+        await handleFileSelect(filePath)
+      } else {
+        await createDir(draft.value.parentPath, finalName)
+      }
+    } catch (e) {
+      console.error('创建失败:', e)
+    } finally {
+      draft.value = null
     }
-    draft.value = null
   }
 
   function cancelDraft() {
@@ -490,6 +495,27 @@ export const useFileStore = defineStore('file', () => {
       return null
     }
     return search(tree.value)
+  }
+
+  /** 本地增量插入节点，不触发全量 loadTree */
+  function insertNodeLocally(parentPath: string, node: FileNode) {
+    // 根目录直接插入
+    if (!parentPath || parentPath === projectRoot.value) {
+      tree.value.push(node)
+      tree.value = sortNodes([...tree.value])
+      return
+    }
+
+    const parent = findNode(parentPath)
+    if (parent) {
+      if (!parent.children) parent.children = []
+      parent.children.push(node)
+      parent.children = sortNodes([...parent.children])
+      return
+    }
+
+    // 兜底：找不到父节点（不应该发生）走全量刷新
+    loadTree()
   }
 
   function getUniqueName(type: 'file' | 'dir', parentPath: string): string {

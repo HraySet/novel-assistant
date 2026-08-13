@@ -26,7 +26,7 @@
       <button class="topbar-btn" title="前进" :disabled="!hasForward" @click="$emit('goForward')">
         <ChevronRight :size="16" />
       </button>
-      <button class="topbar-btn" title="切换主题" @click="$emit('toggleTheme')">
+      <button class="topbar-btn" title="切换主题" @click="handleToggleTheme">
         <Sun v-if="isDark" :size="14" />
         <Moon v-else :size="14" />
       </button>
@@ -35,8 +35,8 @@
 </template>
 
 <script setup lang="ts">
-import { FolderOpen, ChevronLeft, ChevronRight, Sun, Moon } from 'lucide-vue-next'
 import { ref } from 'vue'
+import { FolderOpen, ChevronLeft, ChevronRight, Sun, Moon } from 'lucide-vue-next'
 
 defineProps<{
   projectName: string
@@ -46,14 +46,19 @@ defineProps<{
   hasForward?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   goLibrary: []
   goBack: []
   goForward: []
   toggleTheme: []
 }>()
 
-const isDark = ref(false)
+const isDark = ref(document.documentElement.getAttribute('data-theme')?.includes('dark') ?? false)
+
+function handleToggleTheme() {
+  isDark.value = !isDark.value
+  emit('toggleTheme')
+}
 </script>
 
 <style scoped>

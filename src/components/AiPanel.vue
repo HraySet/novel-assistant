@@ -18,10 +18,20 @@
       </div>
     </div>
 
+    <!-- 快捷操作 -->
+    <div class="px-3 py-2 border-b shrink-0" style="border-color: var(--color-border)">
+      <div class="flex gap-1.5">
+        <button v-for="a in quickActions" :key="a.label" class="quick-btn"
+          :disabled="chatStore.streaming" @click="runQuick(a)">
+          {{ a.label }}
+        </button>
+      </div>
+    </div>
+
     <!-- 对话 -->
     <div ref="chatEl" class="flex-1 overflow-y-auto px-3 py-2 space-y-3">
       <div v-if="!activeConversation || activeConversation.messages.length === 0" class="text-xs text-text-muted text-center py-8">
-        点击右侧 续/润/扩/查 开始，或直接输入对话
+        点击上方快捷操作，或直接输入对话
       </div>
       <div v-for="(msg, i) in (activeConversation?.messages || [])" :key="i"
         :class="[msg.role === 'user' ? 'chat-user' : 'chat-ai', msg.originalContent ? 'chat-msg--diff' : '']">
@@ -42,7 +52,7 @@
     <!-- 输入 -->
     <div class="p-3 border-t shrink-0" style="border-color: var(--color-border)">
       <textarea v-model="inputText" class="ai-input" rows="2"
-        placeholder="输入消息，点击右侧 续/润/扩/查"
+        placeholder="输入消息，或使用上方快捷操作"
         :disabled="chatStore.streaming"
         @keydown.enter.exact.prevent="handleSend" />
       <button v-if="chatStore.streaming" class="chat-stop-btn mt-2" @click="chatStore.abortStreaming()">
@@ -68,7 +78,6 @@ import * as api from '../api/files'
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
   projectRoot?: string
-  quickAction?: string | null
 }>()
 const emit = defineEmits<{ expand: [] }>()
 
@@ -105,18 +114,17 @@ const { build, contextLabel } = useAiContext(
 onMounted(() => { if (props.projectRoot) chatStore.loadConversations(props.projectRoot) })
 watch(() => props.projectRoot, (root) => { if (root) chatStore.loadConversations(root) })
 
-// 自动触发快捷操作（App.vue 每次调用后 nextTick 重置为 null，保证同按钮可连点）
-watch(() => props.quickAction, (action) => {
-  if (!action) return
-  const map: Record<string, string> = {
-    '续写': '请续写以下内容，保持风格一致，直接给出续写结果：',
-    '润色': '请润色以下文字，保持原意不变，优化表达和节奏：',
-    '扩写': '请对以下内容进行扩写，增加细节和描写，但不要偏离原意：',
-    '检查': '请检查以下角色一致性、伏笔、逻辑问题，指出语法错误、逻辑矛盾或可以改进的地方：',
-  }
-  const prompt = map[action]
-  if (prompt) handleQuickAction(action, prompt)
-})
+// 快捷操作：定义在面板内部，语义清晰，不占用右侧窄条
+const quickActions = [
+  { label: '续写', prompt: '请续写以下内容，保持风格一致，直接给出续写结果：' },
+  { label: '润色', prompt: '请润色以下文字，保持原意不变，优化表达和节奏：' },
+  { label: '扩写', prompt: '请对以下内容进行扩写，增加细节和描写，但不要偏离原意：' },
+  { label: '检查', prompt: '请检查以下角色一致性、伏笔、逻辑问题，指出语法错误、逻辑矛盾或可以改进的地方：' },
+]
+
+function runQuick(action: { label: string; prompt: string }) {
+  handleQuickAction(action.label, action.prompt)
+}
 
 function handleSend() {
   const text = inputText.value.trim()
@@ -256,6 +264,24 @@ async function send(text: string, prefix: string, contextPrompt?: string) {
 
 <style scoped>
 .ai-panel { font-size: 13px; }
+.quick-btn {
+  flex: 1;
+  padding: 4px 0;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.quick-btn:hover:not(:disabled) {
+  background: var(--color-accent-bg);
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+}
+.quick-btn:disabled { opacity: 0.4; cursor: default; }
 .ai-btn {
   width: 24px; height: 24px; border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;

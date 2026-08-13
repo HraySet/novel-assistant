@@ -28,6 +28,14 @@
           </SurfaceCard>
 
           <SurfaceCard class="p-4">
+            <span class="text-xs font-medium text-text-secondary block mb-3">全书总字数</span>
+            <div class="text-2xl font-semibold text-text-primary" style="font-variant-numeric: tabular-nums;">
+              {{ totalWords.toLocaleString() }}
+            </div>
+            <div class="text-xs text-text-muted mt-1">所有章节字数总和</div>
+          </SurfaceCard>
+
+          <SurfaceCard class="p-4">
             <span class="text-xs font-medium text-text-secondary block mb-3">编辑器字号</span>
             <SegmentedGroup
               :options="fontSizeOpts.map(s => ({ value: s, label: s }))"
@@ -213,12 +221,31 @@ import { computed } from "vue";
 import { PenLine, Palette, Sun, Moon, Cpu, CircleCheck, AlertCircle } from "lucide-vue-next";
 import { useSettingsStore } from "../stores/settings";
 import { useSettingsForm } from "../composables/useSettingsForm";
+import { useFileStore } from "../stores/file";
+import type { FileNode } from "../types/file";
 import SurfaceCard from "./SurfaceCard.vue";
 import SegmentedGroup from "./SegmentedGroup.vue";
 
 defineProps<{ section: string }>();
 const store = useSettingsStore();
 const form = useSettingsForm();
+const fileStore = useFileStore();
+
+// 全书总字数：遍历文件树求和（不含目录）
+const totalWords = computed(() => {
+  let sum = 0;
+  const walk = (nodes: FileNode[]) => {
+    for (const n of nodes) {
+      if (n.isDir) {
+        if (n.children) walk(n.children);
+      } else {
+        sum += n.wordCount ?? 0;
+      }
+    }
+  };
+  walk(fileStore.tree);
+  return sum;
+});
 const darkPresets = computed(() => store.colorPresets.filter(p => p.dark));
 const lightPresets = computed(() => store.colorPresets.filter(p => !p.dark));
 const fontSizeOpts = ["小", "中", "大"];

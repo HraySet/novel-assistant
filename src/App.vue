@@ -23,6 +23,9 @@
           <Search :size="16" />
         </button>
         <div class="flex-1" />
+        <button class="icon-bar-btn" title="导出" @click="handleExport">
+          <Download :size="16" />
+        </button>
         <button class="icon-bar-btn" title="设置" @click="showSettings = true; settingsSection = 'writing'">
           <Settings :size="16" />
         </button>
@@ -36,8 +39,8 @@
       <!-- 编辑器 -->
       <main class="flex-1 min-w-0 flex flex-col">
         <EditorTabs />
-        <MdEditor v-if="activeFile" ref="editorRef" :content="activeFile.content" @update:content="handleContentChange"
-          @save="fileStore.handleSave()" />
+        <MdEditor v-if="activeFile" ref="editorRef" :content="activeFile.content" :path="activeFile.path" :name="activeFile.name"
+          @update:content="handleContentChange" @save="fileStore.handleSave()" />
         <div v-else class="flex-1 flex items-center justify-center text-text-muted text-sm">
           打开一个文件开始写作
         </div>
@@ -46,26 +49,13 @@
       <!-- 右侧推挤面板：AI 紧凑面板 -->
       <Transition name="slide-right">
         <AiPanel v-if="showAiPanel" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
-          :quick-action="quickAction" @expand="view = 'ai-chat'" />
+          @expand="view = 'ai-chat'" />
       </Transition>
 
       <!-- 右侧图标轨 -->
       <div class="icon-bar icon-bar--right">
         <button class="icon-bar-btn" :class="{ active: showAiPanel }" title="AI 助手" @click="showAiPanel = !showAiPanel">
           <Sparkles :size="16" />
-        </button>
-        <div class="icon-bar-divider" />
-        <button class="icon-bar-btn icon-bar-btn--text" title="续写" @click="runQuickAction('续写')">
-          续
-        </button>
-        <button class="icon-bar-btn icon-bar-btn--text" title="润色" @click="runQuickAction('润色')">
-          润
-        </button>
-        <button class="icon-bar-btn icon-bar-btn--text" title="扩写" @click="runQuickAction('扩写')">
-          扩
-        </button>
-        <button class="icon-bar-btn icon-bar-btn--text" title="检查" @click="runQuickAction('检查')">
-          查
         </button>
       </div>
     </div>
@@ -137,7 +127,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue'
-import { FolderOpen, Search, Sparkles, X, Settings } from 'lucide-vue-next'
+import { FolderOpen, Search, Sparkles, X, Settings, Download } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useProjectOperations } from './composables/useProjectOperations'
 import { storeToRefs } from 'pinia'
@@ -145,6 +135,9 @@ import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
+import type { FileNode } from './types/file'
+import { invoke } from '@tauri-apps/api/core'
+import { save } from '@tauri-apps/plugin-dialog'
 import TopBar from './components/TopBar.vue'
 import MdEditor from './components/MdEditor.vue'
 import AiPanel from './components/AiPanel.vue'
@@ -176,9 +169,6 @@ const currentProject = ref<ProjectEntry | null>(null)
 const proj = useProjectOperations({ view, projects, currentProject })
 const { showNewProjectDialog, newProjectPath, newProjectName, confirmNewProject } = proj
 
-// 快捷操作：触发 AiPanel 的快速动作
-const quickAction = ref<string | null>(null)
-
 
 // ── File operations ──
 
@@ -198,14 +188,40 @@ async function handleGoForward() {
   if (path) await fileStore.handleFileSelect(path)
 }
 
-// ── AI ──
+// ── 导出 ──
 
-function runQuickAction(action: string) {
-  quickAction.value = action
-  showAiPanel.value = true
-  // 重置让下次同动作点击能再次触发 watch
-  nextTick(() => { quickAction.value = null })
+function collectFilePaths(nodes: FileNode[], acc: string[] = []): string[] {
+  for (const n of nodes) {
+    if (n.isDir) {
+      if (n.children) collectFilePaths(n.children, acc)
+    } else if (/\.(md|txt)$/i.test(n.name)) {
+      acc.push(n.path)
+    }
+  }
+  return acc
 }
+
+async function handleExport() {
+  const paths = collectFilePaths(fileTree.value)
+  if (paths.length === 0) return
+  const projectName = currentProject.value?.name || '导出'
+  try {
+    const destPath = await save({
+      defaultPath: `${projectName}.md`,
+      filters: [
+        { name: 'Markdown', extensions: ['md'] },
+        { name: '纯文本', extensions: ['txt'] },
+      ],
+    })
+    if (!destPath) return
+    const withTitles = destPath.toLowerCase().endsWith('.md')
+    await invoke('export_project', { paths, destPath, withTitles })
+  } catch (e) {
+    console.error('导出失败:', e)
+  }
+}
+
+// ── AI ──
 
 function handleAiInsert(text: string) {
   editorRef.value?.insertAtCursor(text)

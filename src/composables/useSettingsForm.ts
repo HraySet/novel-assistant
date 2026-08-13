@@ -1,9 +1,11 @@
 import { ref, computed } from "vue";
 import { useSettingsStore } from "../stores/settings";
+import { useStatsStore } from "../stores/stats";
 import { buildAiHeaders } from "./useAiApi";
 
 export function useSettingsForm() {
   const store = useSettingsStore();
+  const stats = useStatsStore();
 
   const testing = ref(false);
   const fetching = ref(false);
@@ -42,13 +44,17 @@ export function useSettingsForm() {
     fetching.value = false;
   }
 
-  const wordTargetPreset = ref(4000);
+  // 每日目标字数：直接绑定 stats store，编辑器底栏同步显示
+  const wordTargetPreset = computed({
+    get: () => stats.dailyGoal,
+    set: (v: number) => stats.setDailyGoal(v),
+  });
   const customTarget = ref("");
 
-  function setWordTarget(n: number) { wordTargetPreset.value = n; }
+  function setWordTarget(n: number) { stats.setDailyGoal(n); }
   function setCustomTarget() {
     const v = parseInt(customTarget.value) || 0;
-    if (v > 0) setWordTarget(v);
+    if (v > 0) stats.setDailyGoal(v);
     customTarget.value = "";
   }
 

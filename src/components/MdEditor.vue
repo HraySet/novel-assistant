@@ -11,7 +11,24 @@
       <span>Markdown</span>
       <span class="mx-1">·</span>
       <span :class="savedClass">{{ savedText }}</span>
+
+      <div class="flex-1"></div>
+
+      <!-- 写作统计（整合进编辑区底部） -->
+      <span class="stat">{{ todayWords }} / {{ dailyGoal }} 字</span>
+      <span class="stat-progress" :title="`今日目标进度 ${todayGoalPercent}%`">
+        <span class="stat-progress-fill" :class="{ met: todayGoalMet }" :style="{ width: todayGoalPercent + '%' }"></span>
+      </span>
+      <span v-if="streakDays > 0" class="stat" title="连续写作天数">🔥 {{ streakDays }}</span>
+      <span class="stat" title="本次写作时长">⏱ {{ sessionFormatted }}</span>
+      <button class="stat-btn" :title="session.isRunning ? '暂停计时' : '开始计时'" @click="stats.toggleSession()">
+        {{ session.isRunning ? '暂停' : '开始' }}
+      </button>
+      <button class="stat-btn" title="查看历史版本" @click="showHistory = true">历史</button>
     </div>
+
+    <HistoryModal v-if="showHistory && path" :file-path="path" :file-name="name"
+      @close="showHistory = false" @restored="handleRestored" />
   </div>
 </template>
 
@@ -22,9 +39,15 @@ import { EditorState } from '@codemirror/state'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { defaultKeymap, indentWithTab } from '@codemirror/commands'
+import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search'
+import { storeToRefs } from 'pinia'
+import { useStatsStore } from '../stores/stats'
+import HistoryModal from './HistoryModal.vue'
 
 const props = defineProps<{
   content: string
+  path?: string
+  name?: string
 }>()
 
 const emit = defineEmits<{
@@ -32,8 +55,12 @@ const emit = defineEmits<{
   save: []
 }>()
 
+const stats = useStatsStore()
+const { todayWords, dailyGoal, todayGoalPercent, todayGoalMet, streakDays, sessionFormatted, session } = storeToRefs(stats)
+
 const editorEl = ref<HTMLElement>()
 let view: EditorView | null = null
+const showHistory = ref(false)
 
 const line = ref(1)
 const isSaved = ref(true)
@@ -69,6 +96,14 @@ function flushPendingSave() {
     emit('save')
     isSaved.value = true
   }
+}
+
+function handleRestored(content: string) {
+  if (view) {
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } })
+  }
+  isSaved.value = true
+  emit('update:content', content)
 }
 
 function insertAtCursor(text: string) {
@@ -174,6 +209,9 @@ onMounted(() => {
       highlightActiveLine(),
       EditorView.lineWrapping,
       keymap.of([...defaultKeymap, indentWithTab]),
+      search({ top: true }),
+      highlightSelectionMatches(),
+      keymap.of([...searchKeymap]),
       markdown({ base: markdownLanguage }),
       EditorView.updateListener.of(update => {
         if (update.docChanged) {
@@ -226,5 +264,49 @@ watch(() => props.content, (newContent) => {
 <style scoped>
 .editor {
   min-height: 0;
+}
+
+.stat {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.stat-progress {
+  width: 60px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--color-bg-surface-hover);
+  overflow: hidden;
+  margin: 0 8px;
+}
+
+.stat-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--color-accent);
+  transition: width 0.3s ease;
+}
+
+.stat-progress-fill.met {
+  background: #34d399;
+}
+
+.stat-btn {
+  margin-left: 8px;
+  padding: 1px 10px;
+  font-size: 11px;
+  font-family: inherit;
+  border-radius: var(--radius-sm);
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.stat-btn:hover {
+  background: var(--color-accent);
+  color: var(--color-text-on-accent);
 }
 </style>

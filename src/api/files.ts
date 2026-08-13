@@ -44,6 +44,15 @@ export async function getProjectPath(): Promise<string> {
   return invoke('get_project_path')
 }
 
-export async function setProjectPath(path: string): Promise<void> {
-  return invoke('set_project_path', { path })
+export async function setProjectPath(path: string): Promise<void> {
+  return invoke('set_project_path', { path })
+}
+
+export interface BackupEntry {
+  path: string
+  timestamp: number
+}
+
+export async function listBackups(filePath: string): Promise<BackupEntry[]> {
+  return invoke('list_backups', { filePath })
 }

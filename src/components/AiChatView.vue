@@ -190,6 +190,7 @@ async function handleSend() {
   const convId = conv.id
   inputText.value = ''
   chatStore.streaming = true  // ★ 锁提到 await 之前，关竞态窗口
+  if (!conv.loaded) await chatStore.ensureLoaded(conv.id)
 
   const priorHistory = conv.messages
     .filter(m => m.content !== '')

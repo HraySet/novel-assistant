@@ -101,9 +101,10 @@ export const useStatsStore = defineStore('stats', () => {
 
   /** 打开/切换项目时调用：先落盘旧项目数据，再加载新项目 */
   async function init(root: string) {
-    if (!root) { flushPersist(); resetLocal(); return }
+    if (!root) { flushPersist(); resetLocal(); resetSession(); return }
     if (root === projectRoot.value && loaded.value) return
     flushPersist()
+    resetSession()
     projectRoot.value = root
     await load()
   }
@@ -177,7 +178,7 @@ export const useStatsStore = defineStore('stats', () => {
     if (!(chapterId in chapterSnapshots.value)) chapterSnapshots.value[chapterId] = wordCount
   }
 
-  /** 保存文件时调用：对比快照，把差值计入当日字数 */
+  /** 保存文件时调用：对比快照，只把「新增」字数计入当日（删改不减计数） */
   function recordChapterEdit(chapterId: string, newWordCount: number) {
     if (!(chapterId in chapterSnapshots.value)) {
       chapterSnapshots.value[chapterId] = newWordCount
@@ -186,14 +187,14 @@ export const useStatsStore = defineStore('stats', () => {
     const prev = chapterSnapshots.value[chapterId]
     const delta = newWordCount - prev
     chapterSnapshots.value[chapterId] = newWordCount
-    if (delta !== 0) {
+    if (delta > 0) {
       const today = todayString()
       const existing = dailyRecords.value.find(r => r.date === today)
       if (existing) {
-        existing.wordCount = Math.max(0, existing.wordCount + delta)
+        existing.wordCount += delta
         if (!existing.chaptersEdited.includes(chapterId)) existing.chaptersEdited.push(chapterId)
       } else {
-        dailyRecords.value.push({ date: today, wordCount: Math.max(0, delta), chaptersEdited: [chapterId] })
+        dailyRecords.value.push({ date: today, wordCount: delta, chaptersEdited: [chapterId] })
       }
     }
   }

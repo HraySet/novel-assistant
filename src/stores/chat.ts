@@ -16,6 +16,8 @@ export interface ChatConversation {
   createdAt: string
   updatedAt: string
   fileContext?: string // 发起对话时的文件路径
+  /** messages 是否已从磁盘加载（懒加载标记） */
+  loaded?: boolean
 }
 
 const CHAT_DIR = '.chatlog'
@@ -67,7 +69,7 @@ export const useChatStore = defineStore('chat', () => {
   async function saveConversation(id: string) {
     if (!projectRoot.value) return
     const conv = conversations.value.find(c => c.id === id)
-    if (!conv) return
+    if (!conv || !conv.loaded) return
     try {
       await ensureChatDir()
       await api.writeFile(convPath(projectRoot.value, id), JSON.stringify(conv))
@@ -95,17 +97,35 @@ export const useChatStore = defineStore('chat', () => {
       const raw = await api.readFile(indexPath(root))
       const idx = JSON.parse(raw)
       if (!Array.isArray(idx)) return
-      // 加载每个对话的详细数据
-      const loaded: ChatConversation[] = []
-      for (const item of idx) {
-        try {
-          const rawConv = await api.readFile(convPath(root, item.id))
-          loaded.push(JSON.parse(rawConv))
-        } catch { loaded.push({ ...item, messages: [] }) }
+      // 只加载标题元信息，messages 按需懒加载
+      conversations.value = idx.map((item: any) => ({
+        id: item.id,
+        title: item.title || '对话',
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        fileContext: item.fileContext,
+        messages: [],
+        loaded: false,
+      }))
+      if (conversations.value.length > 0) {
+        activeId.value = conversations.value[0].id
+        await ensureLoaded(activeId.value)
       }
-      conversations.value = loaded
-      if (loaded.length > 0) activeId.value = loaded[0].id
     } catch { /* 没有历史对话 */ }
+  }
+
+  /** 懒加载：按需从磁盘读取指定对话的 messages */
+  async function ensureLoaded(id: string) {
+    const conv = conversations.value.find(c => c.id === id)
+    if (!conv || conv.loaded) return
+    try {
+      const raw = await api.readFile(convPath(projectRoot.value, id))
+      const data = JSON.parse(raw) as ChatConversation
+      conv.messages = Array.isArray(data.messages) ? data.messages : []
+    } catch {
+      conv.messages = []
+    }
+    conv.loaded = true
   }
 
   function createConversation(title?: string, fileContext?: string) {
@@ -117,6 +137,7 @@ export const useChatStore = defineStore('chat', () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       fileContext,
+      loaded: true,
     }
     conversations.value = [conv, ...conversations.value]
     activeId.value = id
@@ -129,12 +150,14 @@ export const useChatStore = defineStore('chat', () => {
     conversations.value = conversations.value.filter(c => c.id !== id)
     if (activeId.value === id) {
       activeId.value = conversations.value[0]?.id ?? null
+      if (activeId.value) ensureLoaded(activeId.value)
     }
     saveIndex()
   }
 
   function switchConversation(id: string) {
     activeId.value = id
+    ensureLoaded(id)
   }
 
   function addMessage(convId: string, msg: ChatMessage) {
@@ -164,6 +187,7 @@ export const useChatStore = defineStore('chat', () => {
     createAbortController,
     activeConversation,
     loadConversations,
+    ensureLoaded,
     createConversation,
     deleteConversation,
     switchConversation,

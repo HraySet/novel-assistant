@@ -1,24 +1,45 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
 import type { ProjectEntry } from '../types/project'
 
-const INDEX_PATH = 'project-index.json'
+// 旧版本用 localStorage 存的 key，仅用于一次性迁移
+const LEGACY_INDEX_KEY = 'project-index.json'
 
 export const useProjectStore = defineStore('project', () => {
   const projects = ref<ProjectEntry[]>([])
   const currentProject = ref<ProjectEntry | null>(null)
 
   async function loadIndex() {
-    // TODO: 从 Rust 配置目录读取索引
-    const stored = localStorage.getItem(INDEX_PATH)
-    if (stored) {
-      projects.value = JSON.parse(stored)
-    }
+    // 优先从 Rust 配置目录读取
+    try {
+      const stored = await invoke<ProjectEntry[]>('get_project_index')
+      if (Array.isArray(stored) && stored.length > 0) {
+        projects.value = stored
+        return
+      }
+    } catch { /* 读不到则回退到迁移 */ }
+
+    // 一次性迁移旧的 localStorage 数据
+    try {
+      const legacy = localStorage.getItem(LEGACY_INDEX_KEY)
+      if (legacy) {
+        const parsed = JSON.parse(legacy)
+        if (Array.isArray(parsed)) {
+          projects.value = parsed
+          await saveIndex()
+          localStorage.removeItem(LEGACY_INDEX_KEY)
+        }
+      }
+    } catch { /* 迁移失败不阻塞 */ }
   }
 
   async function saveIndex() {
-    // TODO: 写到 Rust 配置目录
-    localStorage.setItem(INDEX_PATH, JSON.stringify(projects.value))
+    try {
+      await invoke('save_project_index', { index: projects.value })
+    } catch (e) {
+      console.error('保存项目索引失败:', e)
+    }
   }
 
   function addProject(project: ProjectEntry) {

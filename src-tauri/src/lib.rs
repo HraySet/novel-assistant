@@ -27,6 +27,13 @@ pub struct DirEntry {
     pub word_count: Option<usize>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupEntry {
+    pub path: String,
+    pub timestamp: u64,
+}
+
 // ── Helpers ──
 
 fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -445,6 +452,79 @@ fn save_ai_config(app: tauri::AppHandle, ai_config: serde_json::Value) -> Result
     write_config(&app, &config)
 }
 
+// ── Project Index ──
+
+#[tauri::command]
+fn get_project_index(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let config = read_config(&app)?;
+    Ok(config.get("project_index").cloned().unwrap_or(serde_json::json!([])))
+}
+
+#[tauri::command]
+fn save_project_index(app: tauri::AppHandle, index: serde_json::Value) -> Result<(), String> {
+    let mut config = read_config(&app)?;
+    config["project_index"] = index;
+    write_config(&app, &config)
+}
+
+// ── Export ──
+
+#[tauri::command]
+fn export_project(paths: Vec<String>, dest_path: String, with_titles: bool) -> Result<(), String> {
+    let mut out = String::new();
+    for (i, p) in paths.iter().enumerate() {
+        let content = fs::read_to_string(p).map_err(|e| format!("读取失败 {}: {}", p, e))?;
+        if with_titles {
+            let name = Path::new(p)
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            out.push_str(&format!("# {}\n\n", name));
+        }
+        out.push_str(&content);
+        if i + 1 < paths.len() {
+            out.push_str("\n\n");
+        }
+    }
+    if let Some(parent) = Path::new(&dest_path).parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    fs::write(&dest_path, out).map_err(|e| e.to_string())
+}
+
+// ── Backups ──
+
+/// 列出指定文件的备份历史（按时间倒序，最新在前）
+#[tauri::command]
+fn list_backups(file_path: String) -> Result<Vec<BackupEntry>, String> {
+    let path = Path::new(&file_path);
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let backup_dir = parent.join(".backups");
+    if !backup_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+    let suffix = format!("_{}", filename);
+    let mut backups: Vec<BackupEntry> = Vec::new();
+
+    for entry in fs::read_dir(&backup_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.ends_with(&suffix) {
+            let timestamp = name.split('_').next().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            backups.push(BackupEntry {
+                path: entry.path().to_string_lossy().to_string(),
+                timestamp,
+            });
+        }
+    }
+
+    backups.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+    Ok(backups)
+}
+
 // ── Entry ──
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -468,6 +548,10 @@ pub fn run() {
             rename_path,
             get_ai_config,
             save_ai_config,
+            get_project_index,
+            save_project_index,
+            export_project,
+            list_backups,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

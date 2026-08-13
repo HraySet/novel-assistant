@@ -1,6 +1,7 @@
 import { ref, type Ref } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { useFileStore } from '../stores/file'
+import { useStatsStore } from '../stores/stats'
 import type { ProjectEntry } from '../types/project'
 import { pickCoverColor } from '../types/project'
 import * as api from '../api/files'
@@ -12,6 +13,7 @@ export function useProjectOperations(opts: {
 }) {
   const projectStore = useProjectStore()
   const fileStore = useFileStore()
+  const statsStore = useStatsStore()
 
   const showNewProjectDialog = ref(false)
   const newProjectPath = ref('')
@@ -33,6 +35,7 @@ export function useProjectOperations(opts: {
     try {
       await api.setProjectPath(project.path)
       await loadFileTree()
+      await statsStore.init(project.path)
     } catch (e) {
       console.error('打开项目失败:', e)
     }

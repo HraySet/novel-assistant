@@ -218,21 +218,64 @@ fn list_entries(dir_path: &Path, cache: &WordCountCache) -> Result<Vec<DirEntry>
     Ok(entries)
 }
 
+/// 同名文件在备份目录里最多保留的备份份数
+const MAX_BACKUPS_PER_FILE: usize = 20;
+
+/// 路径中是否含隐藏组件（.stats / .chatlog / .backups 等元数据目录）
+fn has_hidden_component(path: &Path) -> bool {
+    path.components().any(|c| {
+        let s = c.as_os_str().to_string_lossy();
+        s.starts_with('.') && s != "." && s != ".."
+    })
+}
+
 fn backup_file(filepath: &Path) -> Result<(), String> {
     if !filepath.exists() {
+        return Ok(());
+    }
+    // 元数据目录（统计、聊天记录等）无需备份，避免堆积
+    if has_hidden_component(filepath) {
         return Ok(());
     }
     let parent = filepath.parent().unwrap_or(Path::new("."));
     let backup_dir = parent.join(".backups");
     fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
 
-    let filename = filepath.file_name().unwrap_or_default().to_string_lossy();
+    let filename = filepath.file_name().unwrap_or_default().to_string_lossy().to_string();
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
     let backup_path = backup_dir.join(format!("{}_{}", ts, filename));
     fs::copy(filepath, &backup_path).map_err(|e| e.to_string())?;
+
+    prune_backups(&backup_dir, &filename)?;
+    Ok(())
+}
+
+/// 清理旧备份：同名文件只保留最近 MAX_BACKUPS_PER_FILE 份，超出部分删除
+fn prune_backups(backup_dir: &Path, filename: &str) -> Result<(), String> {
+    let suffix = format!("_{}", filename);
+    let mut backups: Vec<PathBuf> = Vec::new();
+    for entry in fs::read_dir(backup_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.ends_with(&suffix) {
+            backups.push(entry.path());
+        }
+    }
+    if backups.len() <= MAX_BACKUPS_PER_FILE {
+        return Ok(());
+    }
+    // 文件名格式 {ts}_{filename}，按时间戳升序，最旧的在前面
+    backups.sort_by_key(|p| {
+        let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+        name.split('_').next().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0)
+    });
+    let remove_count = backups.len() - MAX_BACKUPS_PER_FILE;
+    for old in backups.iter().take(remove_count) {
+        fs::remove_file(old).ok();
+    }
     Ok(())
 }
 
@@ -406,9 +449,12 @@ fn save_ai_config(app: tauri::AppHandle, ai_config: serde_json::Value) -> Result
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .manage(WordCountCache::default())
+    tauri::Builder::default()
+
+        .plugin(tauri_plugin_dialog::init())
+
+        .manage(WordCountCache::default())
+
         .invoke_handler(tauri::generate_handler![
             get_project_path,
             set_project_path,

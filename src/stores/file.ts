@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as api from '../api/files'
 import type { FileNode, OpenFile, ContextMenuState, DraftState } from '../types/file'
+import { useStatsStore } from './stats'
+import { countWords } from '../utils/countWords'
 
 const EXPANDED_STORAGE_PREFIX = 'file-tree-expanded:'
 const FAVORITES_STORAGE_PREFIX = 'file-favorites:'
@@ -58,6 +60,8 @@ function getExpandedStorageKey(projectPath: string) {
 }
 
 export const useFileStore = defineStore('file', () => {
+  const stats = useStatsStore()
+
   // ── Core state ──
   const tree = ref<FileNode[]>([])
   const openFile = ref<OpenFile | null>(null)
@@ -410,6 +414,7 @@ export const useFileStore = defineStore('file', () => {
       const content = await api.readFile(path)
       const name = path.split(/[/\\]/).pop() || path
       setOpenFile({ path, name, content, isDirty: false })
+      stats.syncChapterSnapshot(path, countWords(content))
     } catch (e) {
       console.error('读取文件失败:', e)
     }
@@ -437,6 +442,7 @@ export const useFileStore = defineStore('file', () => {
     try {
       await api.writeFile(openFile.value.path, openFile.value.content)
       updateActiveFile({ isDirty: false })
+      stats.recordChapterEdit(openFile.value.path, countWords(openFile.value.content))
       return true
     } catch (e) {
       console.error('保存失败:', e)
@@ -459,6 +465,7 @@ export const useFileStore = defineStore('file', () => {
           openFiles.value[idx] = { ...openFiles.value[idx], isDirty: false }
         }
       }
+      stats.recordChapterEdit(path, countWords(file.content))
       return true
     } catch (e) {
       console.error('保存文件失败:', e)

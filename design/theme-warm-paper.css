@@ -1,0 +1,63 @@
+/* ==========================================================================
+   主题：米白纸感（方向 A）
+   用法：<html data-theme="warm-paper"> 或直接挂在 :root 作为默认主题
+   以后新增主题：复制一份，改选择器为 [data-theme="xxx"]，改变量值即可，
+   组件代码不需要任何改动。
+   ========================================================================== */
+
+:root,
+[data-theme="warm-paper"] {
+  /* ---- 背景层级 ---- */
+  --color-bg-page: #faf6ee;        /* 编辑器主背景 */
+  --color-bg-surface: #f2ece1;     /* 文件树 / AI 面板背景 */
+  --color-bg-surface-hover: #ebe3d4;
+  --color-bg-elevated: #fefcf7;    /* 弹窗、设置面板（略暖于 page） */
+
+  /* ---- 边框 ---- */
+  --color-border: #e3d9c8;         /* 默认分隔线 */
+  --color-border-strong: #d3c4ab;  /* hover / focus 边框 */
+
+  /* ---- 文字 ---- */
+  --color-text-primary: #4a4032;    /* 正文 */
+  --color-text-secondary: #8a7d68;  /* 次要文字，如文件树未激活项 */
+  --color-text-muted: #b0a48f;      /* 占位符、提示 */
+  --color-text-on-accent: #faf6ee;  /* 强调色背景上的文字 */
+
+  /* ---- 强调色：赭石 ---- */
+  --color-accent: #b5652f;
+  --color-accent-hover: #9c5527;
+  --color-accent-bg: #f5e4d5;       /* 强调色浅底，用于标签/当前文件高亮 */
+  --color-accent-border: #dba876;
+
+  /* ---- 语义色（低饱和度，贴合暖色基调，不要用鲜艳的红绿蓝） ---- */
+  --color-success: #6b8e5a;         /* 已保存 ✓ */
+  --color-success-bg: #e9efe3;
+  --color-danger: #a13f35;          /* 删除确认 */
+  --color-danger-bg: #f5e6e2;
+  --color-warning: #c08a2e;         /* 未保存提示 */
+  --color-warning-bg: #f7ecd8;
+
+  /* ---- 字体 ---- */
+  --font-sans: "PingFang SC", -apple-system, "Helvetica Neue", "Segoe UI", sans-serif;
+  --font-voice: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif; /* 编辑器正文 */
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;        /* 代码块 */
+
+  /* ---- 圆角 ---- */
+  --radius-sm: 4px;   /* 小控件、标签 */
+  --radius-md: 8px;   /* 按钮、输入框 */
+  --radius-lg: 12px;  /* 卡片、弹窗 */
+
+  /* ---- 阴影（极轻，暖色系不适合用重阴影） ---- */
+  --shadow-popover: 0 4px 16px rgba(74, 64, 50, 0.08), 0 1px 4px rgba(74, 64, 50, 0.06);
+
+  /* ---- 布局尺寸 ---- */
+  --width-sidebar: 240px;
+  --width-ai-panel: 320px;
+  --font-size-editor: 16px;
+}
+
+/*
+  未来暗色主题预留位——"夜间纸感"应该是暖灰底 + 暖白字，像台灯下写字。
+  可以在这里定义 [data-theme="warm-paper-dark"]，保持同一套语义色相，
+  只反转明度。
+*/

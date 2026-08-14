@@ -1,8 +1,8 @@
 [package]
-name = "app"
-version = "0.1.0"
-description = "Novel Assistant - AI-powered novel writing tool"
-authors = ["you"]
+name = "yanyan"
+version = "0.3.0"
+description = "砚砚 - AI 小说写作助手"
+authors = ["HraySet"]
 license = ""
 repository = ""
 edition = "2021"
@@ -20,3 +20,4 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-dialog = "2"
+time = { version = "0.3", features = ["formatting", "macros"] }

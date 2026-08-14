@@ -1,8 +1,9 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "novel-assistant",
-  "version": "0.1.0",
-  "identifier": "com.novelassistant.app",
+  "productName": "YanYan",
+  "version": "0.3.0",
+  "identifier": "com.yanyan.app",
+  "mainBinaryName": "yanyan",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,11 +13,12 @@
   "app": {
     "windows": [
       {
-        "title": "Novel Assistant",
+        "title": "砚砚",
         "width": 1200,
         "height": 800,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -33,6 +35,12 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "windows": {
+      "nsis": {
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

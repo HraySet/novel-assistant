@@ -1,22 +1,59 @@
 import { defineStore } from "pinia";
-import { ref, watch } from "vue";
+import { ref, computed, watch } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 
-export interface AISettings {
-  provider: "openai" | "claude" | "deepseek" | "custom";
+interface ProviderConfig {
   apiKey: string;
   model: string;
   endpoint: string;
 }
 
-function loadAISettings(): AISettings {
-  try {
-    const raw = localStorage.getItem("ai-settings");
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return { provider: "openai", apiKey: "", model: "gpt-4o", endpoint: "https://api.openai.com/v1" };
+interface AllAIConfig {
+  activeProvider: string;
+  configs: Record<string, ProviderConfig>;
 }
 
-function saveAISettings(s: AISettings) { localStorage.setItem("ai-settings", JSON.stringify(s)); }
+const DEFAULT_AI_CONFIGS: Record<string, ProviderConfig> = {
+  openai: { apiKey: "", model: "gpt-4o", endpoint: "https://api.openai.com/v1" },
+  claude: { apiKey: "", model: "claude-sonnet-4-20250514", endpoint: "https://api.anthropic.com/v1" },
+  deepseek: { apiKey: "", model: "deepseek-chat", endpoint: "https://api.deepseek.com/v1" },
+};
+
+async function loadAISettings(): Promise<AllAIConfig> {
+  try {
+    const raw = await invoke<Record<string, unknown> | null>("get_ai_config");
+    if (raw && typeof raw === "object") {
+      const rawObj = raw as Record<string, unknown>;
+      if (rawObj.configs && typeof rawObj.configs === "object") {
+        return {
+          activeProvider: (rawObj.activeProvider as string) || "openai",
+          configs: { ...DEFAULT_AI_CONFIGS, ...(rawObj.configs as Record<string, ProviderConfig>) },
+        };
+      }
+      // 兼容旧格式：单个 provider
+      if (rawObj.provider) {
+        return {
+          activeProvider: rawObj.provider as string,
+          configs: {
+            ...DEFAULT_AI_CONFIGS,
+            [rawObj.provider as string]: {
+              apiKey: (rawObj.apiKey as string) || "",
+              model: (rawObj.model as string) || DEFAULT_AI_CONFIGS[rawObj.provider as string]?.model || "",
+              endpoint: (rawObj.endpoint as string) || DEFAULT_AI_CONFIGS[rawObj.provider as string]?.endpoint || "",
+            },
+          },
+        };
+      }
+    }
+  } catch { /* fall through to defaults */ }
+  return { activeProvider: "openai", configs: { ...DEFAULT_AI_CONFIGS } };
+}
+
+async function saveAISettings(config: AllAIConfig) {
+  try {
+    await invoke("save_ai_config", { aiConfig: config });
+  } catch (e) { console.error("Failed to save AI config:", e); }
+}
 
 function loadTheme() {
   try { const raw = localStorage.getItem("theme-settings"); if (raw) return JSON.parse(raw); } catch {}
@@ -33,42 +70,48 @@ export const useSettingsStore = defineStore("settings", () => {
   const bgColor = ref(savedTheme.bgColor);
   const themeDark = ref(savedTheme.themeDark);
 
-  const aiProvider = ref<AISettings["provider"]>("openai");
-  const aiApiKey = ref("");
-  const aiModel = ref("gpt-4o");
-  const aiEndpoint = ref("https://api.openai.com/v1");
+  const aiConfigs = ref<Record<string, ProviderConfig>>({ ...DEFAULT_AI_CONFIGS });
+  const aiProvider = ref<"openai" | "claude" | "deepseek">("openai");
 
-  const bookTitle = ref(localStorage.getItem("book-title") || "");
-  const bookDesc = ref(localStorage.getItem("book-desc") || "");
-  const projectDir = ref(localStorage.getItem("project-dir") || "");
+  // 每个服务商独立配置，通过 computed 代理当前选中服务商的字段
+  const aiApiKey = computed({
+    get: () => aiConfigs.value[aiProvider.value]?.apiKey ?? "",
+    set: (v) => { if (aiConfigs.value[aiProvider.value]) aiConfigs.value[aiProvider.value].apiKey = v; },
+  });
+  const aiModel = computed({
+    get: () => aiConfigs.value[aiProvider.value]?.model ?? "",
+    set: (v) => { if (aiConfigs.value[aiProvider.value]) aiConfigs.value[aiProvider.value].model = v; },
+  });
+  const aiEndpoint = computed({
+    get: () => aiConfigs.value[aiProvider.value]?.endpoint ?? "",
+    set: (v) => { if (aiConfigs.value[aiProvider.value]) aiConfigs.value[aiProvider.value].endpoint = v; },
+  });
 
   const editorFontSize = ref(localStorage.getItem("editor_font_size") || "中");
   const typewriterMode = ref(localStorage.getItem("editor_typewriter") === "1");
   const focusLineMode = ref(localStorage.getItem("editor_focusline") === "1");
-  const layoutMode = ref((localStorage.getItem("layout_mode") || "compact") as "compact" | "classic" | "focus");
 
-  const saved = loadAISettings();
-  aiProvider.value = saved.provider;
-  aiApiKey.value = saved.apiKey;
-  aiModel.value = saved.model;
-  aiEndpoint.value = saved.endpoint;
+  // Async init for AI settings from secure backend storage
+  let aiInitialized = false;
+  async function initAISettings() {
+    if (aiInitialized) return;
+    aiInitialized = true;
+    const saved = await loadAISettings();
+    aiConfigs.value = { ...DEFAULT_AI_CONFIGS, ...saved.configs };
+    aiProvider.value = (saved.activeProvider as "openai" | "claude" | "deepseek") || "openai";
+  }
+  initAISettings();
 
-  function setBookTitle(title: string) { bookTitle.value = title; localStorage.setItem("book-title", title); }
-  function setBookDesc(desc: string) { bookDesc.value = desc; localStorage.setItem("book-desc", desc); }
-  function setProjectDir(path: string) { projectDir.value = path; localStorage.setItem("project-dir", path); }
   function setEditorFontSize(s: string) { editorFontSize.value = s; localStorage.setItem("editor_font_size", s); }
   function toggleTypewriter() { typewriterMode.value = !typewriterMode.value; localStorage.setItem("editor_typewriter", typewriterMode.value ? "1" : "0"); }
   function toggleFocusLine() { focusLineMode.value = !focusLineMode.value; localStorage.setItem("editor_focusline", focusLineMode.value ? "1" : "0"); }
-  function setLayoutMode(mode: "compact" | "classic" | "focus") { layoutMode.value = mode; localStorage.setItem("layout_mode", mode); }
 
   function applyPreset(preset: "openai" | "claude" | "deepseek") {
-    if (preset === "openai") { aiProvider.value = "openai"; aiModel.value = "gpt-4o"; aiEndpoint.value = "https://api.openai.com/v1"; }
-    else if (preset === "claude") { aiProvider.value = "claude"; aiModel.value = "claude-sonnet-4-20250514"; aiEndpoint.value = "https://api.anthropic.com/v1"; }
-    else { aiProvider.value = "deepseek"; aiModel.value = "deepseek-chat"; aiEndpoint.value = "https://api.deepseek.com/v1"; }
+    aiProvider.value = preset;
   }
 
-  watch([aiProvider, aiApiKey, aiModel, aiEndpoint], () => {
-    saveAISettings({ provider: aiProvider.value, apiKey: aiApiKey.value, model: aiModel.value, endpoint: aiEndpoint.value });
+  watch([aiConfigs, aiProvider], () => {
+    saveAISettings({ activeProvider: aiProvider.value, configs: aiConfigs.value });
   }, { deep: true });
 
   const colorPresets = [
@@ -91,12 +134,10 @@ export const useSettingsStore = defineStore("settings", () => {
 
   return {
     accentColor, bgColor, themeDark,
-    bookTitle, bookDesc, projectDir,
     aiProvider, aiApiKey, aiModel, aiEndpoint,
     colorPresets,
-    editorFontSize, typewriterMode, focusLineMode, layoutMode,
-    setBookTitle, setBookDesc, setProjectDir,
-    setEditorFontSize, toggleTypewriter, toggleFocusLine, setLayoutMode,
+    editorFontSize, typewriterMode, focusLineMode,
+    setEditorFontSize, toggleTypewriter, toggleFocusLine,
     applyPreset, applyColorPreset,
   };
 });

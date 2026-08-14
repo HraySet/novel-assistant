@@ -1,58 +1,113 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* ── Scrollbar ── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.25); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.45); }
-html { scrollbar-width: auto; scrollbar-color: rgba(128,128,128,0.25) transparent; }
+/* ==========================================================================
+   默认主题：米白纸感（warm-paper）
+   暗色主题用 html[data-theme="warm-paper-dark"] 覆盖
+   ========================================================================== */
 
-/* ── 深色布局 ── */
-.dark-layout {
-  --text-main: #f3f4f6;
-  --text-dim: #9ca3af;
-  --text-faint: #6b7280;
-  --border-color: rgba(255, 255, 255, 0.08);
-  --card-bg: rgba(255, 255, 255, 0.03);
-  --card-hover: rgba(255, 255, 255, 0.06);
-  --card-active: rgba(255, 255, 255, 0.08);
-  --input-bg: rgba(255, 255, 255, 0.04);
+:root {
+  /* ---- 背景层级 ---- */
+  --color-bg-page: #faf6ee;
+  --color-bg-surface: #f2ece1;
+  --color-bg-surface-hover: #ebe3d4;
+  --color-bg-elevated: #fefcf7;
+
+  /* ---- 边框 ---- */
+  --color-border: #e3d9c8;
+  --color-border-strong: #d3c4ab;
+
+  /* ---- 文字 ---- */
+  --color-text-primary: #4a4032;
+  --color-text-secondary: #8a7d68;
+  --color-text-muted: #b0a48f;
+  --color-text-on-accent: #faf6ee;
+
+  /* ---- 强调色：赭石 ---- */
+  --color-accent: #b5652f;
+  --color-accent-hover: #9c5527;
+  --color-accent-bg: #f5e4d5;
+  --color-accent-border: #dba876;
+
+  /* ---- 语义色 ---- */
+  --color-success: #6b8e5a;
+  --color-success-bg: #e9efe3;
+  --color-danger: #a13f35;
+  --color-danger-bg: #f5e6e2;
+  --color-danger-border: #d4a5a0;
+  --color-warning: #c08a2e;
+  --color-warning-bg: #f7ecd8;
+
+  /* ---- 字体 ---- */
+  --font-sans: "PingFang SC", -apple-system, "Helvetica Neue", "Segoe UI", sans-serif;
+  --font-voice: "Noto Serif SC", "Source Han Serif SC", "Songti SC", serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+
+  /* ---- 圆角 ---- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* ---- 阴影 ---- */
+  --shadow-popover: 0 4px 16px rgba(74, 64, 50, 0.08), 0 1px 4px rgba(74, 64, 50, 0.06);
+
+  /* ---- 布局 ---- */
+  --width-sidebar: 240px;
+  --width-ai-panel: 320px;
+  --font-size-editor: 16px;
 }
 
-/* ── 浅色布局（提升对比度，符合 WCAG AA） ── */
-.light-layout {
-  --text-main: #0f172a;        /* slate-900, 原 #1f2937 太暗 */
-  --text-dim: #475569;          /* slate-600, 原 #6b7280 */
-  --text-faint: #64748b;        /* slate-500, 原 #9ca3af */
-  --border-color: rgba(0, 0, 0, 0.10);
-  --card-bg: rgba(0, 0, 0, 0.03);
-  --card-hover: rgba(0, 0, 0, 0.05);
-  --card-active: rgba(0, 0, 0, 0.07);
-  --input-bg: rgba(0, 0, 0, 0.03);
+/* 暖纸暗色（台灯下写字的感觉——暖灰底 + 暖白字） */
+html[data-theme="warm-paper-dark"] {
+  --color-bg-page: #2a2420;
+  --color-bg-surface: #332d28;
+  --color-bg-surface-hover: #3d3630;
+  --color-bg-elevated: #3a332e;
+
+  --color-border: #4a3f38;
+  --color-border-strong: #5c5048;
+
+  --color-text-primary: #e5d9c8;
+  --color-text-secondary: #b0a392;
+  --color-text-muted: #7a6f62;
+  --color-text-on-accent: #2a2420;
+
+  --color-accent: #d48a5c;
+  --color-accent-hover: #e09e76;
+  --color-accent-bg: #3d3228;
+  --color-accent-border: #6b4a35;
+
+  --color-success: #7a9e6a;
+  --color-success-bg: #2e3528;
+  --color-danger: #c45a50;
+  --color-danger-bg: #352828;
+  --color-danger-border: #6b3a3a;
+  --color-warning: #d4a040;
+  --color-warning-bg: #353028;
+
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.2), 0 1px 4px rgba(0, 0, 0, 0.15);
 }
 
-/* ── 全局应用 ── */
-.dark-layout, .light-layout {
-  color: var(--text-main);
+/* ---- 全局重置 ---- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-/* ── Placeholder ── */
-.dark-layout ::placeholder { color: rgba(255,255,255,0.35) !important; }
-.light-layout ::placeholder { color: rgba(0,0,0,0.35) !important; }
-
-/* ── 可点击元素全局样式 ── */
-button, [role="button"], .clickable {
-  cursor: pointer;
-  transition: all 200ms ease;
+html, body, #app {
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── 卡片悬停 ── */
-.card-hover {
-  cursor: pointer;
-  transition: border-color 200ms ease, background-color 200ms ease;
-}
-
-/* ── 专注模式过渡 ── */
-.focus-transition {
-  transition: width 300ms ease, opacity 300ms ease;
+body {
+  overflow: hidden;
 }

@@ -21,8 +21,6 @@
 </template>
 
 <script setup lang="ts">
-import { NIcon } from "naive-ui";
-
 defineProps<{
   icon: unknown;
   label: string;

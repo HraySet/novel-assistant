@@ -6,7 +6,7 @@
       :style="{ backgroundColor: 'var(--surface-accent)' }"
     >
       <template v-if="typeof icon === 'string'">{{ icon }}</template>
-      <n-icon v-else size="22"><component :is="icon" /></n-icon>
+      <component :is="icon" v-else />
     </div>
     <div>
       <p :style="{ color: 'var(--text-secondary)' }" class="text-sm font-medium mb-1">{{ title }}</p>
@@ -25,8 +25,6 @@
 </template>
 
 <script setup lang="ts">
-import { NIcon } from "naive-ui";
-
 defineProps<{
   /** emoji 字符串或 ionicons 组件 */
   icon: string | object;

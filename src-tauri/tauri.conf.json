@@ -1,8 +1,9 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Novel Assistant",
-  "version": "0.2.0",
-  "identifier": "com.novelassistant.app",
+  "productName": "YanYan",
+  "version": "0.3.0",
+  "identifier": "com.yanyan.app",
+  "mainBinaryName": "yanyan",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +13,7 @@
   "app": {
     "windows": [
       {
-        "title": "小说助手",
+        "title": "砚砚",
         "width": 1200,
         "height": 800,
         "resizable": true,

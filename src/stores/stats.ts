@@ -18,6 +18,8 @@ interface StatsData {
   records: DailyRecord[]
   snapshots: Record<string, number>
   goal: number
+  todaySessionMs: number
+  sessionDate: string
 }
 
 const STATS_DIR = '.stats'
@@ -36,6 +38,8 @@ export const useStatsStore = defineStore('stats', () => {
   const dailyGoal = ref(4000)
   const projectRoot = ref('')
   const loaded = ref(false)
+  const todaySessionMs = ref(0)
+  const sessionDate = ref(todayString())
 
   const session = ref<WritingSession>({ startTime: 0, elapsedMs: 0, isRunning: false })
   let sessionTimer: ReturnType<typeof setInterval> | null = null
@@ -56,6 +60,8 @@ export const useStatsStore = defineStore('stats', () => {
       records: dailyRecords.value,
       snapshots: chapterSnapshots.value,
       goal: dailyGoal.value,
+      todaySessionMs: todaySessionMs.value,
+      sessionDate: sessionDate.value,
     }
     try {
       await api.writeFile(statsPath(), JSON.stringify(data, null, 2))
@@ -82,6 +88,8 @@ export const useStatsStore = defineStore('stats', () => {
     dailyRecords.value = []
     chapterSnapshots.value = {}
     dailyGoal.value = 4000
+    todaySessionMs.value = 0
+    sessionDate.value = todayString()
     loaded.value = false
   }
 
@@ -93,6 +101,13 @@ export const useStatsStore = defineStore('stats', () => {
       dailyRecords.value = Array.isArray(data.records) ? data.records : []
       chapterSnapshots.value = data.snapshots && typeof data.snapshots === 'object' ? data.snapshots : {}
       dailyGoal.value = typeof data.goal === 'number' ? data.goal : 4000
+      // 今日写作时长：跨天归零
+      if (data.sessionDate === todayString()) {
+        todaySessionMs.value = typeof data.todaySessionMs === 'number' ? data.todaySessionMs : 0
+      } else {
+        todaySessionMs.value = 0
+        sessionDate.value = todayString()
+      }
     } catch {
       resetLocal()
     }
@@ -101,10 +116,10 @@ export const useStatsStore = defineStore('stats', () => {
 
   /** 打开/切换项目时调用：先落盘旧项目数据，再加载新项目 */
   async function init(root: string) {
-    if (!root) { flushPersist(); resetLocal(); resetSession(); return }
+    if (!root) { resetSession(); flushPersist(); resetLocal(); return }
     if (root === projectRoot.value && loaded.value) return
-    flushPersist()
     resetSession()
+    flushPersist()
     projectRoot.value = root
     await load()
   }
@@ -161,7 +176,9 @@ export const useStatsStore = defineStore('stats', () => {
   })
 
   const sessionFormatted = computed(() => {
-    const ms = sessionElapsed.value
+    void _tick.value
+    let ms = todaySessionMs.value
+    if (session.value.isRunning) ms += Date.now() - session.value.startTime
     const hours = Math.floor(ms / 3600000)
     const minutes = Math.floor((ms % 3600000) / 60000)
     if (hours > 0) return `${hours}小时${minutes}分`
@@ -211,13 +228,19 @@ export const useStatsStore = defineStore('stats', () => {
 
   function pauseSession() {
     if (!session.value.isRunning) return
-    session.value.elapsedMs += Date.now() - session.value.startTime
+    const delta = Date.now() - session.value.startTime
+    session.value.elapsedMs += delta
+    todaySessionMs.value += delta
     session.value.isRunning = false
     if (sessionTimer) { clearInterval(sessionTimer); sessionTimer = null }
+    schedulePersist()
   }
 
   function resetSession() {
     if (sessionTimer) { clearInterval(sessionTimer); sessionTimer = null }
+    if (session.value.isRunning) {
+      todaySessionMs.value += Date.now() - session.value.startTime
+    }
     session.value = { startTime: 0, elapsedMs: 0, isRunning: false }
   }
 

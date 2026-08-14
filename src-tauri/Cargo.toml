@@ -1,8 +1,8 @@
 [package]
-name = "app"
-version = "0.1.0"
-description = "Novel Assistant - AI-powered novel writing tool"
-authors = ["you"]
+name = "yanyan"
+version = "0.3.0"
+description = "砚砚 - AI 小说写作助手"
+authors = ["HraySet"]
 license = ""
 repository = ""
 edition = "2021"

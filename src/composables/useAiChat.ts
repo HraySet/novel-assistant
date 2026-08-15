@@ -143,7 +143,7 @@ export function useAiChat(target: AiChatTarget) {
 
   // ── 统一上下文 ──
 
-  const { build: buildContext, contextLabel } = useAiContext(
+  const { build: buildContext, contextLabel, contextCounts } = useAiContext(
     () => target.projectRoot(),
     () => target.activeFile()?.path,
     () => {
@@ -306,6 +306,7 @@ export function useAiChat(target: AiChatTarget) {
     loading,
     showKeyHint,
     contextLabel,
+    contextCounts,
     appliedIndex,
     savedIndex,
     insertedIndex,

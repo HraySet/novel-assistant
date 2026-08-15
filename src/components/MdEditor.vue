@@ -19,7 +19,7 @@
     <!-- 编辑器容器 -->
     <div ref="editorEl" class="flex-1 overflow-y-auto" />
 
-    <!-- 划词工具条：选区上方浮现，与侧栏快捷操作联动 -->
+    <!-- 划词菜单：选中文字后右键弹出，与侧栏快捷操作联动 -->
     <div v-if="selBar" class="sel-toolbar" :style="{ left: selBar.left + 'px', top: selBar.top + 'px' }" @mousedown.prevent>
       <span class="sel-count">已选中 {{ selection?.words ?? 0 }} 字</span>
       <span class="sel-divider" />
@@ -348,30 +348,38 @@ function insertIfNotDuplicate(text: string): boolean {
 
 // ── 划词联动：选区跟踪、浮动工具条、选区替换 ──
 
-/** 把当前选区写入共享 store（无选区则清空），并同步工具条位置 */
+/** 把当前选区写入共享 store（无选区则清空）；选区一旦变化就收起右键菜单 */
 function trackSelection() {
   if (!view) return
   const sel = view.state.selection.main
   const text = sel.empty ? '' : view.state.doc.sliceString(sel.from, sel.to)
   if (text) selectionStore.setSelection(props.path ?? '', sel.from, sel.to, text)
   else selectionStore.clearSelection()
-  updateSelBar()
+  hideSelMenu()
 }
 
-/** 工具条定位在选区上方（viewport 坐标 → position: fixed） */
-function updateSelBar() {
-  if (!view) { selBar.value = null; return }
-  const sel = view.state.selection.main
-  const storeSel = selectionStore.selection
-  if (sel.empty || !storeSel || storeSel.path !== (props.path ?? '')) { selBar.value = null; return }
-  const from = view.coordsAtPos(sel.from)
-  if (!from) { selBar.value = null; return }
-  selBar.value = { left: Math.max(8, Math.round(from.left)), top: Math.max(4, Math.round(from.top - 42)) }
+/** 右键菜单：显示在鼠标位置（contextmenu 时调用，viewport 坐标 → position: fixed） */
+function showSelMenu(x: number, y: number) {
+  const sel = selectionStore.selection
+  if (!sel || !view) return
+  const menuW = 280
+  const menuH = 48
+  selBar.value = {
+    left: Math.max(8, Math.min(Math.round(x), window.innerWidth - menuW - 8)),
+    top: Math.max(8, Math.min(Math.round(y), window.innerHeight - menuH - 8)),
+  }
+}
+
+/** 收起右键菜单（选区变化/滚动/点击别处/Esc 时） */
+function hideSelMenu() {
+  selBar.value = null
+  selMoreOpen.value = false
 }
 
 /** 划词工具条动作：把动作写入 store，由 AI 面板消费执行 */
 function runSelAction(label: string) {
   selMoreOpen.value = false
+  selBar.value = null
   const sel = selectionStore.selection
   if (!sel || !view) return
   const action = QUICK_ACTIONS.find((a) => a.label === label)
@@ -573,12 +581,12 @@ const baseExtensions = [
     if (update.viewportChanged) {
       updateScrollPercent()
     }
-    // 划词跟踪：选区变化写入共享 store，并同步浮动工具条
+    // 划词跟踪：选区变化写入共享 store；菜单随选区/滚动变化收起
     if (update.selectionSet || update.docChanged) {
       trackSelection()
     }
     if (update.viewportChanged || update.geometryChanged) {
-      updateSelBar()
+      hideSelMenu()
     }
   }),
   EditorView.domEventHandlers({
@@ -590,6 +598,21 @@ const baseExtensions = [
         isSaved.value = true
         lastSavedTime.value = new Date()
       }
+      // Esc 收起划词右键菜单
+      if (e.key === 'Escape' && selBar.value) {
+        hideSelMenu()
+      }
+    },
+    // 点击编辑器其它位置时收起菜单
+    mousedown: () => {
+      if (selBar.value) hideSelMenu()
+    },
+    // 右键：有选区时弹出划词菜单；无选区交给浏览器原生菜单
+    contextmenu: (e) => {
+      if (!view || view.state.selection.main.empty) return false
+      e.preventDefault()
+      showSelMenu(e.clientX, e.clientY)
+      return true
     },
   }),
 ]
@@ -1015,7 +1038,7 @@ watch(() => props.content, (newContent) => {
   font-size: 12px;
   color: var(--color-text-muted);
 }
-/* 划词工具条：跟随选区、悬于文字上方 */
+/* 划词菜单：选中文字后右键在光标处弹出 */
 .sel-toolbar {
   position: fixed;
   z-index: 40;

@@ -1,6 +1,7 @@
 import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import * as api from '../api/files'
+import { useDetectionStore } from './detection'
 
 export interface DailyRecord {
   date: string
@@ -213,6 +214,8 @@ export const useStatsStore = defineStore('stats', () => {
       } else {
         dailyRecords.value.push({ date: today, wordCount: delta, chaptersEdited: [chapterId] })
       }
+      // 一致性检测钩子：累计新增字数，达到阈值后自动触发一次 AI 检测
+      useDetectionStore().onWordsAdded(delta)
     }
   }
 

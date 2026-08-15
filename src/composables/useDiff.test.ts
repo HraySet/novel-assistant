@@ -55,3 +55,41 @@ describe('computeDiff（行级 diff）', () => {
     expect(d[2]).toMatchObject({ type: 'add', content: 'b', newLine: 2 })
   })
 })
+
+describe('computeDiff（词级 diff，散文场景）', () => {
+  it('只改一个字 → 其余全 equal，修改为字符级片段', () => {
+    const d = computeDiff('陈屿站在天台边缘', '陈屿站在天台边缘上', 'word')
+    expect(d[0]).toMatchObject({ type: 'equal', content: '陈屿站在天台边缘' })
+    expect(d[d.length - 1]).toMatchObject({ type: 'add', content: '上' })
+  })
+
+  it('整句替换 → 保留公共字，中间 remove + add', () => {
+    const d = computeDiff('他转身离开。', '他头也不回地走了。', 'word')
+    expect(d.map((l) => l.type)).toEqual(['equal', 'remove', 'add', 'equal'])
+    expect(d[1].content).toBe('转身离开')
+    expect(d[2].content).toBe('头也不回地走了')
+  })
+
+  it('英文按单词切分，空格与相同词保持 equal', () => {
+    const d = computeDiff('hello world', 'hello there', 'word')
+    expect(d[0]).toMatchObject({ type: 'equal', content: 'hello ' })
+    expect(d[1]).toMatchObject({ type: 'remove', content: 'world' })
+    expect(d[2]).toMatchObject({ type: 'add', content: 'there' })
+  })
+
+  it('相同文本 → 全 equal', () => {
+    const d = computeDiff('雨夜。', '雨夜。', 'word')
+    expect(d.length).toBe(1)
+    expect(d[0].type).toBe('equal')
+  })
+
+  it('空文本 → 全 add', () => {
+    const d = computeDiff('', '新的句子。', 'word')
+    expect(d[0].type).toBe('add')
+  })
+
+  it('word 模式不产生行号', () => {
+    const d = computeDiff('a。', 'b。', 'word')
+    expect(d.every((l) => l.oldLine === undefined && l.newLine === undefined)).toBe(true)
+  })
+})

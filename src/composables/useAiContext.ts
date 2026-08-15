@@ -7,7 +7,7 @@ import { ref, watch } from 'vue'
 import * as api from '../api/files'
 import { useSettingsStore } from '../stores/settings'
 
-interface ContextInfo { label: string; content: string }
+interface ContextInfo { label: string; content: string; count: number }
 
 const CURRENT_FILE_MAX = 8000
 const DIR_FILE_MAX = 4000
@@ -26,7 +26,31 @@ export function useAiContext(
 ) {
   const settings = useSettingsStore()
   const contextLabel = ref('')
+  /** 上下文各组成的可用数量（供开关 chip 显示「角色设定 (3)」；为空时 UI 禁用开关） */
+  const contextCounts = ref({ roles: 0, outlines: 0, project: 0, recap: 0 })
 
+  async function refreshCounts(root: string) {
+    const counts = { roles: 0, outlines: 0, project: 0, recap: 0 }
+    const norm = root.replace(/\\/g, '/')
+    try {
+      const entries = await api.listDir(`${norm}/角色`)
+      counts.roles = (entries || []).filter((e: any) => !e.isDir).length
+    } catch { /* 无角色目录 */ }
+    try {
+      const entries = await api.listDir(`${norm}/大纲`)
+      counts.outlines = (entries || []).filter((e: any) => !e.isDir).length
+    } catch { /* 无大纲目录 */ }
+    try {
+      const md = await api.readFile(`${norm}/_project.md`)
+      counts.project = md.trim() ? 1 : 0
+    } catch { /* 无项目概述 */ }
+    try {
+      const order = await orderedChapters(root)
+      const idx = order.findIndex((f) => f.path === filePath())
+      if (idx > 0) counts.recap = Math.min(idx, settings.aiContextOptions.recapChapters)
+    } catch { /* ignore */ }
+    contextCounts.value = counts
+  }
   async function collectDir(root: string, dirName: string, label: string): Promise<ContextInfo | null> {
     const dirPath = `${root.replace(/\\/g, '/')}/${dirName}`
     let entries: any[]
@@ -52,14 +76,14 @@ export function useAiContext(
     })
     await Promise.all(workers)
     const contents = results.filter(Boolean)
-    return { label: `${label}(${files.length})`, content: contents.join('\n\n') }
+    return { label: `${label}(${files.length})`, content: contents.join('\n\n'), count: files.length }
   }
 
   async function collectProjectOverview(root: string): Promise<ContextInfo | null> {
     try {
       const md = await api.readFile(`${root.replace(/\\/g, '/')}/_project.md`)
       if (!md.trim()) return null
-      return { label: '📋 项目概述', content: md }
+      return { label: '📋 项目概述', content: md, count: 1 }
     } catch {
       return null
     }
@@ -130,6 +154,7 @@ export function useAiContext(
     return {
       label: `前情(${parts.length}章${usedSummary > 0 ? `·摘要${usedSummary}` : ''})`,
       content: parts.join('\n\n'),
+      count: parts.length,
     }
   }
 
@@ -138,6 +163,8 @@ export function useAiContext(
     const root = projectRoot()
     if (!root) return { prompt: '', label: '', chars: 0, truncated: false }
 
+    // 轻量计数（无论开关状态）：供开关 chip 显示可用数量/禁用空项
+    void refreshCounts(root)
     // 按最终 prompt 里的顺序收集各组成（前情在前，让 AI 先「回忆」再处理当前内容）
     const items: { label: string; content: string }[] = []
     if (opts.recap) {
@@ -213,5 +240,5 @@ export function useAiContext(
     { immediate: true },
   )
 
-  return { build, contextLabel }
+  return { build, contextLabel, contextCounts }
 }

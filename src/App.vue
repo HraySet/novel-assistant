@@ -162,6 +162,7 @@ import { useFileStore } from './stores/file'
 import { useChatStore } from './stores/chat'
 import { useStatsStore } from './stores/stats'
 import { useSettingsStore } from './stores/settings'
+import { useDetectionStore } from './stores/detection'
 import { useSelectionStore } from './stores/selection'
 import { useDesignTokens } from './composables/useDesignTokens'
 import ProjectLibrary from './components/ProjectLibrary.vue'
@@ -336,6 +337,11 @@ function handleApplySelection(target: { path: string; from: number; to: number; 
 watch(() => selectionStore.pendingAction, (action) => {
   if (action && !showAiPanel.value) showAiPanel.value = true
 })
+const detectionStore = useDetectionStore()
+// 项目切换时载入该项目的一致性检测结果（含待确认的人物/大纲变化）
+watch(() => currentProject.value?.path, (p) => {
+  void detectionStore.setProjectRoot(p ?? '')
+}, { immediate: true })
 
 // ── 回收站 ──
 

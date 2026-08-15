@@ -1,14 +1,16 @@
 <template>
   <div class="diff-view" :class="{ 'diff-view--compact': compact }">
     <!-- 头栏 -->
-    <div v-if="title" class="diff-header">
-      <span class="diff-title">{{ title }}</span>
+    <div class="diff-header">
+      <span v-if="title" class="diff-title">{{ title }}</span>
+      <span v-else class="diff-title" />
       <span class="diff-stats">
         <span class="diff-stat diff-stat--add">+{{ addCount }}</span>
         <span class="diff-stat diff-stat--remove">−{{ removeCount }}</span>
         <span v-if="modifyCount > 0" class="diff-stat diff-stat--modify">≈{{ modifyCount }} 修改</span>
       </span>
     </div>
+    <div v-if="editable && hasMutable" class="diff-hint">点击行首图标可单独撤销该行修改</div>
 
     <!-- Diff 内容 -->
     <div v-if="addCount === 0 && removeCount === 0" class="diff-empty">
@@ -38,7 +40,7 @@
         <X :size="14" /> 放弃
       </button>
       <button class="diff-btn diff-btn--accept" @click="handleAccept">
-        <Check :size="14" /> 应用修改
+        <Check :size="14" /> {{ allToggledOff ? '应用（无改动）' : '应用修改' }}
       </button>
     </div>
   </div>
@@ -56,6 +58,8 @@ const props = defineProps<{
   editable?: boolean
   /** 紧凑模式：隐藏行号槽、缩小字号（用于窄的侧边面板） */
   compact?: boolean
+  /** diff 粒度：'word' 按词/字（散文推荐），'line' 按行（代码） */
+  granularity?: 'line' | 'word'
 }>()
 
 const emit = defineEmits<{
@@ -96,6 +100,20 @@ const modifyCount = computed(() => {
   return count
 })
 
+// 是否存在可切换的行（增/删）
+const hasMutable = computed(() => addCount.value + removeCount.value > 0)
+// 所有可切换的行都被关闭时，应用结果等同原文——文案明确提示
+const allToggledOff = computed(() => {
+  let mutable = 0
+  let off = 0
+  for (let i = 0; i < diffLines.value.length; i++) {
+    if (diffLines.value[i].type === 'equal') continue
+    mutable++
+    if (toggledOff.value.has(i)) off++
+  }
+  return mutable > 0 && off === mutable
+})
+
 // ── 局部接受：toggle 状态 ──
 
 const toggledOff = ref(new Set<number>())
@@ -104,7 +122,7 @@ const toggledOff = ref(new Set<number>())
 watch(
   () => [props.oldText, props.newText],
   () => {
-    diffLines.value = computeDiff(props.oldText, props.newText)
+    diffLines.value = computeDiff(props.oldText, props.newText, props.granularity ?? 'word')
     toggledOff.value = new Set()
   },
   { immediate: true },
@@ -173,7 +191,6 @@ function marker(type: DiffLine['type']): string {
 .diff-stat--modify { color: var(--color-warning, #eab308); font-family: var(--font-sans); }
 .diff-stat--remove { color: var(--color-danger, #ef4444); }
 
-.diff-body { overflow-x: auto; }
 
 .diff-empty {
   padding: 18px 12px;
@@ -189,8 +206,8 @@ function marker(type: DiffLine['type']): string {
   padding: 0 4px;
 }
 
-.diff-line--add { background: rgba(34, 197, 94, 0.08); }
-.diff-line--remove { background: rgba(239, 68, 68, 0.08); }
+.diff-line--add { background: var(--color-success-bg); }
+.diff-line--remove { background: var(--color-danger-bg); }
 .diff-line--equal { background: transparent; }
 
 .diff-toggle {
@@ -198,10 +215,12 @@ function marker(type: DiffLine['type']): string {
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; flex-shrink: 0;
   color: var(--color-text-muted);
-  opacity: 0.3;
+  opacity: 0.6;
   transition: opacity 0.1s;
 }
 .diff-toggle:hover { opacity: 1; }
+.diff-line--add:hover .diff-toggle,
+.diff-line--remove:hover .diff-toggle { opacity: 1; background: var(--color-bg-surface-hover); border-radius: 3px; }
 
 .diff-content--off { opacity: 0.3; text-decoration: line-through; }
 
@@ -228,7 +247,6 @@ function marker(type: DiffLine['type']): string {
 .diff-content {
   flex: 1;
   white-space: pre-wrap;
-  overflow-x: auto;
   color: var(--color-text-primary);
 }
 
@@ -249,7 +267,7 @@ function marker(type: DiffLine['type']): string {
 .diff-btn--accept {
   border-color: var(--color-success, #22c55e);
   color: var(--color-success, #16a34a);
-  background: rgba(34, 197, 94, 0.08);
+  background: var(--color-success-bg);
 }
 .diff-btn--accept:hover {
   background: var(--color-success, #22c55e);
@@ -265,4 +283,11 @@ function marker(type: DiffLine['type']): string {
 .diff-view--compact .diff-line { min-height: 20px; padding: 0 2px; }
 .diff-view--compact .diff-toggle { width: 16px; }
 .diff-view--compact .diff-footer { padding: 4px 8px; }
+.diff-hint {
+  padding: 4px 12px;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-border);
+}
 </style>

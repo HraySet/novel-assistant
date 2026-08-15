@@ -19,7 +19,10 @@ export interface DiffLine {
 /** 中间块 DP 表单元格上限：超出后降级（4M 单元 ≈ 16MB） */
 const MAX_DP_CELLS = 4_000_000
 
-export function computeDiff(oldText: string, newText: string): DiffLine[] {
+export type DiffGranularity = 'line' | 'word'
+
+export function computeDiff(oldText: string, newText: string, granularity: DiffGranularity = 'line'): DiffLine[] {
+  if (granularity === 'word') return computeWordDiff(oldText, newText)
   // 空文本视为 0 行（''.split('\n') 会得到一条空行，显示上多余）
   const oldLines = oldText ? oldText.replace(/\r\n/g, '\n').split('\n') : []
   const newLines = newText ? newText.replace(/\r\n/g, '\n').split('\n') : []
@@ -102,5 +105,95 @@ export function computeDiff(oldText: string, newText: string): DiffLine[] {
     out.push({ type: 'equal', content: oldLines[oi], oldLine: oi + 1, newLine: ni + 1 })
   }
 
+  return out
+}
+
+/**
+ * 词级/字级 Diff（散文场景）：
+ * - 拉丁/数字连续串作为一个词；每个 CJK 字符单独成 token（中文词多为 1-2 字，
+ *   字级即近似词级）；标点与空白各自成 token；
+ * - LCS 对齐后把相邻同类型的 token 合并成可读片段（不产生行号）。
+ */
+function computeWordDiff(oldText: string, newText: string): DiffLine[] {
+  const oldTokens = tokenize(oldText)
+  const newTokens = tokenize(newText)
+  const m = oldTokens.length
+  const n = newTokens.length
+  const out: DiffLine[] = []
+
+  if (m === 0 || n === 0 || m * n > MAX_DP_CELLS) {
+    for (const t of oldTokens) out.push({ type: 'remove', content: t })
+    for (const t of newTokens) out.push({ type: 'add', content: t })
+    return mergeRuns(out)
+  }
+
+  const W = n + 1
+  const table = new Uint32Array((m + 1) * W)
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      table[i * W + j] = oldTokens[i - 1] === newTokens[j - 1]
+        ? table[(i - 1) * W + (j - 1)] + 1
+        : Math.max(table[i * W + (j - 1)], table[(i - 1) * W + j])
+    }
+  }
+
+  const seg: DiffLine[] = []
+  let i = m
+  let j = n
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldTokens[i - 1] === newTokens[j - 1]) {
+      seg.push({ type: 'equal', content: oldTokens[i - 1] })
+      i--
+      j--
+    } else if (j > 0 && (i === 0 || table[i * W + (j - 1)] >= table[(i - 1) * W + j])) {
+      seg.push({ type: 'add', content: newTokens[j - 1] })
+      j--
+    } else {
+      seg.push({ type: 'remove', content: oldTokens[i - 1] })
+      i--
+    }
+  }
+  seg.reverse()
+  return mergeRuns(seg)
+}
+
+function isCjkChar(code: number): boolean {
+  return (code >= 0x4e00 && code <= 0x9fff) || (code >= 0x3400 && code <= 0x4dbf) || (code >= 0xf900 && code <= 0xfaff)
+}
+
+function tokenize(text: string): string[] {
+  const tokens: string[] = []
+  let buf = ''
+  const flush = () => {
+    if (buf) {
+      tokens.push(buf)
+      buf = ''
+    }
+  }
+  for (const ch of text) {
+    if (/[A-Za-z0-9]/.test(ch)) {
+      buf += ch
+      continue
+    }
+    if (isCjkChar(ch.codePointAt(0) ?? 0)) {
+      flush()
+      tokens.push(ch)
+      continue
+    }
+    flush()
+    tokens.push(ch)
+  }
+  flush()
+  return tokens
+}
+
+/** 相邻同类型的 token 合并成片段，提升散文可读性 */
+function mergeRuns(lines: DiffLine[]): DiffLine[] {
+  const out: DiffLine[] = []
+  for (const l of lines) {
+    const last = out[out.length - 1]
+    if (last && last.type === l.type) last.content += l.content
+    else out.push({ ...l })
+  }
   return out
 }

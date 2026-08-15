@@ -9,6 +9,10 @@
       style="border-color: var(--color-border)">
       <span class="text-xs font-medium text-text-secondary">AI 助手</span>
       <div class="flex items-center gap-1">
+        <button class="ai-btn relative" title="人物/大纲变化检测" @click="showConsistency = true">
+          <ListChecks :size="14" />
+          <span v-if="detectionStore.pendingCount > 0" class="ai-btn-dot" />
+        </button>
         <button class="ai-btn" :class="{ 'ai-btn--active': showQuickActions }"
           title="快捷操作（续写/润色/扩写/检查）" @click="toggleQuickActions">
           <Zap :size="14" />
@@ -73,7 +77,7 @@
 
     <!-- 输入区：上下文条 + 输入框 -->
     <div class="p-3 border-t shrink-0" style="border-color: var(--color-border)">
-      <AiContextBar class="mb-2" :label="contextLabel" />
+      <AiContextBar class="mb-2" :label="contextLabel" :counts="contextCounts" />
       <textarea v-model="inputText" class="ai-input" rows="2"
         placeholder="Ctrl+Enter 发送，Enter 换行"
         :disabled="chatStore.streaming"
@@ -93,12 +97,17 @@
       @close="showSummaries = false"
       @insert="(text) => emit('insert', text)"
     />
+    <ConsistencyPanel
+      :show="showConsistency"
+      :project-root="projectRoot"
+      @close="showConsistency = false"
+    />
   </aside>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, nextTick, onUnmounted } from 'vue'
-import { Expand, Square, NotebookText, Zap } from 'lucide-vue-next'
+import { Expand, Square, NotebookText, Zap, ListChecks } from 'lucide-vue-next'
 import { useSettingsStore } from '../stores/settings'
 import { useAiChat } from '../composables/useAiChat'
 import { storeToRefs } from 'pinia'
@@ -107,6 +116,8 @@ import { QUICK_ACTIONS, type QuickAction } from '../composables/aiQuickActions'
 import DiffView from './DiffView.vue'
 import AiContextBar from './AiContextBar.vue'
 import SummaryLibrary from './SummaryLibrary.vue'
+import ConsistencyPanel from './ConsistencyPanel.vue'
+import { useDetectionStore } from '../stores/detection'
 
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
@@ -117,12 +128,14 @@ const props = defineProps<{
 const emit = defineEmits<{ expand: []; insert: [text: string] }>()
 
 const settings = useSettingsStore()
+const detectionStore = useDetectionStore()
 const selectionStore = useSelectionStore()
 const { selection } = storeToRefs(selectionStore)
 
 const chatEl = ref<HTMLElement>()
 const inputText = ref('')
 const showSummaries = ref(false)
+const showConsistency = ref(false)
 
 // ── 面板宽度：可拖拽调整，跨会话记忆 ──
 const PANEL_MIN = 280
@@ -175,6 +188,7 @@ const {
   loading,
   activeConversation,
   contextLabel,
+  contextCounts,
   showKeyHint,
   appliedIndex,
   savedIndex,
@@ -352,4 +366,9 @@ async function handleSend() {
 .chat-content :deep(pre code) { background: none; padding: 0; }
 .chat-content :deep(strong) { font-weight: 700; }
 .chat-content :deep(em) { font-style: italic; }
+.ai-btn-dot {
+  position: absolute; top: 2px; right: 2px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--color-danger);
+}
 </style>

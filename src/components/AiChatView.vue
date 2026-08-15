@@ -92,7 +92,7 @@
 
       <!-- 输入区 -->
       <div class="chat-input-area">
-        <AiContextBar class="mb-1.5 px-1" :label="contextLabel" />
+        <AiContextBar class="mb-1.5 px-1" :label="contextLabel" :counts="contextCounts" />
         <div class="chat-input-row">
           <textarea
             ref="inputEl"
@@ -161,6 +161,7 @@ const showSummaries = ref(false)
 const {
   activeConversation,
   contextLabel,
+  contextCounts,
   showKeyHint,
   appliedIndex,
   savedIndex,

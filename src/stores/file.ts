@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref } from 'vue'
 import * as api from '../api/files'
 import type { FileNode, OpenFile, ContextMenuState, DraftState } from '../types/file'
@@ -86,6 +86,26 @@ export const useFileStore = defineStore('file', () => {
   // 收藏路径集合（以 projectRoot 为 key 持久化到 localStorage）
   const favoritePaths = ref<Set<string>>(new Set())
 
+  // ── 编辑器内容提供者 ──
+  // 编辑器挂载时注册一个按需读取的函数，保存 / 切换文件 / 构建 AI 上下文时
+  // 才序列化当前文档，避免每次按键都把整篇文档拷贝进 store。
+  const contentProviders = new Map<string, () => string>()
+
+  function registerContentProvider(path: string, get: () => string) {
+    contentProviders.set(path, get)
+  }
+
+  function unregisterContentProvider(path: string) {
+    contentProviders.delete(path)
+  }
+
+  /** 读取文件最新内容：优先当前编辑器文档，兜底 store 里最近一次同步的内容 */
+  function getLatestContent(path: string): string {
+    const get = contentProviders.get(path)
+    if (get) return get()
+    return openFiles.value.find((f) => f.path === path)?.content ?? ''
+  }
+
   // ── Favorites persistence ──
 
   function loadFavorites(projectPath: string) {
@@ -143,6 +163,15 @@ export const useFileStore = defineStore('file', () => {
   function persistExpandedState() {
     if (typeof window === 'undefined' || !projectRoot.value) return
     window.localStorage.setItem(getExpandedStorageKey(projectRoot.value), JSON.stringify(expandedPaths.value))
+  }
+
+  /** 重命名/移动后，把收藏、展开状态与统计快照按新路径迁移 */
+  function remapPersistedState(mapper: (p: string) => string) {
+    favoritePaths.value = new Set([...favoritePaths.value].map(mapper))
+    persistFavorites()
+    expandedPaths.value = expandedPaths.value.map(mapper)
+    persistExpandedState()
+    stats.remapChapterSnapshots(mapper)
   }
 
   // ── Tree management ──
@@ -206,6 +235,7 @@ export const useFileStore = defineStore('file', () => {
       openHistory.value = [...openHistory.value, file.path]
       historyIndex.value = openHistory.value.length - 1
     }
+    persistOpenTabs()
   }
 
   function updateActiveFile(patch: Partial<OpenFile>) {
@@ -225,6 +255,67 @@ export const useFileStore = defineStore('file', () => {
       openFile.value = openFiles.value[0] ?? null
       selectedPath.value = openFile.value?.path ?? null
     }
+    persistOpenTabs()
+  }
+
+  // ── 标签页持久化与快捷键操作 ──
+
+  /** 记录打开的标签页列表（含活动标签），重启后恢复 */
+  function persistOpenTabs() {
+    if (typeof window === 'undefined' || !projectRoot.value) return
+    try {
+      localStorage.setItem(
+        'open-tabs:' + projectRoot.value,
+        JSON.stringify({ paths: openFiles.value.map((f) => f.path), active: openFile.value?.path ?? null }),
+      )
+    } catch { /* 忽略 */ }
+  }
+
+  /** 恢复上次会话打开的标签页（最多 8 个，逐个读盘，失败的跳过） */
+  async function restoreOpenTabs() {
+    if (typeof window === 'undefined' || !projectRoot.value) return
+    let saved: { paths?: string[]; active?: string | null } = {}
+    try {
+      saved = JSON.parse(localStorage.getItem('open-tabs:' + projectRoot.value) || '{}')
+    } catch {
+      return
+    }
+    const paths = Array.isArray(saved.paths) ? saved.paths.slice(0, 8) : []
+    for (const p of paths) {
+      if (openFiles.value.some((f) => f.path === p)) continue
+      try {
+        const content = await api.readFile(p)
+        const name = p.split(/[/\\]/).pop() || p
+        setOpenFile({ path: p, name, content, isDirty: false })
+      } catch { /* 文件已不存在 */ }
+    }
+    if (saved.active && openFiles.value.some((f) => f.path === saved.active)) {
+      const active = openFiles.value.find((f) => f.path === saved.active)!
+      setOpenFile(active)
+      stats.syncChapterSnapshot(active.path, countWords(active.content))
+    }
+    // 恢复出来的标签不污染后退/前进历史
+    openHistory.value = openFile.value ? [openFile.value.path] : []
+  }
+
+  /** Ctrl+W：保存并关闭当前标签 */
+  async function closeActiveTab() {
+    const f = openFile.value
+    if (!f) return
+    if (f.isDirty) {
+      // 保存失败（含写盘期间仍有新键入）时中止关闭，避免丢失未落盘内容
+      const saved = await saveFile(f.path)
+      if (!saved) return
+    }
+    closeFile(f.path)
+  }
+
+  /** Ctrl+Tab / Ctrl+Shift+Tab：循环切换标签 */
+  async function cycleTab(delta: number) {
+    if (openFiles.value.length < 2) return
+    const idx = openFiles.value.findIndex((f) => f.path === openFile.value?.path)
+    const next = (idx + delta + openFiles.value.length) % openFiles.value.length
+    await handleFileSelect(openFiles.value[next].path)
   }
 
   // ── Async file operations ──
@@ -253,7 +344,7 @@ export const useFileStore = defineStore('file', () => {
   }
 
   async function deletePath(path: string) {
-    await api.deletePath(path, projectRoot.value)
+    await api.deletePath(path)
     await loadTree(projectRoot.value)
     if (openFile.value?.path === path) {
       openFile.value = null
@@ -265,21 +356,37 @@ export const useFileStore = defineStore('file', () => {
   async function renamePath(path: string, newName: string) {
     const parent = dirname(path)
     const newPath = joinPath(parent, newName)
+    // 先把编辑器最新内容刷进 store：路径切换会用 store 内容重建编辑器，
+    // 避免未保存的编辑在重命名后丢失
+    const latest = openFile.value?.path === path ? getLatestContent(path) : null
     await api.renamePath(path, newPath)
     await loadTree(projectRoot.value)
 
     if (openFile.value?.path === path) {
-      openFile.value = { ...openFile.value, path: newPath, name: newName }
+      openFile.value = latest !== null
+        ? { ...openFile.value, path: newPath, name: newName, content: latest }
+        : { ...openFile.value, path: newPath, name: newName }
       selectedPath.value = newPath
     }
 
-    openFiles.value = openFiles.value.map((item) => item.path === path ? { ...item, path: newPath, name: newName } : item)
+    openFiles.value = openFiles.value.map((item) => item.path === path
+      ? (latest !== null ? { ...item, path: newPath, name: newName, content: latest } : { ...item, path: newPath, name: newName })
+      : item)
     openHistory.value = openHistory.value.map((item) => item === path ? newPath : item)
+
+    // 迁移收藏/展开状态与统计快照，避免旧路径成为孤儿数据
+    const sep = path.includes('\\') ? '\\' : '/'
+    remapPersistedState((p) =>
+      p === path ? newPath : p.startsWith(path + sep) ? newPath + p.slice(path.length) : p,
+    )
 
     return newPath
   }
 
   async function movePath(source: string, destDir: string) {
+    // 先刷新编辑器最新内容，避免移动后路径切换用旧内容重建编辑器
+    const active = openFile.value
+    const latest = active ? getLatestContent(active.path) : null
     await api.movePath(source, destDir)
 
     const separator = source.includes('\\') ? '\\' : '/'
@@ -293,15 +400,22 @@ export const useFileStore = defineStore('file', () => {
       return path
     }
 
-    if (openFile.value) {
-      const nextPath = getMovedPath(openFile.value.path)
-      if (nextPath !== openFile.value.path) {
-        openFile.value = { ...openFile.value, path: nextPath }
+    if (active) {
+      const nextPath = getMovedPath(active.path)
+      if (nextPath !== active.path) {
+        openFile.value = { ...active, path: nextPath, content: latest ?? active.content }
       }
     }
-    openFiles.value = openFiles.value.map((file) => ({ ...file, path: getMovedPath(file.path) }))
+    openFiles.value = openFiles.value.map((file) => {
+      const next = { ...file, path: getMovedPath(file.path) }
+      if (active && file.path === active.path && latest !== null) next.content = latest
+      return next
+    })
     openHistory.value = openHistory.value.map(getMovedPath)
     if (selectedPath.value) selectedPath.value = getMovedPath(selectedPath.value)
+
+    // 迁移收藏/展开状态与统计快照
+    remapPersistedState(getMovedPath)
 
     await loadTree(projectRoot.value)
   }
@@ -439,11 +553,19 @@ export const useFileStore = defineStore('file', () => {
 
   async function handleSave(): Promise<boolean> {
     if (!openFile.value) return true
+    const path = openFile.value.path
     try {
-      await api.writeFile(openFile.value.path, openFile.value.content)
-      updateActiveFile({ isDirty: false })
-      stats.recordChapterEdit(openFile.value.path, countWords(openFile.value.content))
-      return true
+      const content = getLatestContent(path)
+      await api.writeFile(path, content)
+      // 写盘期间用户可能继续键入：以最新内容回写 store，避免旧快照覆盖编辑器丢字；
+      // 仍不一致时保持脏标记，交由下一次自动保存兜底
+      const latest = getLatestContent(path)
+      const stillDirty = latest !== content
+      if (openFile.value?.path === path) {
+        updateActiveFile({ content: latest, isDirty: stillDirty })
+      }
+      stats.recordChapterEdit(path, countWords(content))
+      return !stillDirty
     } catch (e) {
       console.error('保存失败:', e)
       return false
@@ -466,18 +588,22 @@ export const useFileStore = defineStore('file', () => {
     const file = openFiles.value.find(f => f.path === path)
     if (!file) return false
     try {
-      await api.writeFile(path, file.content)
+      const content = getLatestContent(path)
+      await api.writeFile(path, content)
+      // 写盘期间可能继续键入：以最新内容回写，不一致则保持脏标记
+      const latest = getLatestContent(path)
+      const stillDirty = latest !== content
       // 同步标记为干净
       if (openFile.value?.path === path) {
-        updateActiveFile({ isDirty: false })
+        updateActiveFile({ content: latest, isDirty: stillDirty })
       } else {
         const idx = openFiles.value.findIndex(f => f.path === path)
         if (idx >= 0) {
-          openFiles.value[idx] = { ...openFiles.value[idx], isDirty: false }
+          openFiles.value[idx] = { ...openFiles.value[idx], content: latest, isDirty: stillDirty }
         }
       }
-      stats.recordChapterEdit(path, countWords(file.content))
-      return true
+      stats.recordChapterEdit(path, countWords(content))
+      return !stillDirty
     } catch (e) {
       console.error('保存文件失败:', e)
       return false
@@ -584,6 +710,9 @@ export const useFileStore = defineStore('file', () => {
     setOpenFile,
     updateActiveFile,
     closeFile,
+    closeActiveTab,
+    cycleTab,
+    restoreOpenTabs,
     loadTree,
     createFile,
     createDir,
@@ -620,6 +749,9 @@ export const useFileStore = defineStore('file', () => {
     handleSave,
     saveFile,
     saveAllDirty,
+    registerContentProvider,
+    unregisterContentProvider,
+    getLatestContent,
     // Favorites
     isFavorite,
     toggleFavorite,
@@ -632,3 +764,8 @@ export const useFileStore = defineStore('file', () => {
     getUniqueName,
   }
 })
+
+// 开发模式 HMR：store 改动时热替换定义，避免新旧实例混用导致运行时崩溃
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useFileStore, import.meta.hot))
+}

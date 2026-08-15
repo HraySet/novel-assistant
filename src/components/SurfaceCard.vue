@@ -30,21 +30,21 @@ const paddingClass = computed(
 const cardStyle = computed(() => {
   if (props.selected) {
     return {
-      backgroundColor: "var(--surface-accent)",
-      borderColor: "var(--border-accent)",
-      borderLeft: "2px solid var(--accent)",
+      backgroundColor: "var(--color-accent-bg)",
+      borderColor: "var(--color-accent-border)",
+      borderLeft: "2px solid var(--color-accent)",
     };
   }
   return {
-    backgroundColor: "var(--surface-1)",
-    borderColor: "var(--border-hairline)",
+    backgroundColor: "var(--color-bg-page)",
+    borderColor: "var(--color-border)",
   };
 });
 </script>
 
 <style scoped>
 .sc-interactive:hover {
-  background-color: var(--surface-2);
-  border-color: var(--border-soft);
+  background-color: var(--color-bg-surface-hover);
+  border-color: var(--color-border-strong);
 }
 </style>

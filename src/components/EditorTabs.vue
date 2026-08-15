@@ -40,9 +40,12 @@ function switchTab(path: string) {
 }
 
 async function closeTab(path: string) {
-  // 脏文件先保存再关
+  // 脏文件先保存再关；保存失败（含写盘期间仍有新键入）时中止关闭，避免丢内容
   const target = openFiles.value.find(f => f.path === path)
-  if (target?.isDirty) await fileStore.saveFile(path)
+  if (target?.isDirty) {
+    const saved = await fileStore.saveFile(path)
+    if (!saved) return
+  }
   fileStore.closeFile(path)
 }
 

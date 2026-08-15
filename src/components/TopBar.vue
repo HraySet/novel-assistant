@@ -1,64 +1,71 @@
 <template>
-  <div class="topbar h-9 flex items-center px-3 gap-3 shrink-0 border-b bg-bg-surface"
+  <div class="topbar h-9 flex items-center px-3 gap-2 shrink-0 border-b bg-bg-surface"
     style="border-color: var(--color-border)">
-    
+
     <!-- 项目名 → 回项目库 -->
     <button class="topbar-project" @click="$emit('goLibrary')">
       <FolderOpen :size="14" class="flex-shrink-0" />
       <span class="topbar-project-name">{{ projectName }}</span>
-      <span v-if="isDirty" class="text-warning text-[10px] ml-0.5">●</span>
+      <span v-if="isDirty" class="text-warning text-[10px] ml-0.5" title="有未保存修改">●</span>
     </button>
 
-    <div class="flex-1" />
+    <div class="topbar-divider" />
 
-    <!-- 文件名（居中） -->
-    <span v-if="fileName" class="text-xs text-text-secondary truncate max-w-[240px] text-center">
-      {{ fileName }}
-    </span>
+    <!-- 章节导航：上一章 / 当前章节 / 下一章 -->
+    <div class="flex-1 flex items-center justify-center min-w-0">
+      <template v-if="fileName">
+        <button class="topbar-btn" title="上一章" :disabled="!prevPath" @click="prevPath && $emit('navigate', prevPath)">
+          <ChevronLeft :size="15" />
+        </button>
+        <span class="chapter-name" :title="fileName">{{ fileName }}</span>
+        <button class="topbar-btn" title="下一章" :disabled="!nextPath" @click="nextPath && $emit('navigate', nextPath)">
+          <ChevronRight :size="15" />
+        </button>
+      </template>
+      <span v-else class="text-xs text-text-muted">未打开章节</span>
+    </div>
 
-    <div class="flex-1" />
+    <div class="topbar-divider" />
 
     <!-- 操作按钮 -->
     <div class="flex items-center gap-1">
-      <button class="topbar-btn" title="后退" :disabled="!hasBack" @click="$emit('goBack')">
-        <ChevronLeft :size="16" />
+      <button class="topbar-btn" title="搜索文件 (Ctrl+P)" @click="$emit('openSearch')">
+        <Search :size="14" />
       </button>
-      <button class="topbar-btn" title="前进" :disabled="!hasForward" @click="$emit('goForward')">
-        <ChevronRight :size="16" />
-      </button>
-      <button class="topbar-btn" title="切换主题" @click="handleToggleTheme">
-        <Sun v-if="isDark" :size="14" />
-        <Moon v-else :size="14" />
+      <button
+        class="topbar-btn"
+        :class="{ 'topbar-btn--active': focusMode }"
+        :title="focusMode ? '退出专注模式 (Esc)' : '专注模式 (Ctrl+Shift+F)'"
+        @click="$emit('toggleFocus')"
+      >
+        <Maximize2 :size="14" />
       </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { FolderOpen, ChevronLeft, ChevronRight, Sun, Moon } from 'lucide-vue-next'
-import { useSettingsStore } from '../stores/settings'
+import { FolderOpen, ChevronLeft, ChevronRight, Search, Maximize2 } from 'lucide-vue-next'
 
 defineProps<{
   projectName: string
   fileName?: string
   isDirty?: boolean
-  hasBack?: boolean
-  hasForward?: boolean
+  /** 上一章路径（章节顺序导航，替代原来的打开历史后退） */
+  prevPath?: string
+  /** 下一章路径 */
+  nextPath?: string
+  /** 专注模式开关状态（按钮高亮显示） */
+  focusMode?: boolean
 }>()
 
 defineEmits<{
   goLibrary: []
-  goBack: []
-  goForward: []
+  navigate: [path: string]
+  openSearch: []
+  toggleFocus: []
 }>()
 
-const settings = useSettingsStore()
-const isDark = computed(() => settings.themeDark)
-
-function handleToggleTheme() {
-  settings.toggleDark()
-}
 </script>
 
 <style scoped>
@@ -73,6 +80,8 @@ function handleToggleTheme() {
   border: none;
   cursor: pointer;
   font-family: inherit;
+  flex-shrink: 0;
+  max-width: 200px;
   transition: background 0.1s ease, color 0.1s ease;
 }
 
@@ -84,6 +93,33 @@ function handleToggleTheme() {
 .topbar-project-name {
   font-size: 12px;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+.chapter-name {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 10px;
+  border-radius: var(--radius-sm);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.chapter-name:hover {
+  background: var(--color-bg-surface-hover);
+  color: var(--color-text-primary);
 }
 
 .topbar-btn {
@@ -97,6 +133,7 @@ function handleToggleTheme() {
   background: none;
   border: none;
   cursor: pointer;
+  flex-shrink: 0;
   transition: background 0.1s ease, color 0.1s ease;
 }
 
@@ -108,5 +145,10 @@ function handleToggleTheme() {
 .topbar-btn:disabled {
   opacity: 0.25;
   cursor: default;
+}
+
+.topbar-btn--active {
+  color: var(--color-accent);
+  background: var(--color-accent-bg);
 }
 </style>

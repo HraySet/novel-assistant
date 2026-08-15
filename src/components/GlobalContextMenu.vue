@@ -69,6 +69,17 @@
         </button>
       </template>
     </div>
+
+    <!-- 删除确认（ConfirmDialog 自带 Teleport，位置无影响） -->
+    <ConfirmDialog
+      :show="pendingDelete !== null"
+      title="删除"
+      message="删除后文件会进入回收站，可随时恢复。确定删除吗？"
+      ok-label="删除"
+      danger
+      @confirm="confirmDelete"
+      @cancel="pendingDelete = null"
+    />
   </Teleport>
 </template>
 
@@ -78,11 +89,13 @@ import { onClickOutside } from '@vueuse/core'
 import { FilePlus, FolderPlus, Pencil, Copy, Star } from 'lucide-vue-next'
 import { useFileStore } from '../stores/file'
 import { storeToRefs } from 'pinia'
+import ConfirmDialog from './ConfirmDialog.vue'
 
 const fileStore = useFileStore()
 const { contextMenu } = storeToRefs(fileStore)
 
 const menuRef = ref<HTMLElement>()
+const pendingDelete = ref<string | null>(null)
 
 const menuStyle = computed(() => ({
   left: contextMenu.value.x + 'px',
@@ -151,8 +164,15 @@ async function handleCopyPath() {
 function handleDelete() {
   const path = contextMenu.value.nodePath
   fileStore.closeContextMenu()
-  if (!confirm('确定要删除吗？（会移到 .trash）')) return
-  fileStore.deletePath(path)
+  pendingDelete.value = path
+}
+
+function confirmDelete() {
+  const path = pendingDelete.value
+  pendingDelete.value = null
+  if (path) {
+    fileStore.deletePath(path).catch((e) => console.error('删除失败:', e))
+  }
 }
 
 const isCurrentFavorite = computed(() => {

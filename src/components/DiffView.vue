@@ -6,18 +6,22 @@
       <span class="diff-stats">
         <span class="diff-stat diff-stat--add">+{{ addCount }}</span>
         <span class="diff-stat diff-stat--remove">−{{ removeCount }}</span>
+        <span v-if="modifyCount > 0" class="diff-stat diff-stat--modify">≈{{ modifyCount }} 修改</span>
       </span>
     </div>
 
     <!-- Diff 内容 -->
-    <div class="diff-body">
+    <div v-if="addCount === 0 && removeCount === 0" class="diff-empty">
+      AI 未做出任何修改
+    </div>
+    <div v-else class="diff-body">
       <div
         v-for="(line, i) in diffLines"
         :key="i"
         class="diff-line"
         :class="'diff-line--' + line.type"
       >
-        <span v-if="editable && line.type !== 'equal'" class="diff-toggle" @click.stop="toggle(i)">
+        <span v-if="editable && line.type !== 'equal'" class="diff-toggle" :title="isOn(i) ? '点击取消这一行的修改' : '点击恢复这一行的修改'" @click.stop="toggle(i)">
           <Check v-if="!toggledOff.has(i)" :size="12" />
         </span>
         <span v-else class="diff-toggle" />
@@ -57,19 +61,52 @@ const emit = defineEmits<{
   reject: []
 }>()
 
-const diffLines = computed(() => computeDiff(props.oldText, props.newText))
+// diff 只计算一次（文本变化时重算），计数全部从这一份结果派生，
+// 避免模板里 4 个 computed 各自重跑一遍 O(m×n) 的 LCS
+const diffLines = ref<DiffLine[]>([])
 
-const addCount = computed(() => diffLines.value.filter(l => l.type === 'add').length)
-const removeCount = computed(() => diffLines.value.filter(l => l.type === 'remove').length)
+function countBy(lines: DiffLine[], type: DiffLine['type']): number {
+  let c = 0
+  for (const l of lines) if (l.type === type) c++
+  return c
+}
+
+const addCount = computed(() => countBy(diffLines.value, 'add'))
+const removeCount = computed(() => countBy(diffLines.value, 'remove'))
+// 相邻的"删除块 + 新增块"视为修改
+const modifyCount = computed(() => {
+  let count = 0
+  const lines = diffLines.value
+  let i = 0
+  while (i < lines.length) {
+    if (lines[i].type === 'remove') {
+      let j = i
+      let r = 0
+      let a = 0
+      while (j < lines.length && lines[j].type === 'remove') { r++; j++ }
+      while (j < lines.length && lines[j].type === 'add') { a++; j++ }
+      count += Math.min(r, a)
+      i = j
+    } else {
+      i++
+    }
+  }
+  return count
+})
 
 // ── 局部接受：toggle 状态 ──
 
 const toggledOff = ref(new Set<number>())
 
-// oldText / newText 变化时重置所有 toggle 为开
-watch(() => [props.oldText, props.newText], () => {
-  toggledOff.value = new Set()
-})
+// oldText / newText 变化时重算 diff 并重置所有 toggle 为开
+watch(
+  () => [props.oldText, props.newText],
+  () => {
+    diffLines.value = computeDiff(props.oldText, props.newText)
+    toggledOff.value = new Set()
+  },
+  { immediate: true },
+)
 
 function toggle(i: number) {
   const next = new Set(toggledOff.value)
@@ -131,9 +168,18 @@ function marker(type: DiffLine['type']): string {
 .diff-stats { display: flex; gap: 8px; }
 .diff-stat { font-size: 11px; font-weight: 600; font-family: var(--font-mono); }
 .diff-stat--add { color: var(--color-success, #22c55e); }
+.diff-stat--modify { color: var(--color-warning, #eab308); font-family: var(--font-sans); }
 .diff-stat--remove { color: var(--color-danger, #ef4444); }
 
 .diff-body { overflow-x: auto; }
+
+.diff-empty {
+  padding: 18px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+}
 
 .diff-line {
   display: flex;

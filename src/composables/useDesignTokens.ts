@@ -36,8 +36,10 @@ function shift(hex: string, amount: number): string {
 }
 
 // 中性文字色固定调色板：保证任意背景色下可读，明暗各一套
-const LIGHT_TEXT = { primary: "#4a4032", secondary: "#8a7d68", muted: "#b0a48f" };
-const DARK_TEXT = { primary: "#e5d9c8", secondary: "#b0a392", muted: "#7a6f62" };
+// 文字色改用中性灰阶：旧版是固定暖棕，会盖在所有彩色背景上，
+// 让各主题都带一层「暖纸」色偏、辨识度低。中性灰在任意色相背景上都协调。
+const LIGHT_TEXT = { primary: "#3f3f46", secondary: "#71717a", muted: "#a1a1aa" };
+const DARK_TEXT = { primary: "#e4e4e7", secondary: "#a1a1aa", muted: "#6d6d76" };
 
 /**
  * 主题系统的唯一注入点：把 settings store 里的强调色 / 背景色 / 明暗模式
@@ -52,7 +54,9 @@ export function useDesignTokens() {
     const accent = store.accentColor;
     const bg = store.bgColor;
     const dark = store.themeDark;
-    const text = dark ? DARK_TEXT : LIGHT_TEXT;
+    // 主题专属文字色优先（暖色主题暖棕、冷色主题冷调）；
+    // 旧存档没有文字色时按明暗回退中性灰阶
+    const text = store.themeText ?? (dark ? DARK_TEXT : LIGHT_TEXT);
 
     // 背景层级（由用户选中的背景色派生）
     root.style.setProperty("--color-bg-page", bg);

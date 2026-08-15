@@ -5,12 +5,16 @@ import * as api from '../api/files'
 
 const DRAG_THRESHOLD_PX = 4
 
+// Windows 走原生 OLE 拖出（CF_HDROP）；其它平台原生拖出不可用，
+// 改用 HTML5 dragstart（text/plain 携带路径），落点逻辑两边共用
+const IS_WINDOWS = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
+
 // ── 模块级拖拽控制器（单例）──────────────────────────────────────────
-// 关键设计：完全不使用 HTML5 的 dragstart（浏览器默认拖拽会话会和 Rust 的
+// Windows：不使用 HTML5 的 dragstart（浏览器默认拖拽会话会和 Rust 的
 // DoDragDrop 抢鼠标导致拖不动）。改为 mousedown 记录起点，mousemove 超过阈值后
 // 直接启动原生拖放。原生拖放经过 WebView 时会合成 HTML5 的 dragenter/dragover/drop
 // 事件，所以应用内的落点逻辑（内部移动 / 外部导入）保持不变。
-
+// 非 Windows：行元素 draggable=true + dragstart 写 text/plain，同样复用落点逻辑。
 let fs: ReturnType<typeof useFileStore> | null = null
 function fileStore() {
   return (fs ??= useFileStore())
@@ -26,6 +30,12 @@ function onGlobalMouseMove(e: MouseEvent) {
   const dx = e.clientX - pending.startX
   const dy = e.clientY - pending.startY
   if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return
+
+  // 非 Windows 没有原生 OLE 拖出：放弃 pending，交给浏览器 HTML5 dragstart
+  if (!IS_WINDOWS) {
+    pending = null
+    return
+  }
 
   dragging = true
   suppressClick = true
@@ -82,7 +92,24 @@ export function useFileTreeDrag() {
     const target = e.target as HTMLElement | null
     // 输入框/按钮上的按下不参与拖拽（重命名、收藏星标等）
     if (target?.closest('input, button')) return
+    // 非 Windows：原生 OLE 拖出不可用，走 HTML5 dragstart fallback（见 handleDragStart），
+    // 这里只记录 pending，onGlobalMouseMove 会放弃它
     pending = { path: nodePath, startX: e.clientX, startY: e.clientY }
+  }
+
+  /**
+   * 非 Windows 平台的拖拽源：行元素 draggable=true 时浏览器发起 HTML5
+   * 拖拽，这里把节点路径写进 text/plain，落点逻辑与原生拖放完全一致。
+   * Windows 上禁用（原生 OLE 拖出接管），preventDefault 防止双轨拖拽。
+   */
+  function handleDragStart(e: DragEvent, nodePath: string) {
+    if (IS_WINDOWS) {
+      e.preventDefault()
+      return
+    }
+    if (!e.dataTransfer) return
+    e.dataTransfer.setData('text/plain', nodePath)
+    e.dataTransfer.effectAllowed = 'copy'
   }
 
   /** 行点击：拖拽结束后短暂窗口内的 click 会被吞掉，避免误打开文件 */
@@ -152,5 +179,7 @@ export function useFileTreeDrag() {
     handleDragOver,
     handleDragLeave,
     handleDrop,
+    handleDragStart,
+    isWindows: IS_WINDOWS,
   }
 }

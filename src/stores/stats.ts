@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import * as api from '../api/files'
 
@@ -216,6 +216,16 @@ export const useStatsStore = defineStore('stats', () => {
     }
   }
 
+  /** 重命名/移动章节后迁移快照 key，避免旧路径孤儿数据累积 */
+  function remapChapterSnapshots(mapper: (p: string) => string) {
+    const next: Record<string, number> = {}
+    for (const [k, v] of Object.entries(chapterSnapshots.value)) {
+      next[mapper(k)] = v
+    }
+    chapterSnapshots.value = next
+    schedulePersist()
+  }
+
   function setDailyGoal(goal: number) { dailyGoal.value = goal }
 
   // ── 会话计时 ──
@@ -256,6 +266,7 @@ export const useStatsStore = defineStore('stats', () => {
     loaded,
     todayRecord,
     todayWords,
+    todaySessionMs,
     todayGoalPercent,
     todayGoalMet,
     streakDays,
@@ -267,6 +278,7 @@ export const useStatsStore = defineStore('stats', () => {
     init,
     load,
     syncChapterSnapshot,
+    remapChapterSnapshots,
     recordChapterEdit,
     setDailyGoal,
     startSession,
@@ -276,3 +288,8 @@ export const useStatsStore = defineStore('stats', () => {
     flushPersist,
   }
 })
+
+// 开发模式 HMR：store 改动时热替换定义，避免新旧实例混用导致运行时崩溃
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useStatsStore, import.meta.hot))
+}

@@ -2,29 +2,36 @@
   <!-- ===== 项目库视图 ===== -->
   <ProjectLibrary v-if="view === 'library'" :projects="projects" @select="proj.openProject" @new-project="proj.handleNewProject"
     @open-project="proj.handleAddProject" @add-project="proj.handleAddProject"
-    @remove="proj.handleRemoveProject" />
+    @remove="proj.handleRemoveProject" @locate="proj.handleLocate" @relocate="proj.handleRelocate" />
 
   <!-- ===== 编辑器视图 ===== -->
   <div v-else-if="view === 'editor'" class="h-screen flex flex-col overflow-hidden bg-bg-page">
     <!-- 顶栏 -->
     <TopBar :project-name="currentProject?.name ?? ''" :file-name="activeFile?.name" :is-dirty="activeFile?.isDirty ?? false"
-      :has-back="fileStore.hasBack()" :has-forward="fileStore.hasForward()" @go-library="view = 'library'"
-      @go-back="handleGoBack" @go-forward="handleGoForward" />
+      :prev-path="prevChapterPath" :next-path="nextChapterPath" :focus-mode="focusMode"
+      @go-library="view = 'library'" @navigate="(p: string) => fileStore.handleFileSelect(p)"
+      @open-search="showSearch = true" @toggle-focus="focusMode = !focusMode" />
 
     <!-- 主体：编辑器 + 两条图标轨 + 可推挤面板 -->
     <div class="flex-1 flex min-h-0">
 
       <!-- 左侧图标轨 -->
-      <div class="icon-bar icon-bar--left">
+      <div v-if="!focusMode" class="icon-bar icon-bar--left">
         <button class="icon-bar-btn" :class="{ active: showSidebar }" title="文件树" @click="showSidebar = !showSidebar">
           <FolderOpen :size="16" />
         </button>
         <button class="icon-bar-btn" title="搜索文件" @click="showSearch = true">
           <Search :size="16" />
         </button>
+        <button class="icon-bar-btn" title="角色卡片" @click="showCharacters = true">
+          <Users :size="16" />
+        </button>
         <div class="flex-1" />
         <button class="icon-bar-btn" title="导出" @click="handleExport">
           <Download :size="16" />
+        </button>
+        <button class="icon-bar-btn" title="回收站" @click="showTrash = true">
+          <Trash2 :size="16" />
         </button>
         <button class="icon-bar-btn" title="设置" @click="showSettings = true; settingsSection = 'writing'">
           <Settings :size="16" />
@@ -33,27 +40,36 @@
 
       <!-- 左侧推挤面板：文件树 -->
       <Transition name="slide-left">
-        <LeftSidebar v-if="showSidebar" />
+        <LeftSidebar v-if="showSidebar && !focusMode" />
       </Transition>
 
       <!-- 编辑器 -->
       <main class="flex-1 min-w-0 flex flex-col">
         <EditorTabs />
         <MdEditor v-if="activeFile" ref="editorRef" :content="activeFile.content" :path="activeFile.path" :name="activeFile.name"
-          @update:content="handleContentChange" @save="fileStore.handleSave()" />
-        <div v-else class="flex-1 flex items-center justify-center text-text-muted text-sm">
-          打开一个文件开始写作
+          :prev-path="prevChapterPath" :next-path="nextChapterPath"
+          @update:content="handleContentChange" @dirty="handleEditorDirty" @save="fileStore.handleSave()"
+          @navigate="(p: string) => fileStore.handleFileSelect(p)" />
+        <div v-else class="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
+          <div class="text-4xl mb-1">📖</div>
+          <div class="text-sm">打开一个文件开始写作</div>
+          <div class="text-xs">Ctrl+P 搜索文件 · 左侧文件树选择章节</div>
+          <div v-if="recentFiles.length > 0" class="flex flex-wrap gap-2 justify-center max-w-md mt-2">
+            <button v-for="p in recentFiles" :key="p" class="recent-chip" @click="fileStore.handleFileSelect(p)">
+              {{ fileNameOf(p) }}
+            </button>
+          </div>
         </div>
       </main>
 
       <!-- 右侧推挤面板：AI 紧凑面板 -->
       <Transition name="slide-right">
-        <AiPanel v-if="showAiPanel" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
-          @expand="view = 'ai-chat'" />
+        <AiPanel v-if="showAiPanel && !focusMode" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
+          @expand="view = 'ai-chat'" @insert="handleAiInsert" />
       </Transition>
 
       <!-- 右侧图标轨 -->
-      <div class="icon-bar icon-bar--right">
+      <div v-if="!focusMode" class="icon-bar icon-bar--right">
         <button class="icon-bar-btn" :class="{ active: showAiPanel }" title="AI 助手" @click="showAiPanel = !showAiPanel">
           <Sparkles :size="16" />
         </button>
@@ -92,6 +108,14 @@
     <SearchModal :show="showSearch" :files="fileTree" @close="showSearch = false"
       @select-file="(path: string) => fileStore.handleFileSelect(path)" />
 
+    <!-- 角色卡片 -->
+    <CharacterCards :show="showCharacters" :project-root="currentProject?.path ?? ''"
+      @close="showCharacters = false" />
+
+    <!-- 回收站 -->
+    <TrashModal :show="showTrash" :project-root="currentProject?.path ?? ''"
+      @close="showTrash = false" @restored="onTrashRestored" />
+
     <!-- 设置弹窗 -->
     <Teleport to="body">
       <Transition name="fade">
@@ -126,8 +150,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { FolderOpen, Search, Sparkles, X, Settings, Download } from 'lucide-vue-next'
+import { ref, computed, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue'
+import { FolderOpen, Search, Sparkles, X, Settings, Download, Users, Trash2 } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useProjectOperations } from './composables/useProjectOperations'
 import { storeToRefs } from 'pinia'
@@ -135,6 +159,7 @@ import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
 import { useChatStore } from './stores/chat'
 import { useStatsStore } from './stores/stats'
+import { useSettingsStore } from './stores/settings'
 import { useDesignTokens } from './composables/useDesignTokens'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
@@ -147,13 +172,16 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import TopBar from './components/TopBar.vue'
 import MdEditor from './components/MdEditor.vue'
 import AiPanel from './components/AiPanel.vue'
-import AiChatView from './components/AiChatView.vue'
 import LeftSidebar from './components/LeftSidebar.vue'
-import SearchModal from './components/SearchModal.vue'
 import GlobalContextMenu from './components/GlobalContextMenu.vue'
 import EditorTabs from './components/EditorTabs.vue'
 import SettingsNav from './components/SettingsNav.vue'
-import SettingsContent from './components/SettingsContent.vue'
+// 弹层类组件按需加载（减小主包，项目库/编辑器首屏更快）
+const AiChatView = defineAsyncComponent(() => import('./components/AiChatView.vue'))
+const SearchModal = defineAsyncComponent(() => import('./components/SearchModal.vue'))
+const CharacterCards = defineAsyncComponent(() => import('./components/CharacterCards.vue'))
+const TrashModal = defineAsyncComponent(() => import('./components/TrashModal.vue'))
+const SettingsContent = defineAsyncComponent(() => import('./components/SettingsContent.vue'))
 
 // ── State ──
 
@@ -162,13 +190,62 @@ const view = ref<View>('library')
 const showSidebar = ref(false)
 const showAiPanel = ref(false)
 const showSearch = ref(false)
+const showCharacters = ref(false)
+const showTrash = ref(false)
+const focusMode = ref(false)
+
+// 章节顺序（按文件树展示顺序展平的 md/txt 文件）
+const orderedFiles = computed(() => {
+  const out: string[] = []
+  const walk = (nodes: FileNode[]) => {
+    for (const n of nodes) {
+      if (n.isDir) {
+        if (n.children) walk(n.children)
+      } else if (/\.(md|txt)$/i.test(n.name)) {
+        out.push(n.path)
+      }
+    }
+  }
+  walk(fileTree.value)
+  return out
+})
+
+const prevChapterPath = computed(() => {
+  const p = activeFile.value?.path
+  if (!p) return undefined
+  const i = orderedFiles.value.indexOf(p)
+  return i > 0 ? orderedFiles.value[i - 1] : undefined
+})
+
+const nextChapterPath = computed(() => {
+  const p = activeFile.value?.path
+  if (!p) return undefined
+  const i = orderedFiles.value.indexOf(p)
+  return i >= 0 && i < orderedFiles.value.length - 1 ? orderedFiles.value[i + 1] : undefined
+})
+
+const recentFiles = computed(() => {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (let i = fileStore.openHistory.length - 1; i >= 0 && out.length < 5; i--) {
+    const p = fileStore.openHistory[i]
+    if (!seen.has(p)) { seen.add(p); out.push(p) }
+  }
+  return out
+})
+
+function fileNameOf(p: string) {
+  return p.split(/[/\\]/).pop() || p
+}
 const showSettings = ref(false)
 const settingsSection = ref('writing')
 const editorRef = ref<InstanceType<typeof MdEditor>>()
+let mtimeTimer: ReturnType<typeof setInterval> | null = null
 
 const fileStore = useFileStore()
 const chatStore = useChatStore()
 const statsStore = useStatsStore()
+const settingsStore = useSettingsStore()
 const projectStore = useProjectStore()
 const { openFile: activeFile, tree: fileTree } = storeToRefs(fileStore)
 const { projects } = storeToRefs(projectStore)
@@ -182,20 +259,20 @@ const { showNewProjectDialog, newProjectPath, newProjectName, confirmNewProject 
 // ── File operations ──
 
 function handleContentChange(content: string) {
+  // 仅同步内容（恢复历史版本等场景）；脏状态由编辑器的 dirty 事件管理
   if (activeFile.value) {
-    fileStore.updateActiveFile({ content, isDirty: true })
+    fileStore.updateActiveFile({ content })
   }
 }
 
-async function handleGoBack() {
-  const path = fileStore.goBack()
-  if (path) await fileStore.handleFileSelect(path)
+/** 用户输入只发轻量脏标记；内容由保存时按需从编辑器读取，避免每次按键全量拷贝文档 */
+function handleEditorDirty() {
+  const file = activeFile.value
+  if (file && !file.isDirty) {
+    fileStore.updateActiveFile({ isDirty: true })
+  }
 }
 
-async function handleGoForward() {
-  const path = fileStore.goForward()
-  if (path) await fileStore.handleFileSelect(path)
-}
 
 // ── 导出 ──
 
@@ -216,15 +293,20 @@ async function handleExport() {
   const projectName = currentProject.value?.name || '导出'
   try {
     const destPath = await save({
-      defaultPath: `${projectName}.md`,
+      defaultPath: `${projectName}.epub`,
       filters: [
+        { name: 'EPUB 电子书', extensions: ['epub'] },
         { name: 'Markdown', extensions: ['md'] },
         { name: '纯文本', extensions: ['txt'] },
       ],
     })
     if (!destPath) return
-    const withTitles = destPath.toLowerCase().endsWith('.md')
-    await invoke('export_project', { paths, destPath, withTitles })
+    if (destPath.toLowerCase().endsWith('.epub')) {
+      await api.exportEpub(paths, destPath, projectName)
+    } else {
+      const withTitles = destPath.toLowerCase().endsWith('.md')
+      await invoke('export_project', { paths, destPath, withTitles })
+    }
   } catch (e) {
     console.error('导出失败:', e)
   }
@@ -233,7 +315,14 @@ async function handleExport() {
 // ── AI ──
 
 function handleAiInsert(text: string) {
-  editorRef.value?.insertAtCursor(text)
+  editorRef.value?.insertIfNotDuplicate(text)
+}
+
+// ── 回收站 ──
+
+async function onTrashRestored() {
+  // 恢复后刷新文件树，恢复的章节重新出现在原位置
+  await fileStore.loadTree()
 }
 
 // ── 全局拖放守卫 ──
@@ -249,7 +338,13 @@ function preventFileNavigation(e: DragEvent) {
 useDesignTokens()
 
 // ── Keyboard shortcuts ──
-useKeyboardShortcuts({ view, showSidebar, showAiPanel, showSearch, showSettings, settingsSection, showNewProjectDialog })
+useKeyboardShortcuts({
+  view, showSidebar, showAiPanel, showSearch, showSettings, settingsSection, showNewProjectDialog, showCharacters, focusMode,
+  onUndo: () => editorRef.value?.undoCommand(),
+  onRedo: () => editorRef.value?.redoCommand(),
+  onCloseTab: () => fileStore.closeActiveTab(),
+  onCycleTab: (d) => fileStore.cycleTab(d),
+})
 
 onMounted(async () => {
   window.addEventListener('dragover', preventFileNavigation)
@@ -260,7 +355,42 @@ onMounted(async () => {
     api.enableExternalDrop().catch((e) => console.error('enable_external_drop 失败:', e))
   }
 
+  // 外部文件变化检测：每 3 秒比对当前文件的修改时间
+  // 有未保存修改时以本地为准，仅覆盖未修改的文件
+  let lastMtime: number | null = null
+  let mtimePath = ''
+  mtimeTimer = setInterval(async () => {
+    const file = activeFile.value
+    // 窗口隐藏/最小化时跳过轮询，回到前台后下次 tick 自动恢复
+    if (document.hidden) return
+    if (!file || view.value !== 'editor') return
+    try {
+      const mtime = await api.fileMtime(file.path)
+      if (mtime == null) return
+      if (mtimePath !== file.path) {
+        mtimePath = file.path
+        lastMtime = mtime
+        return
+      }
+      if (lastMtime != null && mtime > lastMtime && !file.isDirty) {
+        const content = await api.readFile(file.path)
+        fileStore.updateActiveFile({ content, isDirty: false })
+      }
+      lastMtime = mtime
+    } catch { /* 忽略瞬时读取失败 */ }
+  }, 3000)
+
   await projectStore.loadIndex()
+
+  // 校验项目路径有效性：失效的标记为 broken（项目库显示「路径失效」并可重新定位）
+  for (const p of projects.value) {
+    try {
+      p.broken = !(await api.pathExists(p.path))
+    } catch {
+      p.broken = true
+    }
+  }
+  if (projects.value.some((p) => p.broken)) await projectStore.saveIndex()
 
   // 关闭窗口前：保存未落盘文件、落盘统计与聊天记录
   if (isTauri()) {
@@ -284,6 +414,8 @@ onMounted(async () => {
       statsStore.pauseSession()
       statsStore.flushPersist()
       await chatStore.flushSave()
+      editorRef.value?.flushUndo()
+      settingsStore.flushAiSaveNow()
 
       allowClose = true
       await win.destroy()
@@ -313,6 +445,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (mtimeTimer) clearInterval(mtimeTimer)
   window.removeEventListener('dragover', preventFileNavigation)
   window.removeEventListener('drop', preventFileNavigation)
 })
@@ -382,6 +515,24 @@ onUnmounted(() => {
 .slide-right-leave-to {
   width: 0 !important;
   opacity: 0;
+}
+
+/* ── 空状态最近文件 ── */
+
+.recent-chip {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.recent-chip:hover {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
 }
 
 /* ── Fade Transition ── */

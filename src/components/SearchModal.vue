@@ -194,51 +194,72 @@ watch(searchQuery, (q) => {
   searchTimer = setTimeout(async () => {
     const term = q.toLowerCase()
     const files = collectFiles(props.files)
-    const results: SearchResult[] = []
 
-    for (const f of files) {
-      if (seq !== searchSeq) return // 查询已过期，丢弃
-      if (results.length >= 15) break
-      // 只搜可读文本（与导出支持的格式一致），跳过图片等二进制文件
-      if (!/\.(md|txt)$/i.test(f.name)) continue
-      try {
-        const content = await api.readFile(f.path)
-        if (seq !== searchSeq) return
-        const idx = content.toLowerCase().indexOf(term)
-        if (idx >= 0) {
-          // 提取匹配片段（前后各 40 字符）
-          const start = Math.max(0, idx - 40)
-          const end = Math.min(content.length, idx + term.length + 40)
-          let snippet = content.slice(start, end)
-          if (start > 0) snippet = '…' + snippet
-          if (end < content.length) snippet += '…'
-          // 高亮匹配词
-          const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          snippet = snippet.replace(new RegExp(escaped, 'gi'), m => `<mark>${m}</mark>`)
+    // 并发读取（限 6 路），结果按文件顺序收集；找到 15 条即停
+    const out: (SearchResult | null)[] = new Array(files.length).fill(null)
+    let matchCount = 0
+    let next = 0
+    const workers = Array.from({ length: Math.min(6, files.length) }, async () => {
+      while (true) {
+        if (seq !== searchSeq || matchCount >= 15) return
+        const i = next++
+        if (i >= files.length) return
+        const f = files[i]
+        // 只搜可读文本（与导出支持的格式一致），跳过图片等二进制文件
+        if (!/\.(md|txt)$/i.test(f.name)) continue
+        try {
+          const content = await api.readFile(f.path)
+          if (seq !== searchSeq || matchCount >= 15) return
+          const idx = content.toLowerCase().indexOf(term)
+          if (idx >= 0) {
+            // 提取匹配片段（前后各 40 字符）
+            const start = Math.max(0, idx - 40)
+            const end = Math.min(content.length, idx + term.length + 40)
+            let snippet = content.slice(start, end)
+            if (start > 0) snippet = '…' + snippet
+            if (end < content.length) snippet += '…'
+            // 高亮匹配词：先整体 HTML 转义（正文可能含 <script> 等片段），
+            // 再对命中词包 <mark>，杜绝 v-html 注入
+            snippet = highlightWithMark(snippet, term)
 
-          results.push({
-            name: f.name,
-            path: f.path,
-            isDir: false,
-            relPath: f.relPath,
-            snippet,
-          })
+            out[i] = {
+              name: f.name,
+              path: f.path,
+              isDir: false,
+              relPath: f.relPath,
+              snippet,
+            }
+            matchCount++
+          }
+        } catch {
+          // 跳过读不了的文件
         }
-      } catch {
-        // 跳过读不了的文件
       }
-    }
+    })
+    await Promise.all(workers)
     if (seq !== searchSeq) return
-    contentMatches.value = results
+    contentMatches.value = out.filter((r): r is SearchResult => r !== null)
     searching.value = false
   }, 300)
 })
 
-// ── 高亮匹配词 ──
+// ── 高亮匹配词（HTML 转义 + <mark> 包裹，供 v-html 安全渲染） ──
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/** 把文本按命中词切分：普通部分转义，命中部分转义后包 <mark> */
+function highlightWithMark(text: string, term: string): string {
+  if (!term) return escapeHtml(text)
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return text
+    .split(new RegExp(`(${escaped})`, 'gi'))
+    .map((part, i) => (i % 2 === 1 ? `<mark>${escapeHtml(part)}</mark>` : escapeHtml(part)))
+    .join('')
+}
+
 function highlight(text: string) {
-  if (!searchQuery.value) return text
-  const escaped = searchQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return text.replace(new RegExp(escaped, 'gi'), m => `<mark>${m}</mark>`)
+  return highlightWithMark(text, searchQuery.value)
 }
 
 // ── 键盘导航 ──

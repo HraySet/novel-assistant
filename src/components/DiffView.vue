@@ -1,5 +1,5 @@
 <template>
-  <div class="diff-view">
+  <div class="diff-view" :class="{ 'diff-view--compact': compact }">
     <!-- 头栏 -->
     <div v-if="title" class="diff-header">
       <span class="diff-title">{{ title }}</span>
@@ -25,8 +25,8 @@
           <Check v-if="!toggledOff.has(i)" :size="12" />
         </span>
         <span v-else class="diff-toggle" />
-        <span class="diff-gutter diff-gutter--old">{{ line.oldLine ?? '' }}</span>
-        <span class="diff-gutter diff-gutter--new">{{ line.newLine ?? '' }}</span>
+        <span v-if="!compact" class="diff-gutter diff-gutter--old">{{ line.oldLine ?? '' }}</span>
+        <span v-if="!compact" class="diff-gutter diff-gutter--new">{{ line.newLine ?? '' }}</span>
         <span class="diff-marker">{{ marker(line.type) }}</span>
         <span class="diff-content" :class="{ 'diff-content--off': toggledOff.has(i) }">{{ line.content }}</span>
       </div>
@@ -54,6 +54,8 @@ const props = defineProps<{
   newText: string
   title?: string
   editable?: boolean
+  /** 紧凑模式：隐藏行号槽、缩小字号（用于窄的侧边面板） */
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -258,4 +260,9 @@ function marker(type: DiffLine['type']): string {
   color: #fff;
   border-color: var(--color-danger, #ef4444);
 }
+/* 紧凑模式：窄面板里去掉行号槽、收紧间距 */
+.diff-view--compact { font-size: 11px; }
+.diff-view--compact .diff-line { min-height: 20px; padding: 0 2px; }
+.diff-view--compact .diff-toggle { width: 16px; }
+.diff-view--compact .diff-footer { padding: 4px 8px; }
 </style>

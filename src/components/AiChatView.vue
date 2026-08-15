@@ -139,6 +139,8 @@ import SummaryLibrary from './SummaryLibrary.vue'
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
   projectRoot?: string
+  /** 把 AI 结果替换进编辑器选区（App 转发到 MdEditor） */
+  applyToSelection?: (target: { path: string; from: number; to: number; original?: string }, text: string) => boolean | Promise<boolean>
 }>()
 
 const emit = defineEmits<{
@@ -176,6 +178,7 @@ const {
   projectRoot: () => props.projectRoot,
   activeFile: () => props.activeFile,
   insert: (text) => emit('insert', text),
+  applyToSelection: props.applyToSelection,
   scrollToBottom: () => nextTick(() => {
     const el = chatEl.value
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 48) el.scrollTo(0, el.scrollHeight)
@@ -184,6 +187,19 @@ const {
 
 // 新消息时自动滚到底部
 watch(() => activeConversation.value?.messages.length, () => {
+  nextTick(() => {
+    const el = chatEl.value
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 48) el.scrollTo(0, el.scrollHeight)
+  })
+})
+
+// 流式输出期间自动跟随滚动（用户上滚查看历史时不打扰）
+watch(() => {
+  const msgs = activeConversation.value?.messages
+  const last = msgs && msgs.length > 0 ? msgs[msgs.length - 1] : null
+  return last && last.role === 'assistant' ? last.content.length : -1
+}, () => {
+  if (!chatStore.streaming) return
   nextTick(() => {
     const el = chatEl.value
     if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 48) el.scrollTo(0, el.scrollHeight)

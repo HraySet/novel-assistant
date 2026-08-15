@@ -19,6 +19,21 @@
     <!-- 编辑器容器 -->
     <div ref="editorEl" class="flex-1 overflow-y-auto" />
 
+    <!-- 划词工具条：选区上方浮现，与侧栏快捷操作联动 -->
+    <div v-if="selBar" class="sel-toolbar" :style="{ left: selBar.left + 'px', top: selBar.top + 'px' }" @mousedown.prevent>
+      <span class="sel-count">已选中 {{ selection?.words ?? 0 }} 字</span>
+      <span class="sel-divider" />
+      <button class="sel-btn" title="润色选中内容" @click="runSelAction('润色')"><Sparkles :size="12" />润色</button>
+      <button class="sel-btn" title="扩写选中内容" @click="runSelAction('扩写')"><ArrowLeftRight :size="12" />扩写</button>
+      <button class="sel-btn" title="检查选中内容" @click="runSelAction('检查')"><CheckCircle2 :size="12" />检查</button>
+      <div class="sel-more">
+        <button class="sel-btn" title="更多操作" @click.stop="selMoreOpen = !selMoreOpen"><MoreHorizontal :size="12" /></button>
+        <div v-if="selMoreOpen" class="sel-dropdown" @mousedown.stop>
+          <button class="sel-dropdown-item" @click="runSelAction('摘要')">生成摘要</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 章节内大纲浮层 -->
     <div v-if="showOutline" class="outline-panel">
       <div v-if="headings.length === 0" class="outline-empty">本章没有标题（# / ## / ###）</div>
@@ -89,8 +104,10 @@ import { storeToRefs } from 'pinia'
 import { useStatsStore } from '../stores/stats'
 import { useSettingsStore } from '../stores/settings'
 import { useFileStore } from '../stores/file'
+import { useSelectionStore } from '../stores/selection'
+import { QUICK_ACTIONS } from '../composables/aiQuickActions'
 import { countWords } from '../utils/countWords'
-import { ListTree, ChevronUp, ChevronDown, MoreHorizontal } from 'lucide-vue-next'
+import { ListTree, ChevronUp, ChevronDown, MoreHorizontal, Sparkles, ArrowLeftRight, CheckCircle2 } from 'lucide-vue-next'
 import HistoryModal from './HistoryModal.vue'
 import * as api from '../api/files'
 
@@ -174,6 +191,11 @@ let view: EditorView | null = null
 let switchSeq = 0
 /** 当前 view.state 实际属于哪个文件（切换完成前不更新，保证缓存/落盘的是正确的撤销历史） */
 let currentPath: string | undefined = undefined
+// ── 划词联动 ──
+const selectionStore = useSelectionStore()
+const { selection } = storeToRefs(selectionStore)
+const selBar = ref<{ left: number; top: number } | null>(null)
+const selMoreOpen = ref(false)
 const showHistory = ref(false)
 const showOutline = ref(false)
 const headings = ref<{ level: number; text: string; pos: number }[]>([])
@@ -324,6 +346,49 @@ function insertIfNotDuplicate(text: string): boolean {
   return true
 }
 
+// ── 划词联动：选区跟踪、浮动工具条、选区替换 ──
+
+/** 把当前选区写入共享 store（无选区则清空），并同步工具条位置 */
+function trackSelection() {
+  if (!view) return
+  const sel = view.state.selection.main
+  const text = sel.empty ? '' : view.state.doc.sliceString(sel.from, sel.to)
+  if (text) selectionStore.setSelection(props.path ?? '', sel.from, sel.to, text)
+  else selectionStore.clearSelection()
+  updateSelBar()
+}
+
+/** 工具条定位在选区上方（viewport 坐标 → position: fixed） */
+function updateSelBar() {
+  if (!view) { selBar.value = null; return }
+  const sel = view.state.selection.main
+  const storeSel = selectionStore.selection
+  if (sel.empty || !storeSel || storeSel.path !== (props.path ?? '')) { selBar.value = null; return }
+  const from = view.coordsAtPos(sel.from)
+  if (!from) { selBar.value = null; return }
+  selBar.value = { left: Math.max(8, Math.round(from.left)), top: Math.max(4, Math.round(from.top - 42)) }
+}
+
+/** 划词工具条动作：把动作写入 store，由 AI 面板消费执行 */
+function runSelAction(label: string) {
+  selMoreOpen.value = false
+  const sel = selectionStore.selection
+  if (!sel || !view) return
+  const action = QUICK_ACTIONS.find((a) => a.label === label)
+  if (!action) return
+  const prompt = settings.aiQuickPrompts[label] || action.prompt
+  selectionStore.requestAction({ label, prompt, selection: sel })
+}
+
+/** 替换选区（应用划词 Diff 用）：校验范围仍为原文，防止覆盖用户后续编辑 */
+function replaceRange(from: number, to: number, text: string, expectedOriginal?: string): boolean {
+  if (!view) return false
+  const doc = view.state.doc
+  if (from < 0 || to < from || to > doc.length) return false
+  if (expectedOriginal !== undefined && doc.sliceString(from, to) !== expectedOriginal) return false
+  return true
+}
+
 /** Word 式撤销/重做：编辑器未聚焦时也能由全局快捷键触发 */
 function undoCommand(): boolean {
   if (!view) return false
@@ -395,7 +460,7 @@ watch(showMore, (v) => {
   }
 })
 
-defineExpose({ flushPendingSave, flushUndo, insertIfNotDuplicate, undoCommand, redoCommand })
+defineExpose({ flushPendingSave, flushUndo, insertIfNotDuplicate, replaceRange, undoCommand, redoCommand })
 
 // 编辑器主题（只依赖 CSS 变量）
 const editorTheme = EditorView.theme({
@@ -507,6 +572,13 @@ const baseExtensions = [
     }
     if (update.viewportChanged) {
       updateScrollPercent()
+    }
+    // 划词跟踪：选区变化写入共享 store，并同步浮动工具条
+    if (update.selectionSet || update.docChanged) {
+      trackSelection()
+    }
+    if (update.viewportChanged || update.geometryChanged) {
+      updateSelBar()
     }
   }),
   EditorView.domEventHandlers({
@@ -648,6 +720,8 @@ onUnmounted(() => {
     saveUndoHistory(props.path)
     captureCurrentScroll(props.path)
   }
+  selectionStore.clearSelection()
+  selBar.value = null
   view?.destroy()
 })
 
@@ -657,6 +731,10 @@ watch(() => props.path, async (newPath, oldPath) => {
   const token = ++switchSeq
   // 切换前清理旧文件的待执行定时器，避免旧文件的自动保存打到新文件上
   if (saveTimer) { clearTimeout(saveTimer); saveTimer = null }
+  // 切换文件后旧文件的选区不再有效：清空共享选区并隐藏工具条
+  selectionStore.clearSelection()
+  selBar.value = null
+  selMoreOpen.value = false
   // 仅当 view 内容确实属于旧文件时才缓存/落盘（快速连续切换时旧文件可能已被上一次异步恢复抢先覆盖）
   if (oldPath && currentPath === oldPath) {
     fileStore.unregisterContentProvider(oldPath)
@@ -937,4 +1015,46 @@ watch(() => props.content, (newContent) => {
   font-size: 12px;
   color: var(--color-text-muted);
 }
+/* 划词工具条：跟随选区、悬于文字上方 */
+.sel-toolbar {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 6px;
+  background: var(--color-bg-elevated, var(--color-bg-surface));
+  border: 1px solid var(--color-border-strong, var(--color-border));
+  border-radius: 10px;
+  box-shadow: var(--shadow-popover);
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+.sel-count { font-size: 11px; color: var(--color-text-muted); padding: 0 6px; white-space: nowrap; }
+.sel-divider { width: 1px; height: 14px; background: var(--color-border); margin: 0 2px; flex-shrink: 0; }
+.sel-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border-radius: var(--radius-sm);
+  border: none; background: none; color: var(--color-text-secondary);
+  font-size: 12px; font-family: inherit; cursor: pointer;
+  white-space: nowrap;
+}
+.sel-btn:hover { background: var(--color-accent-bg); color: var(--color-accent); }
+.sel-more { position: relative; }
+.sel-dropdown {
+  position: absolute; top: calc(100% + 4px); right: 0;
+  min-width: 128px; padding: 4px;
+  background: var(--color-bg-elevated, var(--color-bg-surface));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  z-index: 41;
+}
+.sel-dropdown-item {
+  display: block; width: 100%; text-align: left;
+  padding: 6px 10px; border: none; background: none;
+  font-size: 12px; font-family: inherit; color: var(--color-text-secondary);
+  border-radius: var(--radius-sm); cursor: pointer;
+}
+.sel-dropdown-item:hover { background: var(--color-accent-bg); color: var(--color-accent); }
 </style>

@@ -65,6 +65,7 @@
       <!-- 右侧推挤面板：AI 紧凑面板 -->
       <Transition name="slide-right">
         <AiPanel v-if="showAiPanel && !focusMode" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
+          :apply-to-selection="handleApplySelection"
           @expand="view = 'ai-chat'" @insert="handleAiInsert" />
       </Transition>
 
@@ -146,11 +147,12 @@
 
   <!-- ===== AI 全屏对话 ===== -->
   <AiChatView v-if="view === 'ai-chat'" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
+    :apply-to-selection="handleApplySelection"
     @back="view = 'editor'" @insert="handleAiInsert" />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue'
 import { FolderOpen, Search, Sparkles, X, Settings, Download, Users, Trash2 } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useProjectOperations } from './composables/useProjectOperations'
@@ -160,6 +162,7 @@ import { useFileStore } from './stores/file'
 import { useChatStore } from './stores/chat'
 import { useStatsStore } from './stores/stats'
 import { useSettingsStore } from './stores/settings'
+import { useSelectionStore } from './stores/selection'
 import { useDesignTokens } from './composables/useDesignTokens'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
@@ -317,6 +320,22 @@ async function handleExport() {
 function handleAiInsert(text: string) {
   editorRef.value?.insertIfNotDuplicate(text)
 }
+
+const selectionStore = useSelectionStore()
+
+/** 把 AI 结果替换进编辑器划词选区；范围已不是原文或文件已切换时拒绝 */
+function handleApplySelection(target: { path: string; from: number; to: number; original?: string }, text: string): boolean {
+  const el = editorRef.value
+  if (!el || fileStore.openFile?.path !== target.path) return false
+  const ok = el.replaceRange(target.from, target.to, text, target.original)
+  if (ok) void fileStore.handleSave()
+  return ok
+}
+
+// 编辑器划词工具条触发动作时自动打开 AI 面板（面板消费 pendingAction 后清空）
+watch(() => selectionStore.pendingAction, (action) => {
+  if (action && !showAiPanel.value) showAiPanel.value = true
+})
 
 // ── 回收站 ──
 

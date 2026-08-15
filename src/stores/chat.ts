@@ -11,6 +11,8 @@ export interface ChatMessage {
   requestText?: string
   /** 该请求是否带 DiffView 对比（重新生成时沿用） */
   diffable?: boolean
+  /** 划词操作的目标选区：应用 Diff 时替换该范围而非整个文件 */
+  targetRange?: { path: string; from: number; to: number }
 }
 
 export interface ChatConversation {

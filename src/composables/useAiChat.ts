@@ -22,6 +22,8 @@ export interface AiChatTarget {
   insert: (text: string) => void
   /** 流式更新/发送完成后滚动到底部（可选） */
   scrollToBottom?: () => void
+  /** 把 AI 结果替换进编辑器划词选区（返回是否成功；失败则放弃应用） */
+  applyToSelection?: (target: { path: string; from: number; to: number; original?: string }, text: string) => Promise<boolean> | boolean
 }
 
 export function useAiChat(target: AiChatTarget) {
@@ -74,12 +76,23 @@ export function useAiChat(target: AiChatTarget) {
   async function handleApplyDiff(merged: string, index: number) {
     const path = target.activeFile()?.path
     const convId = activeConversation.value?.id
+    const msg = activeConversation.value?.messages[index]
     if (!path) return
     try {
-      await api.writeFile(path, merged)
-      fileStore.updateActiveFile({ content: merged, isDirty: false })
+      if (msg?.targetRange) {
+        // 划词操作：只替换选区，绝不把选区结果当全文写盘
+        if (!target.applyToSelection) return
+        const ok = await target.applyToSelection(
+          { path: msg.targetRange.path, from: msg.targetRange.from, to: msg.targetRange.to, original: msg.originalContent },
+          merged,
+        )
+        if (!ok) return
+      } else {
+        await api.writeFile(path, merged)
+        fileStore.updateActiveFile({ content: merged, isDirty: false })
+      }
       // 收起 diff：消息变为纯文本（应用后的最终内容），并短暂提示已应用
-      if (convId) chatStore.patchMessage(convId, index, { content: merged, originalContent: undefined })
+      if (convId) chatStore.patchMessage(convId, index, { content: merged, originalContent: undefined, targetRange: undefined })
       appliedIndex.value = index
       if (appliedTimer) clearTimeout(appliedTimer)
       appliedTimer = setTimeout(() => { appliedIndex.value = null }, 1800)
@@ -175,6 +188,8 @@ export function useAiChat(target: AiChatTarget) {
     text: string
     display: string
     withOriginal?: boolean
+    /** 划词目标：存在时润色/扩写只针对选区，应用 Diff 时替换选区而非全文 */
+    selection?: { path: string; from: number; to: number; text: string }
   }): Promise<boolean> {
     if (!settings.aiApiKey) {
       chatStore.streaming = false
@@ -205,11 +220,18 @@ export function useAiChat(target: AiChatTarget) {
 
     const file = target.activeFile()
     const originalContent =
-      opts.withOriginal && file ? fileStore.getLatestContent(file.path) : undefined
+      opts.selection
+        ? opts.selection.text
+        : opts.withOriginal && file ? fileStore.getLatestContent(file.path) : undefined
 
     chatStore.addMessage(convId, { role: 'user', content: opts.display, requestText: opts.text, diffable: opts.withOriginal })
     chatStore.addMessage(convId, { role: 'assistant', content: '', originalContent })
-
+    chatStore.addMessage(convId, {
+      role: 'assistant',
+      content: '',
+      originalContent,
+      ...(opts.selection ? { targetRange: { path: opts.selection.path, from: opts.selection.from, to: opts.selection.to } } : {}),
+    })
     const ctrl = chatStore.createAbortController()
     try {
       const { text: result, aborted } = await streamChat({
@@ -254,8 +276,17 @@ export function useAiChat(target: AiChatTarget) {
     if (userIdx < 0) return false
     const userMsg = conv.messages[userIdx]
     const text = userMsg.requestText ?? userMsg.content.replace(/^\[[^\]]+\]\s*/, '')
+    const lastRange = last.targetRange
+    const lastOriginal = last.originalContent
     chatStore.removeLastMessage(conv.id)
-    return send({ text, display: userMsg.content, withOriginal: !!userMsg.diffable })
+    return send({
+      text,
+      display: userMsg.content,
+      withOriginal: !!userMsg.diffable,
+      selection: lastRange
+        ? { path: lastRange.path, from: lastRange.from, to: lastRange.to, text: lastOriginal ?? '' }
+        : undefined,
+    })
   }
 
   /** 复制消息内容到剪贴板 */

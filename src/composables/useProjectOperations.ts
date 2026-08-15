@@ -3,8 +3,10 @@ import { useProjectStore } from '../stores/project'
 import { useFileStore } from '../stores/file'
 import { useStatsStore } from '../stores/stats'
 import type { ProjectEntry } from '../types/project'
+import type { FileNode } from '../types/file'
 import { pickCoverColor } from '../types/project'
 import * as api from '../api/files'
+import { open as openDialog } from '@tauri-apps/plugin-dialog'
 
 export function useProjectOperations(opts: {
   view: Ref<string>
@@ -36,15 +38,65 @@ export function useProjectOperations(opts: {
       await api.setProjectPath(project.path)
       await loadFileTree()
       await statsStore.init(project.path)
+      // 恢复上次会话的标签页与活动文件（后台逐个读盘，失败跳过）
+      await fileStore.restoreOpenTabs()
+      // 汇总全书字数并写回项目索引（项目库卡片显示用）
+      const total = sumWords(fileStore.tree)
+      const updated = { ...project, wordCount: total, broken: false }
+      opts.currentProject.value = updated
+      projectStore.addProject(updated)
     } catch (e) {
       console.error('打开项目失败:', e)
     }
   }
 
+  /** 遍历文件树求和（node.wordCount 来自后端 list_dir） */
+  function sumWords(nodes: FileNode[]): number {
+    let sum = 0
+    for (const n of nodes) {
+      if (n.isDir) {
+        if (n.children) sum += sumWords(n.children)
+      } else {
+        sum += n.wordCount ?? 0
+      }
+    }
+    return sum
+  }
+
+  /** 在系统文件管理器中显示项目文件夹 */
+  async function handleLocate(project: ProjectEntry) {
+    try {
+      await api.revealPath(project.path)
+    } catch (e) {
+      console.error('在文件管理器中显示失败:', e)
+    }
+  }
+
+  /** 项目路径失效后重新定位文件夹 */
+  async function handleRelocate(project: ProjectEntry) {
+    try {
+      const folder = await openDialog({ directory: true, title: '重新定位项目文件夹' })
+      if (!folder) return
+      const newPath = typeof folder === 'string' ? folder : String(folder)
+      const oldPath = project.path
+      projectStore.updateProjectPath(oldPath, newPath)
+      const updated = opts.projects.value.find((p) => p.path === newPath)
+      if (updated) {
+        updated.broken = false
+      }
+      // 当前项目正是被重定位的项目 → 直接切到新路径
+      if (opts.currentProject.value?.path === oldPath) {
+        const target = updated ?? { ...project, path: newPath, broken: false }
+        await openProject(target)
+      }
+    } catch (e) {
+      console.error('重新定位失败:', e)
+    }
+  }
+
   async function handleNewProject() {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog')
-      const folder = await open({ directory: true, title: '选择新项目的存放位置' })
+      const folder = await openDialog({ directory: true, title: '选择新项目的存放位置' })
       if (!folder) return
       newProjectPath.value = typeof folder === 'string' ? folder : String(folder)
       newProjectName.value = ''
@@ -72,8 +124,7 @@ export function useProjectOperations(opts: {
 
   async function handleAddProject() {
     try {
-      const { open } = await import('@tauri-apps/plugin-dialog')
-      const folder = await open({ directory: true, title: '选择已有项目文件夹' })
+      const folder = await openDialog({ directory: true, title: '选择已有项目文件夹' })
       if (!folder) return
       const path = typeof folder === 'string' ? folder : String(folder)
       const name = path.split(/[/\\]/).pop() || '未命名'
@@ -98,7 +149,7 @@ export function useProjectOperations(opts: {
 
   return {
     showNewProjectDialog, newProjectPath, newProjectName,
-    openProject, handleNewProject, confirmNewProject, handleAddProject, handleRemoveProject,
+    openProject, handleNewProject, confirmNewProject, handleAddProject, handleRemoveProject, handleLocate, handleRelocate,
     loadFileTree,
   }
 }

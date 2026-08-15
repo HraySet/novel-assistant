@@ -5,6 +5,9 @@
     <div class="flex items-center justify-between px-3 py-2 border-b shrink-0"
       style="border-color: var(--color-border)">
       <span class="text-xs font-medium text-text-secondary">AI 助手</span>
+      <button class="ai-btn" title="摘要库（存为摘要的内容）" @click="showSummaries = true">
+        <NotebookText :size="14" />
+      </button>
       <button class="ai-btn" title="展开对话 (Ctrl+Shift+A)" @click="$emit('expand')">
         <Expand :size="14" />
       </button>
@@ -16,13 +19,14 @@
         <span v-if="!settings.aiApiKey" class="text-[10px] text-warning">未配置</span>
         <span v-else-if="activeFile" class="text-[10px] text-text-muted">📄 {{ activeFile.name }}</span>
       </div>
+      <AiContextBar class="mt-1.5" :label="contextLabel" />
     </div>
 
     <!-- 快捷操作 -->
     <div class="px-3 py-2 border-b shrink-0" style="border-color: var(--color-border)">
-      <div class="flex gap-1.5">
+      <div class="grid grid-cols-4 gap-1.5">
         <button v-for="a in quickActions" :key="a.label" class="quick-btn"
-          :disabled="chatStore.streaming" @click="runQuick(a)">
+          :disabled="chatStore.streaming" :title="a.hint" @click="runQuick(a)">
           {{ a.label }}
         </button>
       </div>
@@ -41,10 +45,19 @@
           :editable="true"
           :old-text="msg.originalContent"
           :new-text="msg.content"
-          @accept="(merged) => handleApplyDiff(merged)"
-          @reject="console.log('diff rejected')"
+          @accept="(merged) => handleApplyDiff(merged, i)"
+          @reject="handleRejectDiff(i)"
         />
-        <div v-else class="chat-content" v-html="sanitizeHtml(renderMarkdown(msg.content))" />
+        <div v-else class="chat-content" v-html="messageHtml(msg, i)" />
+        <div v-if="msg.role === 'assistant' && msg.content && !msg.originalContent" class="chat-actions-row">
+          <span v-if="appliedIndex === i" class="chat-applied-note">✓ 已应用到文件</span>
+          <template v-else>
+            <button class="chat-mini-btn" @click="handleInsertClick(msg.content, i)">{{ insertedIndex === i ? '✓ 已插入' : '插入编辑器' }}</button>
+            <button class="chat-mini-btn" :disabled="!activeFile" @click="saveAsSummary(msg.content, i)">
+              {{ savedIndex === i ? '✓ 已存入前情' : '存为摘要' }}
+            </button>
+          </template>
+        </div>
       </div>
       <div v-if="loading" class="text-xs text-text-muted">...</div>
     </div>
@@ -55,210 +68,95 @@
         placeholder="输入消息，或使用上方快捷操作"
         :disabled="chatStore.streaming"
         @keydown.enter.exact.prevent="handleSend" />
+      <p v-if="showKeyHint && !settings.aiApiKey" class="text-[10px] text-warning mt-1.5">
+        请先在设置中配置 API Key（Ctrl+,）
+      </p>
       <button v-if="chatStore.streaming" class="chat-stop-btn mt-2" @click="chatStore.abortStreaming()">
         <Square :size="12" /> 停止生成
       </button>
     </div>
+
+    <!-- 摘要库弹层 -->
+    <SummaryLibrary
+      :show="showSummaries"
+      :project-root="projectRoot"
+      @close="showSummaries = false"
+      @insert="(text) => emit('insert', text)"
+    />
   </aside>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch, onMounted, computed } from 'vue'
+import { ref, nextTick } from 'vue'
+import { Expand, Square, NotebookText } from 'lucide-vue-next'
 import { useSettingsStore } from '../stores/settings'
-import { useChatStore } from '../stores/chat'
-import { buildAiHeaders, getAiEndpoint } from '../composables/useAiApi'
-import DOMPurify from 'dompurify'
-import { Expand, Square } from 'lucide-vue-next'
-import { renderMarkdown } from '../composables/useMarkdown'
-import { useAiContext } from '../composables/useAiContext'
+import { useAiChat } from '../composables/useAiChat'
+import { QUICK_ACTIONS } from '../composables/aiQuickActions'
 import DiffView from './DiffView.vue'
-import { useFileStore } from '../stores/file'
-import * as api from '../api/files'
+import AiContextBar from './AiContextBar.vue'
+import SummaryLibrary from './SummaryLibrary.vue'
 
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
   projectRoot?: string
 }>()
-const emit = defineEmits<{ expand: [] }>()
+const emit = defineEmits<{ expand: []; insert: [text: string] }>()
 
 const settings = useSettingsStore()
-const chatStore = useChatStore()
-const fileStore = useFileStore()
-const activeConversation = computed(() => chatStore.activeConversation())
 
-async function handleApplyDiff(merged: string) {
-  const path = props.activeFile?.path
-  if (!path) return
-  try {
-    await api.writeFile(path, merged)
-    fileStore.updateActiveFile({ content: merged, isDirty: false })
-  } catch (e) {
-    console.error('应用修改失败:', e)
-  }
-}
-
-function sanitizeHtml(html: string): string { return DOMPurify.sanitize(html) }
-
-const inputText = ref('')
 const chatEl = ref<HTMLElement>()
-const loading = ref(false)
+const inputText = ref('')
+const showSummaries = ref(false)
 
-// 统一上下文
-const { build, contextLabel } = useAiContext(
-  () => props.projectRoot,
-  () => props.activeFile?.content,
-  () => props.activeFile?.name,
-)
+// AI 对话共享逻辑（与全屏对话共用）
+const {
+  chatStore,
+  loading,
+  activeConversation,
+  contextLabel,
+  showKeyHint,
+  appliedIndex,
+  savedIndex,
+  insertedIndex,
+  messageHtml,
+  handleApplyDiff,
+  handleRejectDiff,
+  handleInsertClick,
+  saveAsSummary,
+  send,
+} = useAiChat({
+  projectRoot: () => props.projectRoot,
+  activeFile: () => props.activeFile,
+  insert: (text) => emit('insert', text),
+  scrollToBottom: () => nextTick(() => {
+    const el = chatEl.value
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 48) el.scrollTo(0, el.scrollHeight)
+  }),
+})
 
-// 首次打开或项目切换时加载对话
-onMounted(() => { if (props.projectRoot) chatStore.loadConversations(props.projectRoot) })
-watch(() => props.projectRoot, (root) => { if (root) chatStore.loadConversations(root) })
+// 快捷操作：内置提示词 + 用户在设置里的覆盖（按 label）
+const quickActions = QUICK_ACTIONS.map((a) => ({
+  ...a,
+  prompt: settings.aiQuickPrompts[a.label] || a.prompt,
+}))
 
-// 快捷操作：定义在面板内部，语义清晰，不占用右侧窄条
-const quickActions = [
-  { label: '续写', prompt: '请续写以下内容，保持风格一致，直接给出续写结果：' },
-  { label: '润色', prompt: '请润色以下文字，保持原意不变，优化表达和节奏：' },
-  { label: '扩写', prompt: '请对以下内容进行扩写，增加细节和描写，但不要偏离原意：' },
-  { label: '检查', prompt: '请检查以下角色一致性、伏笔、逻辑问题，指出语法错误、逻辑矛盾或可以改进的地方：' },
-]
+// 编辑类操作保留原文供 DiffView 对比；续写/检查等不对比
+const DIFF_ACTIONS = new Set(['润色', '扩写'])
 
-function runQuick(action: { label: string; prompt: string }) {
+function runQuick(action: { label: string; prompt: string; hint?: string }) {
   handleQuickAction(action.label, action.prompt)
 }
 
-function handleSend() {
+async function handleQuickAction(label: string, prompt: string) {
+  if (chatStore.streaming) return
+  await send({ text: prompt, display: '[' + label + ']', withOriginal: DIFF_ACTIONS.has(label) })
+}
+
+async function handleSend() {
   const text = inputText.value.trim()
   if (!text || chatStore.streaming) return
-  chatStore.streaming = true
-  build()
-    .then(({ prompt }) => { send(text, '', prompt) })
-    .catch(() => { chatStore.streaming = false })
-}
-
-function handleQuickAction(label: string, prompt: string) {
-  if (chatStore.streaming) return
-  chatStore.streaming = true
-  build()
-    .then(({ prompt: ctx }) => { send(prompt, label, ctx) })
-    .catch(() => { chatStore.streaming = false })
-}
-
-async function send(text: string, prefix: string, contextPrompt?: string) {
-  if (!settings.aiApiKey) return
-
-  let conv = activeConversation.value
-  if (!conv) conv = chatStore.createConversation(undefined, props.activeFile?.path)
-  const convId = conv.id
-  inputText.value = ''
-  loading.value = true
-
-  const priorHistory = conv.messages
-    .filter(m => m.content !== '')
-    .map(m => ({ role: m.role, content: m.content }))
-
-  const displayMsg = prefix ? `[${prefix}]` : text
-  chatStore.addMessage(convId, { role: 'user', content: displayMsg })
-
-  // 仅编辑类操作（润色/扩写）保留原始文件供 DiffView 对比；续写和检查不对比
-  const DIFF_ACTIONS = new Set(['润色', '扩写'])
-  const originalContent = DIFF_ACTIONS.has(prefix) ? (props.activeFile?.content ?? '') : undefined
-  chatStore.addMessage(convId, { role: 'assistant', content: '', originalContent })
-
-  try {
-    const isClaude = settings.aiProvider === 'claude'
-    const body = isClaude
-      ? {
-          model: settings.aiModel, max_tokens: 4096,
-          system: contextPrompt || undefined,
-          messages: [...priorHistory, { role: 'user', content: text }],
-          stream: true,
-        }
-      : {
-          model: settings.aiModel,
-          messages: [
-            ...(contextPrompt ? [{ role: 'system' as const, content: contextPrompt }] : []),
-            ...priorHistory,
-            { role: 'user', content: text },
-          ],
-          stream: true,
-        }
-    const url = isClaude
-      ? `${getAiEndpoint()}/messages`
-      : `${getAiEndpoint()}/chat/completions`
-
-    const ctrl = chatStore.createAbortController()
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: buildAiHeaders(),
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    })
-
-    if (!res.ok) {
-      chatStore.updateLastMessage(convId, `请求失败 (${res.status})`)
-      return
-    }
-
-    if (isClaude) {
-      const reader = res.body?.getReader()
-      if (!reader) { chatStore.updateLastMessage(convId, '(无法读取响应)'); return }
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let result = ''
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.type === 'content_block_delta') {
-                result += data.delta?.text ?? ''
-                chatStore.updateLastMessage(convId, result)
-              }
-            } catch { /* skip */ }
-          }
-        }
-      } catch { /* 中断保留已生成内容 */ }
-    } else {
-      const reader = res.body?.getReader()
-      if (!reader) { chatStore.updateLastMessage(convId, '(无法读取响应)'); return }
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let result = ''
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-          for (const line of lines) {
-            if (!line.startsWith('data: ') || line === 'data: [DONE]') continue
-            try {
-              const chunk = JSON.parse(line.slice(6))
-              result += chunk.choices?.[0]?.delta?.content ?? ''
-              chatStore.updateLastMessage(convId, result)
-            } catch { /* skip */ }
-          }
-        }
-      } catch {
-        // 中断时已生成内容保留
-      }
-    }
-  } catch (e: any) {
-    if (e?.name !== 'AbortError') {
-      chatStore.updateLastMessage(convId, '网络请求失败')
-    }
-  } finally {
-    chatStore.streaming = false
-    loading.value = false
-    nextTick(() => { chatEl.value?.scrollTo(0, chatEl.value.scrollHeight) })
-  }
+  const ok = await send({ text, display: text })
+  if (ok) inputText.value = ''
 }
 </script>
 
@@ -307,6 +205,18 @@ async function send(text: string, prefix: string, contextPrompt?: string) {
   display: flex; align-items: center; justify-content: center; gap: 4px;
 }
 .chat-stop-btn:hover { background: var(--color-danger); color: #fff; }
+.chat-actions-row { margin-top: 4px; }
+.chat-mini-btn {
+  font-size: 10px; padding: 2px 8px; border-radius: var(--radius-sm);
+  color: var(--color-text-muted); background: none;
+  border: 1px solid var(--color-border); cursor: pointer; font-family: inherit;
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+.chat-mini-btn:hover:not(:disabled) {
+  background: var(--color-accent-bg); color: var(--color-accent); border-color: var(--color-accent-border);
+}
+.chat-mini-btn:disabled { opacity: 0.4; cursor: default; }
+.chat-applied-note { font-size: 10px; color: var(--color-success); }
 
 .chat-content :deep(h1) { font-size: 1.2em; font-weight: 700; margin: 8px 0 4px; }
 .chat-content :deep(h2) { font-size: 1.1em; font-weight: 600; margin: 6px 0 3px; }

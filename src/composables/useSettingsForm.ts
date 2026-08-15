@@ -58,13 +58,9 @@ export function useSettingsForm() {
     customTarget.value = "";
   }
 
-  const fontSize = computed(() => store.editorFontSize);
-  function setFontSize(s: string) { store.setEditorFontSize(s); }
-
   return {
     testing, fetching, testResult, testOk, modelList,
     testConnection, fetchModels,
     wordTargetPreset, customTarget, setWordTarget, setCustomTarget,
-    fontSize, setFontSize,
   };
 }

@@ -32,3 +32,4 @@ src-tauri/target
 .alma-snapshots
 nul
 .deepseek/
+.dsh_better_edit/

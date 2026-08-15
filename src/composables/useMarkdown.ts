@@ -1,3 +1,11 @@
+/** HTML 转义：流式输出期间按纯文本渲染，避免每个 token 都跑一遍 Markdown 解析 */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
 /**
  * 轻量 Markdown → HTML 渲染，不依赖外部库。
  * 覆盖小说写作场景常见语法：粗体、斜体、标题、代码块、列表、分割线。

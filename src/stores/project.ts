@@ -1,4 +1,4 @@
-import { defineStore } from 'pinia'
+import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { ProjectEntry } from '../types/project'
@@ -72,6 +72,16 @@ export const useProjectStore = defineStore('project', () => {
     }
   }
 
+  /** 重新定位：把项目路径从 oldPath 更新到 newPath（并解除失效标记） */
+  function updateProjectPath(oldPath: string, newPath: string) {
+    const p = projects.value.find(p => p.path === oldPath)
+    if (!p) return
+    p.path = newPath
+    p.name = newPath.split(/[/\\]/).pop() || p.name
+    p.broken = false
+    saveIndex()
+  }
+
   return {
     projects,
     currentProject,
@@ -80,5 +90,11 @@ export const useProjectStore = defineStore('project', () => {
     addProject,
     removeProject,
     markOpened,
+    updateProjectPath,
   }
 })
+
+// 开发模式 HMR：store 改动时热替换定义，避免新旧实例混用导致运行时崩溃
+if (import.meta.hot) {
+  import.meta.hot.accept(acceptHMRUpdate(useProjectStore, import.meta.hot))
+}

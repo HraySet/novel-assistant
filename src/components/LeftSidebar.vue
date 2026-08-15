@@ -27,6 +27,28 @@
       @dragleave.self="handleRootDragLeave"
       @drop.self.prevent="handleRootDrop($event)"
     >
+      <!-- 收藏分组：星标文件快捷入口 -->
+      <div v-if="favoriteNodes.length > 0" class="fav-section">
+        <div class="fav-header" @click="showFavorites = !showFavorites">
+          <Star :size="11" class="fav-star-icon" />
+          <span class="fav-title">收藏</span>
+          <span class="fav-count">{{ favoriteNodes.length }}</span>
+          <span class="fav-toggle">{{ showFavorites ? '▾' : '▸' }}</span>
+        </div>
+        <div v-if="showFavorites" class="fav-list">
+          <button
+            v-for="f in favoriteNodes"
+            :key="f.path"
+            class="fav-row"
+            :class="{ 'fav-row--active': fileStore.selectedPath === f.path }"
+            :title="f.path"
+            @click="fileStore.handleFileSelect(f.path)"
+          >
+            <FileText :size="12" class="shrink-0 text-text-muted" />
+            <span class="fav-name">{{ f.name }}</span>
+          </button>
+        </div>
+      </div>
       <DraftRow
         v-if="draftState && draftState.parentPath === fileStore.projectRoot"
         :type="draftState.type"
@@ -42,22 +64,50 @@
         :depth="0"
       />
 
-      <div class="flex-1 min-h-[80px]" @contextmenu.self.prevent="fileStore.openContextMenu($event.clientX, $event.clientY, '', 'blank')" />
+      <div
+        class="flex-1 min-h-[80px]"
+        @contextmenu.self.prevent="fileStore.openContextMenu($event.clientX, $event.clientY, '', 'blank')"
+        @dragenter.prevent.stop="handleRootDragEnter"
+        @dragover.prevent.stop="handleRootDragOver"
+        @dragleave="handleRootDragLeave"
+        @drop.prevent.stop="handleRootDrop"
+      />
     </div>
 
   </aside>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { FilePlus, FolderPlus, FoldVertical } from 'lucide-vue-next'
+import { FilePlus, FolderPlus, FoldVertical, Star, FileText } from 'lucide-vue-next'
+import type { FileNode } from '../types/file'
 import { useFileStore } from '../stores/file'
 import FileTreeNode from './FileTreeNode.vue'
 import DraftRow from './DraftRow.vue'
+import { importDroppedFilesInto } from '../composables/useExternalFileImport'
 
 const fileStore = useFileStore()
 const { tree: treeNodes, draft: draftState } = storeToRefs(fileStore)
+
+/** 展平文件树中所有被收藏的文件（保持树顺序） */
+const favoriteNodes = computed(() => {
+  const out: FileNode[] = []
+  const walk = (nodes: FileNode[]) => {
+    for (const n of nodes) {
+      if (n.isDir) {
+        if (n.children) walk(n.children)
+      } else if (fileStore.isFavorite(n.path)) {
+        out.push(n)
+      }
+    }
+  }
+  walk(treeNodes.value)
+  return out
+})
+
+// 收藏分组折叠状态（跨会话记忆）
+const showFavorites = ref(localStorage.getItem('file-fav-section-open') !== '0')
 
 function handleCreate(type: 'file' | 'dir') {
   const selectedNode = fileStore.selectedPath ? fileStore.findNode(fileStore.selectedPath) : null
@@ -69,17 +119,31 @@ function handleCreate(type: 'file' | 'dir') {
 const dragOverRoot = ref(false)
 
 function handleRootDragEnter(e: DragEvent) {
-  if (e.dataTransfer?.types.includes('text/plain')) dragOverRoot.value = true
+  const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
+  if (types.includes('text/plain') || types.includes('Files')) dragOverRoot.value = true
 }
 function handleRootDragOver(e: DragEvent) {
-  if (e.dataTransfer?.types.includes('text/plain')) e.dataTransfer.dropEffect = 'move'
+  const dt = e.dataTransfer
+  if (!dt) return
+  const types = Array.from(dt.types)
+  // 源只允许 COPY，根级落点同样请求 copy 保证协商成功
+  if (types.includes('text/plain') || types.includes('Files')) dt.dropEffect = 'copy'
 }
 function handleRootDragLeave() { dragOverRoot.value = false }
-function handleRootDrop(e: DragEvent) {
+async function handleRootDrop(e: DragEvent) {
   dragOverRoot.value = false
-  const sourcePath = e.dataTransfer?.getData('text/plain')
-  if (!sourcePath) return
-  fileStore.handleDrop(sourcePath, fileStore.projectRoot)
+  const dt = e.dataTransfer
+  if (!dt) return
+  // 1) 内部移动优先：应用内拖拽同时携带 text/plain 与 Files
+  const sourcePath = dt.getData('text/plain')
+  if (sourcePath && fileStore.findNode(sourcePath)) {
+    fileStore.handleDrop(sourcePath, fileStore.projectRoot)
+    return
+  }
+  // 2) 外部文件拖入 → 复制进项目根目录
+  if (dt.files.length > 0) {
+    await importDroppedFilesInto(dt, fileStore.projectRoot)
+  }
 }
 </script>
 
@@ -95,4 +159,71 @@ function handleRootDrop(e: DragEvent) {
 .header-action-btn:hover { background: var(--color-bg-surface-hover); color: var(--color-accent); }
 
 .drop-root { outline: 2px dashed var(--color-accent-border); outline-offset: -4px; }
+
+.fav-section {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.fav-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 4px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  color: var(--color-text-secondary);
+}
+.fav-header:hover { background: var(--color-bg-surface-hover); }
+
+.fav-star-icon { color: #eab308; }
+
+.fav-title { font-size: 11px; font-weight: 600; }
+
+.fav-count {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface-hover);
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 14px;
+}
+
+.fav-toggle {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.fav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 0;
+}
+
+.fav-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 4px 3px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--color-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.fav-row:hover { background: var(--color-bg-surface-hover); color: var(--color-text-primary); }
+.fav-row--active { background: var(--color-accent-bg); color: var(--color-accent); }
+
+.fav-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 </style>

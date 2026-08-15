@@ -7,18 +7,19 @@
         'node-row--expanded': isExpanded,
         'node-row--drop-target': dragOver,
         'node-row--active': fileStore.selectedPath === node.path,
+        'node-row--dragging': fileStore.dragSource === node.path,
       }"
       :style="{ paddingLeft: depth * 14 + 4 + 'px' }"
-      @click="fileStore.handleDirectoryClick(node.path)"
+      @click="handleRowClick(node.path, true)"
+      @mousedown="handleMouseDown($event, node.path)"
       @dblclick.stop="fileStore.startRename(node.path)"
       @contextmenu.prevent="openMenu($event, 'dir')"
-      draggable="true"
-      @dragstart="handleDragStart($event, node.path)"
-      @dragend="handleDragEnd"
       @dragenter.prevent="handleDragEnter($event)"
       @dragover.prevent="handleDragOver($event)"
       @dragleave="handleDragLeave"
       @drop.prevent="handleDrop($event, node.path)"
+      :draggable="!isWindows"
+      @dragstart="handleDragStart($event, node.path)"
     >
       <span class="node-arrow">{{ isExpanded ? '▾' : '▸' }}</span>
       <Folder :size="14" class="text-text-muted shrink-0" />
@@ -58,14 +59,19 @@
       class="node-row"
       :class="{
         'node-row--active': fileStore.selectedPath === node.path,
+        'node-row--dragging': fileStore.dragSource === node.path,
       }"
       :style="{ paddingLeft: depth * 14 + 4 + 'px' }"
-      @click="fileStore.handleFileSelect(node.path)"
+      @click="handleRowClick(node.path, false)"
+      @mousedown="handleMouseDown($event, node.path)"
       @dblclick.stop="fileStore.startRename(node.path)"
       @contextmenu.prevent="openMenu($event, 'file')"
-      draggable="true"
+      @dragenter.prevent="handleDragEnter($event)"
+      @dragover.prevent="handleDragOver($event)"
+      @dragleave="handleDragLeave"
+      @drop.prevent="handleDrop($event, parentDirOf(node.path))"
+      :draggable="!isWindows"
       @dragstart="handleDragStart($event, node.path)"
-      @dragend="handleDragEnd"
     >
       <span class="node-arrow invisible">▸</span>
       <FileText :size="14" class="text-text-muted shrink-0" />
@@ -113,22 +119,38 @@
       </span>
     </div>
 
-    <!-- Expanded children -->
-    <template v-if="isExpanded">
-      <DraftRow
-        v-if="draftState && draftState.parentPath === node.path"
-        :type="draftState.type"
-        :default-name="draftState.defaultName"
-        :depth="depth + 1"
-        @confirm="fileStore.confirmDraft($event)"
-        @cancel="fileStore.cancelDraft()"
-      />
-      <FileTreeNode
-        v-for="child in node.children"
-        :key="child.path"
-        :node="child"
-        :depth="depth + 1"
-      />
+    <!-- Expanded children -->
+
+    <template v-if="isExpanded">
+
+      <DraftRow
+
+        v-if="draftState && draftState.parentPath === node.path"
+
+        :type="draftState.type"
+
+        :default-name="draftState.defaultName"
+
+        :depth="depth + 1"
+
+        @confirm="fileStore.confirmDraft($event)"
+
+        @cancel="fileStore.cancelDraft()"
+
+      />
+
+      <FileTreeNode
+
+        v-for="child in node.children"
+
+        :key="child.path"
+
+        :node="child"
+
+        :depth="depth + 1"
+
+      />
+
     </template>
   </div>
 </template>
@@ -160,7 +182,12 @@ const { renameValue, renameInputRef, handleConfirm, handleCancel } = useRename(
   props.node.isDir,
 )
 
-const { dragOver, handleDragStart, handleDragEnter, handleDragOver, handleDragLeave, handleDragEnd, handleDrop } = useFileTreeDrag()
+const { dragOver, handleMouseDown, handleRowClick, handleDragEnter, handleDragOver, handleDragLeave, handleDrop, handleDragStart, isWindows } = useFileTreeDrag()
+
+function parentDirOf(path: string): string {
+  const i = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'))
+  return i > 0 ? path.slice(0, i) : ''
+}
 
 function openMenu(e: MouseEvent, type: 'file' | 'dir') {
   fileStore.openContextMenu(e.clientX, e.clientY, props.node.path, type)
@@ -199,6 +226,10 @@ function formatWordCount(count: number): string {
 .node-row--active {
   background: var(--color-accent-bg);
   color: var(--color-accent);
+}
+
+.node-row--dragging {
+  opacity: 0.4;
 }
 
 .node-row--drop-target {

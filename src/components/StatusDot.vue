@@ -22,10 +22,10 @@ const props = withDefaults(
 const color = computed(
   () =>
     ({
-      none: "var(--text-disabled)",
-      low: "var(--accent)",
-      mid: "var(--status-warning)",
-      high: "var(--status-success)",
+      none: "var(--color-text-muted)",
+      low: "var(--color-accent)",
+      mid: "var(--color-warning)",
+      high: "var(--color-success)",
     }[props.level])
 );
 </script>

@@ -36,13 +36,71 @@
           </SurfaceCard>
 
           <SurfaceCard class="p-4">
-            <span class="text-xs font-medium text-text-secondary block mb-3">编辑器字号</span>
-            <SegmentedGroup
-              :options="fontSizeOpts.map(s => ({ value: s, label: s }))"
-              :model-value="form.fontSize.value"
-              size="md"
-              @update:model-value="form.setFontSize($event as string)"
-            />
+            <span class="text-xs font-medium text-text-secondary block mb-3">写作分析</span>
+            <div class="flex gap-8 mb-4">
+              <div>
+                <div class="text-xl font-semibold text-text-primary" style="font-variant-numeric: tabular-nums;">{{ todaySpeed.toLocaleString() }}</div>
+                <div class="text-xs text-text-muted mt-1">今日速度（字/小时）</div>
+              </div>
+              <div>
+                <div class="text-xl font-semibold text-text-primary" style="font-variant-numeric: tabular-nums;">{{ avgDaily.toLocaleString() }}</div>
+                <div class="text-xs text-text-muted mt-1">日均字数</div>
+              </div>
+              <div>
+                <div class="text-xl font-semibold text-text-primary" style="font-variant-numeric: tabular-nums;">{{ activeDays }}</div>
+                <div class="text-xs text-text-muted mt-1">累计写作天数</div>
+              </div>
+            </div>
+            <span class="text-xs font-medium text-text-secondary block mb-2">近 7 天</span>
+            <div class="flex items-end gap-2 h-24">
+              <div
+                v-for="d in last7"
+                :key="d.date"
+                class="flex-1 flex flex-col items-center justify-end gap-1 h-full"
+                :title="`${d.label}：${d.count.toLocaleString()} 字`"
+              >
+                <span class="text-[9px] text-text-muted leading-none">{{ d.count > 0 ? d.count : '' }}</span>
+                <div
+                  class="w-full rounded-sm"
+                  :style="{ height: barHeight(d.count), background: d.count > 0 ? 'var(--color-accent)' : 'var(--color-bg-surface-hover)' }"
+                />
+                <span class="text-[9px] text-text-muted leading-none">{{ d.label }}</span>
+              </div>
+            </div>
+          </SurfaceCard>
+
+          <!-- 码字日历（近 12 周热力图） -->
+          <WritingCalendar />
+
+          <SurfaceCard class="p-4">
+            <span class="text-xs font-medium text-text-secondary block mb-3">编辑器排版</span>
+            <div class="flex items-center gap-3 mb-3">
+              <span class="text-xs text-text-secondary w-8 shrink-0">字号</span>
+              <input
+                type="range"
+                min="14"
+                max="24"
+                step="1"
+                class="setting-slider flex-1"
+                :value="store.editorFontSize"
+                @input="store.setEditorFontSize(Number(($event.target as HTMLInputElement).value))"
+              />
+              <span class="text-xs text-text-secondary w-12 text-right shrink-0" style="font-variant-numeric: tabular-nums">{{ store.editorFontSize }}px</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-text-secondary w-8 shrink-0">行距</span>
+              <input
+                type="range"
+                min="1.5"
+                max="2.2"
+                step="0.1"
+                class="setting-slider flex-1"
+                :value="store.editorLineHeight"
+                @input="store.setEditorLineHeight(Number(($event.target as HTMLInputElement).value))"
+              />
+              <span class="text-xs text-text-secondary w-12 text-right shrink-0" style="font-variant-numeric: tabular-nums">{{ store.editorLineHeight.toFixed(1) }}</span>
+            </div>
+            <p class="text-[10px] text-text-muted mt-2">即时预览生效，可在编辑器中查看效果</p>
           </SurfaceCard>
 
           <SurfaceCard class="p-4">
@@ -62,6 +120,15 @@
                   <div class="text-xs text-text-muted">高亮当前行，其余变暗</div>
                 </div>
               </label>
+              <div class="pt-3 mt-1" style="border-top: 1px solid var(--color-border)">
+                <span class="text-xs font-medium text-text-secondary block mb-2">正文宽度</span>
+                <SegmentedGroup
+                  :options="widthOpts.map(w => ({ value: w, label: w }))"
+                  :model-value="store.editorWidth"
+                  size="md"
+                  @update:model-value="store.setEditorWidth($event as string)"
+                />
+              </div>
             </div>
           </SurfaceCard>
         </div>
@@ -92,40 +159,51 @@
           <p class="text-xs text-text-muted ml-13">自定义界面配色方案</p>
         </div>
 
+        <!-- 当前主题预览 -->
         <SurfaceCard class="p-4 mb-4">
           <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg" style="background: color-mix(in srgb, var(--color-accent) 20%, transparent); color: var(--color-accent)">
-              <Sun v-if="!store.themeDark" :size="18" />
-              <Moon v-else :size="18" />
-            </div>
             <div class="flex-1"><span class="text-sm font-medium text-text-primary">当前主题</span></div>
-            <div class="w-6 h-6 rounded-full border-2 border-border" :style="{ background: store.accentColor }" />
+            <div class="flex items-center gap-2">
+              <span class="current-swatch" :style="{ background: store.bgColor, borderColor: store.themeDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.15)' }">
+                <span class="current-swatch-text" :style="{ color: store.themeText?.primary ?? (store.themeDark ? '#e4e4e7' : '#3f3f46') }">Aa 正文</span>
+                <span class="current-swatch-accent" :style="{ background: store.accentColor }" />
+              </span>
+              <span class="text-xs text-text-secondary">{{ store.themeDark ? '深色' : '浅色' }}</span>
+            </div>
           </div>
         </SurfaceCard>
 
         <span class="text-xs font-medium text-text-secondary block mb-3">深色主题</span>
-        <div class="grid grid-cols-2 gap-2 mb-6">
-          <button v-for="p in darkPresets" :key="p.name"
-            class="flex items-center gap-3 px-4 py-3 rounded-xl border transition-all"
-            :class="store.accentColor === p.value && store.themeDark ? 'border-accent-border bg-accent-bg' : 'border-border hover:border-border-strong'"
-            @click="store.applyColorPreset(p)">
-            <div class="w-8 h-8 rounded-sm shrink-0 flex items-center justify-center text-xs font-bold"
-              :style="{ background: p.value + '20', color: p.value }">Aa</div>
-            <div class="text-left flex-1 min-w-0"><div class="text-xs font-medium text-text-primary">{{ p.name }}</div></div>
-            <div v-if="store.accentColor === p.value && store.themeDark" class="text-xs text-accent">✓</div>
+        <div class="grid grid-cols-3 gap-2 mb-6">
+          <button
+            v-for="p in darkPresets"
+            :key="p.name"
+            class="preset-card"
+            :class="{ 'preset-card--active': store.accentColor === p.value && store.themeDark }"
+            :style="{ background: p.bg }"
+            @click="store.applyColorPreset(p)"
+          >
+            <span class="preset-text" :style="{ color: p.text.primary }">Aa 正文</span>
+            <span class="preset-accent" :style="{ background: p.value }" />
+            <span class="preset-name" :style="{ color: p.text.secondary }">{{ p.name }}</span>
+            <span v-if="store.accentColor === p.value && store.themeDark" class="preset-check" :style="{ background: p.value }">✓</span>
           </button>
         </div>
 
         <span class="text-xs font-medium text-text-secondary block mb-3 mt-6">浅色主题</span>
-        <div class="grid grid-cols-2 gap-2">
-          <button v-for="p in lightPresets" :key="p.name"
-            class="flex items-center gap-3 px-4 py-3 rounded-xl border transition-all"
-            :class="store.accentColor === p.value && !store.themeDark ? 'border-accent-border bg-accent-bg' : 'border-border hover:border-border-strong'"
-            @click="store.applyColorPreset(p)">
-            <div class="w-8 h-8 rounded-sm shrink-0 flex items-center justify-center text-xs font-bold"
-              :style="{ background: p.value + '20', color: p.value }">Aa</div>
-            <div class="text-left flex-1 min-w-0"><div class="text-xs font-medium text-text-primary">{{ p.name }}</div></div>
-            <div v-if="store.accentColor === p.value && !store.themeDark" class="text-xs text-accent">✓</div>
+        <div class="grid grid-cols-3 gap-2">
+          <button
+            v-for="p in lightPresets"
+            :key="p.name"
+            class="preset-card"
+            :class="{ 'preset-card--active': store.accentColor === p.value && !store.themeDark }"
+            :style="{ background: p.bg }"
+            @click="store.applyColorPreset(p)"
+          >
+            <span class="preset-text" :style="{ color: p.text.primary }">Aa 正文</span>
+            <span class="preset-accent" :style="{ background: p.value }" />
+            <span class="preset-name" :style="{ color: p.text.secondary }">{{ p.name }}</span>
+            <span v-if="store.accentColor === p.value && !store.themeDark" class="preset-check" :style="{ background: p.value }">✓</span>
           </button>
         </div>
       </section>
@@ -210,6 +288,44 @@
               {{ store.aiApiKey ? '点击"获取模型列表"加载可用模型' : '请先配置 API Key' }}
             </div>
           </SurfaceCard>
+
+          <!-- 采样温度 -->
+          <SurfaceCard class="p-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-medium text-text-secondary">采样温度（随机性）</span>
+              <span class="text-xs text-text-secondary" style="font-variant-numeric: tabular-nums">{{ store.aiTemperature.toFixed(1) }}</span>
+            </div>
+            <input
+              type="range" min="0" max="2" step="0.1" class="setting-slider w-full"
+              :value="store.aiTemperature"
+              @input="store.aiTemperature = Number(($event.target as HTMLInputElement).value)"
+            />
+            <p class="text-[10px] text-text-muted mt-1.5">0 = 严谨稳定，2 = 天马行空；创意写作建议 0.7-1.2</p>
+          </SurfaceCard>
+
+          <!-- 快捷操作提示词（按 label 覆盖内置值） -->
+          <SurfaceCard class="p-4">
+            <span class="text-xs font-medium text-text-secondary block mb-2">快捷操作提示词（留空则用内置默认）</span>
+            <div class="space-y-2">
+              <details v-for="a in quickActions" :key="a.label" class="prompt-item">
+                <summary class="prompt-summary">
+                  <span>{{ a.label }}</span>
+                  <span v-if="store.aiQuickPrompts[a.label]" class="prompt-custom-dot" title="已自定义">●</span>
+                  <span class="text-[10px] text-text-muted truncate flex-1">{{ store.aiQuickPrompts[a.label] || a.hint }}</span>
+                </summary>
+                <textarea
+                  class="setting-input w-full mt-2 prompt-textarea"
+                  rows="4"
+                  :value="store.aiQuickPrompts[a.label] ?? ''"
+                  :placeholder="a.prompt"
+                  @change="onPromptChange(a.label, $event)"
+                />
+                <button v-if="store.aiQuickPrompts[a.label]" class="btn-sm mt-1" @click="store.resetAiQuickPrompt(a.label)">
+                  恢复默认
+                </button>
+              </details>
+            </div>
+          </SurfaceCard>
         </div>
       </section>
     </div>
@@ -218,18 +334,22 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { PenLine, Palette, Sun, Moon, Cpu, CircleCheck, AlertCircle } from "lucide-vue-next";
+import { PenLine, Palette, Cpu, CircleCheck, AlertCircle } from "lucide-vue-next";
 import { useSettingsStore } from "../stores/settings";
 import { useSettingsForm } from "../composables/useSettingsForm";
 import { useFileStore } from "../stores/file";
+import { useStatsStore } from "../stores/stats";
 import type { FileNode } from "../types/file";
 import SurfaceCard from "./SurfaceCard.vue";
 import SegmentedGroup from "./SegmentedGroup.vue";
+import WritingCalendar from "./WritingCalendar.vue";
+import { QUICK_ACTIONS } from "../composables/aiQuickActions";
 
 defineProps<{ section: string }>();
 const store = useSettingsStore();
 const form = useSettingsForm();
 const fileStore = useFileStore();
+const stats = useStatsStore();
 
 // 全书总字数：遍历文件树求和（不含目录）
 const totalWords = computed(() => {
@@ -248,7 +368,46 @@ const totalWords = computed(() => {
 });
 const darkPresets = computed(() => store.colorPresets.filter(p => p.dark));
 const lightPresets = computed(() => store.colorPresets.filter(p => !p.dark));
-const fontSizeOpts = ["小", "中", "大"];
+const widthOpts = ["窄", "中", "宽"];
+
+// 快捷操作提示词编辑（覆盖内置默认）
+const quickActions = QUICK_ACTIONS;
+function onPromptChange(label: string, e: Event) {
+  const value = (e.target as HTMLTextAreaElement).value
+  if (value.trim()) {
+    store.setAiQuickPrompt(label, value)
+  } else {
+    store.resetAiQuickPrompt(label)
+  }
+}
+
+// ── 写作分析 ──
+const todaySpeed = computed(() => {
+  const hours = stats.todaySessionMs / 3600000
+  if (hours <= 0 || stats.todayWords === 0) return 0
+  return Math.round(stats.todayWords / hours)
+})
+const activeDays = computed(() => stats.dailyRecords.filter((r) => r.wordCount > 0).length)
+const avgDaily = computed(() => {
+  const rs = stats.dailyRecords.filter((r) => r.wordCount > 0)
+  return rs.length ? Math.round(rs.reduce((s, r) => s + r.wordCount, 0) / rs.length) : 0
+})
+const last7 = computed(() => {
+  const out: { date: string; label: string; count: number }[] = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const rec = stats.dailyRecords.find((r) => r.date === ds)
+    out.push({ date: ds, label: `${d.getMonth() + 1}/${d.getDate()}`, count: rec?.wordCount ?? 0 })
+  }
+  return out
+})
+const last7Max = computed(() => Math.max(100, ...last7.value.map((d) => d.count)))
+function barHeight(count: number): string {
+  if (count <= 0) return '2px'
+  return `${Math.max(8, Math.round((count / last7Max.value) * 64))}px`
+}
 const aiProviders = [
   { key: "openai" as const, label: "OpenAI" },
   { key: "claude" as const, label: "Claude" },
@@ -260,11 +419,109 @@ const shortcuts = [
   { key: 'Ctrl+P', label: '搜索文件' },
   { key: 'Ctrl+,', label: '打开设置' },
   { key: 'Ctrl+Shift+A', label: '全屏 AI 对话' },
+  { key: 'Ctrl+Shift+F', label: '专注模式' },
   { key: 'Esc', label: '关闭弹窗' },
 ];
 </script>
 
 <style scoped>
+/* ── 主题预设预览卡片 ── */
+.preset-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: transform 0.1s ease, box-shadow 0.1s ease, border-color 0.1s ease;
+}
+
+.preset-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-popover);
+  border-color: rgba(127, 127, 127, 0.6);
+}
+
+.preset-card--active {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.preset-text { font-size: 12px; font-weight: 600; line-height: 1.4; }
+
+.preset-accent {
+  width: 26px;
+  height: 4px;
+  border-radius: 999px;
+}
+
+.preset-name { font-size: 11px; font-weight: 500; }
+
+.preset-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ── 当前主题预览 ── */
+.current-swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.current-swatch-accent {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.prompt-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.prompt-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  user-select: none;
+  background: var(--color-bg-page);
+}
+
+.prompt-summary:hover { background: var(--color-bg-surface-hover); }
+
+.prompt-summary::-webkit-details-marker { display: none; }
+
+.prompt-summary > span:first-child { font-weight: 600; flex-shrink: 0; }
+
+.prompt-custom-dot { color: var(--color-accent); font-size: 8px; flex-shrink: 0; }
+
+.prompt-textarea { display: block; resize: vertical; min-height: 84px; }
 .setting-input {
   border: 1px solid var(--color-border); border-radius: var(--radius-md);
   padding: 6px 10px; font-size: 13px; font-family: inherit;

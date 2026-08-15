@@ -10,5 +10,8 @@
     "noEmit": true,
     "strict": true
   },
+  "vueCompilerOptions": {
+    "strictTemplates": true
+  },
   "include": ["src"]
 }

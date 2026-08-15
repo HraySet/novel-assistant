@@ -39,6 +39,9 @@
           <span class="text-sm font-medium truncate">{{ activeConversation?.title || '新对话' }}</span>
           <span v-if="contextLabel" class="text-[10px] text-text-muted flex-shrink-0">{{ contextLabel }}</span>
         </div>
+        <button class="chat-collapse-btn" title="摘要库" @click="showSummaries = true">
+          <NotebookText :size="16" />
+        </button>
         <button class="chat-collapse-btn" title="返回编辑模式" @click="$emit('back')">
           <Minimize2 :size="16" />
         </button>
@@ -62,24 +65,34 @@
               :editable="true"
               :old-text="msg.originalContent"
               :new-text="msg.content"
-              @accept="(merged) => handleApplyDiff(merged)"
-              @reject="console.log('diff rejected')"
+              @accept="(merged) => handleApplyDiff(merged, i)"
+              @reject="handleRejectDiff(i)"
             />
-            <div v-else class="chat-msg-content" v-html="sanitizeHtml(renderMarkdown(msg.content))" />
+            <div v-else class="chat-msg-content" v-html="messageHtml(msg, i)" />
             <div v-if="msg.role === 'assistant' && msg.content && !msg.originalContent" class="chat-msg-actions">
-              <button class="chat-action-btn" @click="$emit('insert', msg.content)">插入编辑器</button>
+              <span v-if="appliedIndex === i" class="chat-applied-note">✓ 已应用到文件</span>
+              <template v-else>
+                <button class="chat-action-btn" @click="handleInsertClick(msg.content, i)">{{ insertedIndex === i ? '✓ 已插入' : '插入编辑器' }}</button>
+                <button class="chat-action-btn" :disabled="!activeFile" @click="saveAsSummary(msg.content, i)">
+                  {{ savedIndex === i ? '✓ 已存入前情' : '存为摘要' }}
+                </button>
+              </template>
+            </div>
+            <div
+              v-if="msg.role === 'assistant' && msg.content && i === (activeConversation?.messages.length ?? 0) - 1 && !chatStore.streaming"
+              class="chat-msg-actions"
+            >
+              <button class="chat-action-btn" @click="regenerate()">重新生成</button>
+              <button class="chat-action-btn" @click="copyMessage(msg.content)">复制</button>
             </div>
           </div>
 
-          <div v-if="chatStore.streaming" class="chat-msg chat-msg--ai">
-            <div class="chat-msg-role">AI</div>
-            <div class="chat-msg-content" v-html="sanitizeHtml(renderMarkdown(activeConversation?.messages.at(-1)?.content || '') + '<span class=cursor-blink>|</span>')" />
-          </div>
         </div>
       </div>
 
       <!-- 输入区 -->
       <div class="chat-input-area">
+        <AiContextBar class="mb-1.5 px-1" :label="contextLabel" />
         <div class="chat-input-row">
           <textarea
             ref="inputEl"
@@ -91,6 +104,9 @@
             @keydown.ctrl.enter.prevent="handleSend"
           />
         </div>
+        <p v-if="showKeyHint && !settings.aiApiKey" class="text-[10px] text-warning mt-1.5">
+          请先在设置中配置 API Key（Ctrl+,）
+        </p>
         <div v-if="chatStore.streaming" class="chat-input-actions">
           <button class="chat-stop-btn" @click="chatStore.abortStreaming()">
             <Square :size="12" /> 停止生成
@@ -99,21 +115,26 @@
       </div>
     </div>
   </div>
+
+  <!-- 摘要库弹层 -->
+  <SummaryLibrary
+    :show="showSummaries"
+    :project-root="projectRoot"
+    @close="showSummaries = false"
+    @insert="(text) => emit('insert', text)"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed, onMounted } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
-import DOMPurify from 'dompurify'
-import { Plus, X, Minimize2, Square } from 'lucide-vue-next'
-import { useChatStore } from '../stores/chat'
+import { Plus, X, Minimize2, Square, NotebookText } from 'lucide-vue-next'
 import { useSettingsStore } from '../stores/settings'
-import { buildAiHeaders, getAiEndpoint } from '../composables/useAiApi'
-import { renderMarkdown } from '../composables/useMarkdown'
-import { useAiContext } from '../composables/useAiContext'
+import { useChatStore } from '../stores/chat'
+import { useAiChat } from '../composables/useAiChat'
 import DiffView from './DiffView.vue'
-import { useFileStore } from '../stores/file'
-import * as api from '../api/files'
+import AiContextBar from './AiContextBar.vue'
+import SummaryLibrary from './SummaryLibrary.vue'
 
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
@@ -127,39 +148,46 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const settings = useSettingsStore()
-const fileStore = useFileStore()
 const { conversations, activeId } = storeToRefs(chatStore)
-const activeConversation = computed(() => chatStore.activeConversation())
 
-async function handleApplyDiff(merged: string) {
-  const path = props.activeFile?.path
-  if (!path) return
-  try {
-    await api.writeFile(path, merged)
-    fileStore.updateActiveFile({ content: merged, isDirty: false })
-  } catch (e) {
-    console.error('应用修改失败:', e)
-  }
-}
-
-const inputText = ref('')
 const chatEl = ref<HTMLElement>()
 const inputEl = ref<HTMLTextAreaElement>()
+const inputText = ref('')
+const showSummaries = ref(false)
 
-function sanitizeHtml(html: string): string { return DOMPurify.sanitize(html) }
+// AI 对话共享逻辑（与紧凑面板共用）
+const {
+  activeConversation,
+  contextLabel,
+  showKeyHint,
+  appliedIndex,
+  savedIndex,
+  insertedIndex,
+  messageHtml,
+  handleApplyDiff,
+  handleRejectDiff,
+  handleInsertClick,
+  saveAsSummary,
+  send,
+  regenerate,
+  copyMessage,
+  formatDate,
+} = useAiChat({
+  projectRoot: () => props.projectRoot,
+  activeFile: () => props.activeFile,
+  insert: (text) => emit('insert', text),
+  scrollToBottom: () => nextTick(() => {
+    const el = chatEl.value
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 48) el.scrollTo(0, el.scrollHeight)
+  }),
+})
 
-// 统一上下文
-const { build: buildContext, contextLabel } = useAiContext(
-  () => props.projectRoot,
-  () => props.activeFile?.content,
-  () => props.activeFile?.name,
-)
-
-onMounted(() => { if (props.projectRoot) chatStore.loadConversations(props.projectRoot) })
-watch(() => props.projectRoot, (root) => { if (root) chatStore.loadConversations(root) })
-
+// 新消息时自动滚到底部
 watch(() => activeConversation.value?.messages.length, () => {
-  nextTick(() => chatEl.value?.scrollTo(0, chatEl.value.scrollHeight))
+  nextTick(() => {
+    const el = chatEl.value
+    if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 48) el.scrollTo(0, el.scrollHeight)
+  })
 })
 
 function handleNewChat() {
@@ -169,132 +197,11 @@ function handleNewChat() {
 
 function handleDelete(id: string) { chatStore.deleteConversation(id) }
 
-function formatDate(iso: string) {
-  const d = new Date(iso)
-  const now = new Date()
-  const diff = now.getTime() - d.getTime()
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-  return `${d.getMonth() + 1}/${d.getDate()}`
-}
-
-// ── AI 调用 ──
-
 async function handleSend() {
   const text = inputText.value.trim()
   if (!text || chatStore.streaming) return
-
-  let conv = activeConversation.value
-  if (!conv) conv = chatStore.createConversation(undefined, props.activeFile?.path)
-
-  const convId = conv.id
-  inputText.value = ''
-  chatStore.streaming = true  // ★ 锁提到 await 之前，关竞态窗口
-  if (!conv.loaded) await chatStore.ensureLoaded(conv.id)
-
-  const priorHistory = conv.messages
-    .filter(m => m.content !== '')
-    .map(m => ({ role: m.role, content: m.content }))
-
-  let contextPrompt = ''
-  try { ({ prompt: contextPrompt } = await buildContext()) } catch { /* 读上下文失败不阻塞 */ }
-
-  chatStore.addMessage(convId, { role: 'user', content: text })
-  chatStore.addMessage(convId, { role: 'assistant', content: '' })
-
-  try {
-    const isClaude = settings.aiProvider === 'claude'
-    const body = isClaude
-      ? {
-          model: settings.aiModel, max_tokens: 4096,
-          system: contextPrompt || undefined,
-          messages: [...priorHistory, { role: 'user', content: text }],
-          stream: true,
-        }
-      : {
-          model: settings.aiModel,
-          messages: [
-            ...(contextPrompt ? [{ role: 'system' as const, content: contextPrompt }] : []),
-            ...priorHistory,
-            { role: 'user', content: text },
-          ],
-          stream: true,
-        }
-    const url = isClaude
-      ? `${getAiEndpoint()}/messages`
-      : `${getAiEndpoint()}/chat/completions`
-
-    const ctrl = chatStore.createAbortController()
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: buildAiHeaders(),
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    })
-
-    if (!res.ok) {
-      chatStore.updateLastMessage(convId, `请求失败 (${res.status})`)
-      return
-    }
-
-    if (isClaude) {
-      // Claude SSE 流式格式: event:content_block_delta → data:{delta:{text:"..."}}
-      const reader = res.body?.getReader()
-      if (!reader) { chatStore.updateLastMessage(convId, '(无法读取响应)'); return }
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let result = ''
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.type === 'content_block_delta') {
-                result += data.delta?.text ?? ''
-                chatStore.updateLastMessage(convId, result)
-              }
-            } catch { /* skip */ }
-          }
-        }
-      } catch { /* 中断保留已生成内容 */ }
-    } else {
-      const reader = res.body?.getReader()
-      if (!reader) { chatStore.updateLastMessage(convId, '(无法读取响应)'); return }
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let result = ''
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-          for (const line of lines) {
-            if (!line.startsWith('data: ') || line === 'data: [DONE]') continue
-            try {
-              const chunk = JSON.parse(line.slice(6))
-              result += chunk.choices?.[0]?.delta?.content ?? ''
-              chatStore.updateLastMessage(convId, result)
-            } catch { /* skip */ }
-          }
-        }
-      } catch { /* 中断保留已生成内容 */ }
-    }
-  } catch (e: any) {
-    if (e?.name !== 'AbortError') {
-      chatStore.updateLastMessage(convId, '网络请求失败')
-    }
-  } finally {
-    chatStore.streaming = false
-    nextTick(() => chatEl.value?.scrollTo(0, chatEl.value.scrollHeight))
-  }
+  const ok = await send({ text, display: text })
+  if (ok) inputText.value = ''
 }
 </script>
 
@@ -360,6 +267,7 @@ async function handleSend() {
 .chat-msg-content { font-size: 14px; line-height: 1.7; color: var(--color-text-primary); white-space: pre-wrap; word-break: break-word; }
 .chat-msg--user .chat-msg-content { color: var(--color-text-secondary); }
 .chat-msg-actions { margin-top: 6px; }
+.chat-applied-note { font-size: 11px; color: var(--color-success); }
 .chat-action-btn {
   padding: 2px 10px; font-size: 11px; font-family: inherit;
   border-radius: var(--radius-sm); border: 1px solid var(--color-border);

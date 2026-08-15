@@ -76,6 +76,18 @@ export const useChatStore = defineStore('chat', () => {
     } catch { /* 保存失败不阻塞 */ }
   }
 
+  /** 立即落盘当前会话与索引（应用关闭前调用，跳过防抖） */
+  async function flushSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    if (activeId.value) {
+      await saveConversation(activeId.value)
+      await saveIndex()
+    }
+  }
+
   function scheduleSave(id: string) {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(() => { saveConversation(id); saveIndex() }, 1000)
@@ -146,13 +158,20 @@ export const useChatStore = defineStore('chat', () => {
     return conv
   }
 
-  function deleteConversation(id: string) {
+  async function deleteConversation(id: string) {
+    const conv = conversations.value.find(c => c.id === id)
     conversations.value = conversations.value.filter(c => c.id !== id)
     if (activeId.value === id) {
       activeId.value = conversations.value[0]?.id ?? null
       if (activeId.value) ensureLoaded(activeId.value)
     }
-    saveIndex()
+    await saveIndex()
+    // 同步删除磁盘上的会话文件，避免 .chatlog 残留
+    if (conv && projectRoot.value) {
+      try {
+        await api.deleteFile(convPath(projectRoot.value, id))
+      } catch { /* 删除失败不影响 UI */ }
+    }
   }
 
   function switchConversation(id: string) {
@@ -194,5 +213,6 @@ export const useChatStore = defineStore('chat', () => {
     addMessage,
     updateLastMessage,
     saveConversation,
+    flushSave,
   }
 })

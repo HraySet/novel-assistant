@@ -55,6 +55,9 @@
         placeholder="输入消息，或使用上方快捷操作"
         :disabled="chatStore.streaming"
         @keydown.enter.exact.prevent="handleSend" />
+      <p v-if="showKeyHint && !settings.aiApiKey" class="text-[10px] text-warning mt-1.5">
+        请先在设置中配置 API Key（Ctrl+,）
+      </p>
       <button v-if="chatStore.streaming" class="chat-stop-btn mt-2" @click="chatStore.abortStreaming()">
         <Square :size="12" /> 停止生成
       </button>
@@ -102,6 +105,7 @@ function sanitizeHtml(html: string): string { return DOMPurify.sanitize(html) }
 const inputText = ref('')
 const chatEl = ref<HTMLElement>()
 const loading = ref(false)
+const showKeyHint = ref(false)
 
 // 统一上下文
 const { build, contextLabel } = useAiContext(
@@ -129,6 +133,11 @@ function runQuick(action: { label: string; prompt: string }) {
 function handleSend() {
   const text = inputText.value.trim()
   if (!text || chatStore.streaming) return
+  if (!settings.aiApiKey) {
+    showKeyHint.value = true
+    return
+  }
+  showKeyHint.value = false
   chatStore.streaming = true
   build()
     .then(({ prompt }) => { send(text, '', prompt) })
@@ -137,6 +146,11 @@ function handleSend() {
 
 function handleQuickAction(label: string, prompt: string) {
   if (chatStore.streaming) return
+  if (!settings.aiApiKey) {
+    showKeyHint.value = true
+    return
+  }
+  showKeyHint.value = false
   chatStore.streaming = true
   build()
     .then(({ prompt: ctx }) => { send(prompt, label, ctx) })
@@ -144,7 +158,13 @@ function handleQuickAction(label: string, prompt: string) {
 }
 
 async function send(text: string, prefix: string, contextPrompt?: string) {
-  if (!settings.aiApiKey) return
+  if (!settings.aiApiKey) {
+    // 防御：调用方漏检时不锁死面板
+    chatStore.streaming = false
+    loading.value = false
+    showKeyHint.value = true
+    return
+  }
 
   let conv = activeConversation.value
   if (!conv) conv = chatStore.createConversation(undefined, props.activeFile?.path)

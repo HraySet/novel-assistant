@@ -1,3 +1,5 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+
 use serde::{Deserialize, Serialize};
 
 use std::collections::HashMap;
@@ -11,6 +13,11 @@ use std::sync::Mutex;
 use std::time::SystemTime;
 
 use tauri::Manager;
+
+#[cfg(windows)]
+mod native_drag;
+
+
 
 // ── Types ──
 
@@ -32,6 +39,14 @@ pub struct DirEntry {
 pub struct BackupEntry {
     pub path: String,
     pub timestamp: u64,
+}
+
+/// 外部拖入的文件：相对路径 + base64 内容
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportFile {
+    pub rel_path: String,
+    pub base64_data: String,
 }
 
 // ── Helpers ──
@@ -381,7 +396,7 @@ fn create_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn delete_path(path: String) -> Result<(), String> {
+fn delete_path(path: String, project_root: Option<String>) -> Result<(), String> {
     let src = Path::new(&path);
     if !src.exists() {
         return Ok(());
@@ -393,17 +408,36 @@ fn delete_path(path: String) -> Result<(), String> {
         .unwrap()
         .as_secs();
 
-    // 找项目根目录（向上找到包含 _project.md 或最高两层）
-    let mut root = src.to_path_buf();
-    for _ in 0..3 {
-        if let Some(parent) = root.parent() {
-            root = parent.to_path_buf();
+    // .trash 固定放在项目根目录下（由前端传入），避免把内容搬出项目。
+    // 兼容兜底：未传 projectRoot 时向上找 3 层。
+    let trash_dir = match project_root {
+        Some(root) if !root.is_empty() => Path::new(&root).join(".trash"),
+        _ => {
+            let mut root = src.to_path_buf();
+            for _ in 0..3 {
+                if let Some(parent) = root.parent() {
+                    root = parent.to_path_buf();
+                }
+            }
+            root.join(".trash")
         }
-    }
-    let trash_dir = root.join(".trash");
+    };
     fs::create_dir_all(&trash_dir).map_err(|e| e.to_string())?;
     let dest = trash_dir.join(format!("{}_{}", ts, filename));
     fs::rename(src, &dest).map_err(|e| e.to_string())
+}
+
+/// 直接删除文件（用于聊天记录等元数据清理，不进入 .trash）
+#[tauri::command]
+fn delete_file(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if !p.exists() {
+        return Ok(());
+    }
+    if p.is_dir() {
+        return Err(format!("目标不是文件: {}", path));
+    }
+    fs::remove_file(p).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -493,6 +527,149 @@ fn export_project(paths: Vec<String>, dest_path: String, with_titles: bool) -> R
     fs::write(&dest_path, out).map_err(|e| e.to_string())
 }
 
+// ── Import / Path Check ──
+
+/// 校验文件名组件：剔除 Windows 非法字符，拒绝空、"."、".."
+fn sanitize_component(name: &str) -> Option<String> {
+    let cleaned: String = name
+        .chars()
+        .filter(|c| !matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\0'))
+        .collect();
+    let cleaned = cleaned.trim();
+    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
+        return None;
+    }
+    Some(cleaned.to_string())
+}
+
+/// 目标已存在时生成唯一名：第1章.md → 第1章 (2).md
+fn unique_path(dir: &Path, name: &str) -> PathBuf {
+    if !dir.join(name).exists() {
+        return dir.join(name);
+    }
+    let stem = Path::new(name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(name);
+    let ext = Path::new(name)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    for i in 2..10000 {
+        let candidate = if ext.is_empty() {
+            format!("{} ({})", stem, i)
+        } else {
+            format!("{} ({}).{}", stem, i, ext)
+        };
+        if !dir.join(&candidate).exists() {
+            return dir.join(candidate);
+        }
+    }
+    dir.join(name)
+}
+
+/// 外部拖入：把文件复制进项目（保留子目录结构，重名自动加序号）
+#[tauri::command]
+fn import_files(dest_dir: String, files: Vec<ImportFile>) -> Result<usize, String> {
+    let dest = Path::new(&dest_dir);
+    if !dest.exists() || !dest.is_dir() {
+        return Err(format!("目标目录不存在: {}", dest_dir));
+    }
+    let mut count = 0usize;
+    for f in files {
+        // 逐级清洗相对路径，拒绝绝对路径 / .. / 盘符注入；
+        // 单个文件非法时跳过它，不影响同批其它文件
+        let mut parts: Vec<String> = Vec::new();
+        let mut invalid = false;
+        for comp in f.rel_path.replace('\\', "/").split('/') {
+            match sanitize_component(comp) {
+                Some(c) => parts.push(c),
+                None => {
+                    invalid = true;
+                    break;
+                }
+            }
+        }
+        if invalid || parts.is_empty() {
+            continue;
+        }
+        let bytes = BASE64.decode(f.base64_data.as_bytes()).map_err(|e| e.to_string())?;
+        let mut current = dest.to_path_buf();
+        for (i, part) in parts.iter().enumerate() {
+            if i == parts.len() - 1 {
+                let target = unique_path(&current, part);
+                fs::write(&target, &bytes).map_err(|e| e.to_string())?;
+                count += 1;
+            } else {
+                current = current.join(part);
+                fs::create_dir_all(&current).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    Ok(count)
+}
+
+#[tauri::command]
+fn path_exists(path: String) -> bool {
+    Path::new(&path).exists()
+}
+
+/// 打开 WebView2 的外部拖放开关（AllowExternalDrop 默认关闭）。
+/// 关闭时：资源管理器的文件无法拖入应用，且我们自己的原生拖拽也无法落回
+/// 应用内（内部移动失效）。打开后两类拖入都走 HTML5 drop 事件正常处理。
+#[tauri::command]
+fn enable_external_drop(webview: tauri::Webview) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        webview
+            .with_webview(|platform_webview| {
+                use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Controller4;
+                use windows_core::Interface; // cast 方法来自 Interface trait
+                let controller = platform_webview.controller();
+                match controller.cast::<ICoreWebView2Controller4>() {
+                    Ok(c4) => match unsafe { c4.SetAllowExternalDrop(true) } {
+                        Ok(()) => eprintln!("[webview] AllowExternalDrop 已打开"),
+                        Err(e) => eprintln!("[webview] AllowExternalDrop 打开失败: {}", e),
+                    },
+                    Err(e) => eprintln!("[webview] Controller4 转换失败: {}", e),
+                }
+            })
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = webview;
+        Ok(())
+    }
+}
+
+/// 原生拖出：把文件拖到外部软件（CF_HDROP，复制语义），返回最终拖放效果值。
+/// 必须在主线程执行 DoDragDrop（工作线程无消息泵，会挂起或初始化失败）。
+#[tauri::command]
+async fn drag_out_files(app: tauri::AppHandle, paths: Vec<String>) -> Result<u32, String> {
+    #[cfg(windows)]
+    {
+        // 防御：无论前端传了什么，只拖第一个（单文件语义）
+        let paths: Vec<String> = paths.into_iter().take(1).collect();
+        if paths.is_empty() {
+            return Ok(0);
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            let result = native_drag::run_drag(paths);
+            let _ = tx.send(result);
+        })
+        .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = paths;
+        Err("原生拖放仅支持 Windows".to_string())
+    }
+}
+
+
 // ── Backups ──
 
 /// 列出指定文件的备份历史（按时间倒序，最新在前）
@@ -544,6 +721,7 @@ pub fn run() {
             create_dir,
             create_file,
             delete_path,
+            delete_file,
             move_path,
             rename_path,
             get_ai_config,
@@ -552,6 +730,10 @@ pub fn run() {
             save_project_index,
             export_project,
             list_backups,
+            import_files,
+            path_exists,
+            drag_out_files,
+            enable_external_drop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

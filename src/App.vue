@@ -9,7 +9,7 @@
     <!-- 顶栏 -->
     <TopBar :project-name="currentProject?.name ?? ''" :file-name="activeFile?.name" :is-dirty="activeFile?.isDirty ?? false"
       :has-back="fileStore.hasBack()" :has-forward="fileStore.hasForward()" @go-library="view = 'library'"
-      @go-back="handleGoBack" @go-forward="handleGoForward" @toggle-theme="toggleTheme" />
+      @go-back="handleGoBack" @go-forward="handleGoForward" />
 
     <!-- 主体：编辑器 + 两条图标轨 + 可推挤面板 -->
     <div class="flex-1 flex min-h-0">
@@ -126,18 +126,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { FolderOpen, Search, Sparkles, X, Settings, Download } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useProjectOperations } from './composables/useProjectOperations'
 import { storeToRefs } from 'pinia'
 import { useProjectStore } from './stores/project'
 import { useFileStore } from './stores/file'
+import { useChatStore } from './stores/chat'
+import { useStatsStore } from './stores/stats'
+import { useDesignTokens } from './composables/useDesignTokens'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
+import { pickCoverColor } from './types/project'
 import type { FileNode } from './types/file'
-import { invoke } from '@tauri-apps/api/core'
-import { save } from '@tauri-apps/plugin-dialog'
+import * as api from './api/files'
+import { invoke, isTauri } from '@tauri-apps/api/core'
+import { save, confirm } from '@tauri-apps/plugin-dialog'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import TopBar from './components/TopBar.vue'
 import MdEditor from './components/MdEditor.vue'
 import AiPanel from './components/AiPanel.vue'
@@ -161,9 +167,12 @@ const settingsSection = ref('writing')
 const editorRef = ref<InstanceType<typeof MdEditor>>()
 
 const fileStore = useFileStore()
+const chatStore = useChatStore()
+const statsStore = useStatsStore()
+const projectStore = useProjectStore()
 const { openFile: activeFile, tree: fileTree } = storeToRefs(fileStore)
+const { projects } = storeToRefs(projectStore)
 
-const projects = ref<ProjectEntry[]>([])
 const currentProject = ref<ProjectEntry | null>(null)
 
 const proj = useProjectOperations({ view, projects, currentProject })
@@ -227,20 +236,85 @@ function handleAiInsert(text: string) {
   editorRef.value?.insertAtCursor(text)
 }
 
-// ── Theme ──
-
-function toggleTheme() {
-  const current = document.documentElement.getAttribute('data-theme')
-  document.documentElement.setAttribute('data-theme', current === 'warm-paper' ? 'warm-paper-dark' : 'warm-paper')
+// ── 全局拖放守卫 ──
+// 文件被拖到没有 drop 处理器的区域（如编辑器）时，阻止 WebView 默认行为（直接打开该文件）
+function preventFileNavigation(e: DragEvent) {
+  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
+    e.preventDefault()
+  }
 }
+
+// ── Theme ──
+// 主题变量注入（强调色/背景色/明暗 → CSS 变量），setup 顶层调用一次
+useDesignTokens()
 
 // ── Keyboard shortcuts ──
 useKeyboardShortcuts({ view, showSidebar, showAiPanel, showSearch, showSettings, settingsSection, showNewProjectDialog })
 
-onMounted(() => {
-  const ps = useProjectStore()
-  ps.loadIndex()
-  projects.value = ps.projects
+onMounted(async () => {
+  window.addEventListener('dragover', preventFileNavigation)
+  window.addEventListener('drop', preventFileNavigation)
+
+  // 打开 WebView2 外部拖放开关：外部文件拖入与应用内拖拽落回都依赖它
+  if (isTauri()) {
+    api.enableExternalDrop().catch((e) => console.error('enable_external_drop 失败:', e))
+  }
+
+  await projectStore.loadIndex()
+
+  // 关闭窗口前：保存未落盘文件、落盘统计与聊天记录
+  if (isTauri()) {
+    const win = getCurrentWindow()
+    let allowClose = false
+    await win.onCloseRequested(async (event) => {
+      if (allowClose) return
+      event.preventDefault()
+
+      if (fileStore.openFiles.some((f) => f.isDirty)) {
+        const choice = await confirm('有未保存的修改，保存后退出吗？', {
+          title: '退出确认',
+          kind: 'warning',
+          okLabel: '保存并退出',
+          cancelLabel: '取消',
+        })
+        if (!choice) return
+        await fileStore.saveAllDirty()
+      }
+
+      statsStore.pauseSession()
+      statsStore.flushPersist()
+      await chatStore.flushSave()
+
+      allowClose = true
+      await win.destroy()
+    })
+  }
+
+  // 记住上次项目：直接打开，不必每次手动选文件夹
+  try {
+    const lastPath = await api.getProjectPath()
+    if (lastPath && (await api.pathExists(lastPath))) {
+      let entry = projects.value.find((p) => p.path === lastPath)
+      if (!entry) {
+        entry = {
+          path: lastPath,
+          name: lastPath.split(/[/\\]/).pop() || lastPath,
+          lastOpened: new Date().toISOString(),
+          wordCount: 0,
+          color: pickCoverColor(projects.value.length),
+        }
+        projectStore.addProject(entry)
+      }
+      await proj.openProject(entry)
+    }
+  } catch (e) {
+    console.error('自动打开上次项目失败:', e)
+  }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('dragover', preventFileNavigation)
+  window.removeEventListener('drop', preventFileNavigation)
 })
 </script>
 

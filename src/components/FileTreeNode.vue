@@ -7,14 +7,13 @@
         'node-row--expanded': isExpanded,
         'node-row--drop-target': dragOver,
         'node-row--active': fileStore.selectedPath === node.path,
+        'node-row--dragging': fileStore.dragSource === node.path,
       }"
       :style="{ paddingLeft: depth * 14 + 4 + 'px' }"
-      @click="fileStore.handleDirectoryClick(node.path)"
+      @click="handleRowClick(node.path, true)"
+      @mousedown="handleMouseDown($event, node.path)"
       @dblclick.stop="fileStore.startRename(node.path)"
       @contextmenu.prevent="openMenu($event, 'dir')"
-      draggable="true"
-      @dragstart="handleDragStart($event, node.path)"
-      @dragend="handleDragEnd"
       @dragenter.prevent="handleDragEnter($event)"
       @dragover.prevent="handleDragOver($event)"
       @dragleave="handleDragLeave"
@@ -58,14 +57,17 @@
       class="node-row"
       :class="{
         'node-row--active': fileStore.selectedPath === node.path,
+        'node-row--dragging': fileStore.dragSource === node.path,
       }"
       :style="{ paddingLeft: depth * 14 + 4 + 'px' }"
-      @click="fileStore.handleFileSelect(node.path)"
+      @click="handleRowClick(node.path, false)"
+      @mousedown="handleMouseDown($event, node.path)"
       @dblclick.stop="fileStore.startRename(node.path)"
       @contextmenu.prevent="openMenu($event, 'file')"
-      draggable="true"
-      @dragstart="handleDragStart($event, node.path)"
-      @dragend="handleDragEnd"
+      @dragenter.prevent="handleDragEnter($event)"
+      @dragover.prevent="handleDragOver($event)"
+      @dragleave="handleDragLeave"
+      @drop.prevent="handleDrop($event, parentDirOf(node.path))"
     >
       <span class="node-arrow invisible">▸</span>
       <FileText :size="14" class="text-text-muted shrink-0" />
@@ -160,7 +162,12 @@ const { renameValue, renameInputRef, handleConfirm, handleCancel } = useRename(
   props.node.isDir,
 )
 
-const { dragOver, handleDragStart, handleDragEnter, handleDragOver, handleDragLeave, handleDragEnd, handleDrop } = useFileTreeDrag()
+const { dragOver, handleMouseDown, handleRowClick, handleDragEnter, handleDragOver, handleDragLeave, handleDrop } = useFileTreeDrag()
+
+function parentDirOf(path: string): string {
+  const i = Math.max(path.lastIndexOf('\\'), path.lastIndexOf('/'))
+  return i > 0 ? path.slice(0, i) : ''
+}
 
 function openMenu(e: MouseEvent, type: 'file' | 'dir') {
   fileStore.openContextMenu(e.clientX, e.clientY, props.node.path, type)
@@ -199,6 +206,10 @@ function formatWordCount(count: number): string {
 .node-row--active {
   background: var(--color-accent-bg);
   color: var(--color-accent);
+}
+
+.node-row--dragging {
+  opacity: 0.4;
 }
 
 .node-row--drop-target {

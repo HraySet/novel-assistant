@@ -253,7 +253,7 @@ export const useFileStore = defineStore('file', () => {
   }
 
   async function deletePath(path: string) {
-    await api.deletePath(path)
+    await api.deletePath(path, projectRoot.value)
     await loadTree(projectRoot.value)
     if (openFile.value?.path === path) {
       openFile.value = null
@@ -450,6 +450,17 @@ export const useFileStore = defineStore('file', () => {
     }
   }
 
+  /** 关闭应用前保存所有未保存的已打开文件 */
+  async function saveAllDirty(): Promise<boolean> {
+    const dirtyFiles = openFiles.value.filter((f) => f.isDirty)
+    let ok = true
+    for (const f of dirtyFiles) {
+      const saved = await saveFile(f.path)
+      if (!saved) ok = false
+    }
+    return ok
+  }
+
   // 保存任意已打开文件（不限于当前 active），用于关标签时保存非活动脏文件
   async function saveFile(path: string): Promise<boolean> {
     const file = openFiles.value.find(f => f.path === path)
@@ -608,6 +619,7 @@ export const useFileStore = defineStore('file', () => {
     // Save
     handleSave,
     saveFile,
+    saveAllDirty,
     // Favorites
     isFavorite,
     toggleFavorite,

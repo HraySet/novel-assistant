@@ -57,7 +57,7 @@ async function saveAISettings(config: AllAIConfig) {
 
 function loadTheme() {
   try { const raw = localStorage.getItem("theme-settings"); if (raw) return JSON.parse(raw); } catch {}
-  return { accentColor: "#a78bfa", bgColor: "#12121a", themeDark: true };
+  return { accentColor: "#b5652f", bgColor: "#faf6ee", themeDark: false };
 }
 
 function saveTheme(accent: string, bg: string, dark: boolean) {
@@ -110,6 +110,11 @@ export const useSettingsStore = defineStore("settings", () => {
     aiProvider.value = preset;
   }
 
+  /** 明暗切换的唯一入口：顶栏按钮与任何主题逻辑都走这里 */
+  function toggleDark() {
+    themeDark.value = !themeDark.value;
+  }
+
   watch([aiConfigs, aiProvider], () => {
     saveAISettings({ activeProvider: aiProvider.value, configs: aiConfigs.value });
   }, { deep: true });
@@ -138,6 +143,6 @@ export const useSettingsStore = defineStore("settings", () => {
     colorPresets,
     editorFontSize, typewriterMode, focusLineMode,
     setEditorFontSize, toggleTypewriter, toggleFocusLine,
-    applyPreset, applyColorPreset,
+    applyPreset, applyColorPreset, toggleDark,
   };
 });

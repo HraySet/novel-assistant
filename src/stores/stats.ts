@@ -273,5 +273,6 @@ export const useStatsStore = defineStore('stats', () => {
     pauseSession,
     resetSession,
     toggleSession,
+    flushPersist,
   }
 })

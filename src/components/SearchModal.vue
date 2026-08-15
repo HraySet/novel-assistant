@@ -117,6 +117,8 @@ const searchInput = ref<HTMLInputElement>()
 const resultsEl = ref<HTMLElement>()
 const contentMatches = ref<SearchResult[]>([])
 let searchTimer: ReturnType<typeof setTimeout> | null = null
+// 查询序号：每次查询变化 +1，异步结果回来时序号不匹配则丢弃，防止旧结果覆盖新结果
+let searchSeq = 0
 
 // ── 收集所有文件路径（排除目录） ──
 function collectFiles(nodes: FileNode[], basePath = ''): { path: string; name: string; relPath: string }[] {
@@ -182,6 +184,7 @@ const allResults = computed(() => {
 watch(searchQuery, (q) => {
   searchIndex.value = 0
   contentMatches.value = []
+  const seq = ++searchSeq
 
   if (!q || q.length < 2) { searching.value = false; return }
 
@@ -194,9 +197,13 @@ watch(searchQuery, (q) => {
     const results: SearchResult[] = []
 
     for (const f of files) {
+      if (seq !== searchSeq) return // 查询已过期，丢弃
       if (results.length >= 15) break
+      // 只搜可读文本（与导出支持的格式一致），跳过图片等二进制文件
+      if (!/\.(md|txt)$/i.test(f.name)) continue
       try {
         const content = await api.readFile(f.path)
+        if (seq !== searchSeq) return
         const idx = content.toLowerCase().indexOf(term)
         if (idx >= 0) {
           // 提取匹配片段（前后各 40 字符）
@@ -221,6 +228,7 @@ watch(searchQuery, (q) => {
         // 跳过读不了的文件
       }
     }
+    if (seq !== searchSeq) return
     contentMatches.value = results
     searching.value = false
   }, 300)
@@ -267,6 +275,8 @@ watch(() => props.show, (v) => {
     contentMatches.value = []
     searching.value = false
     nextTick(() => searchInput.value?.focus())
+  } else {
+    searchSeq++ // 作废进行中的全文搜索
   }
 })
 </script>

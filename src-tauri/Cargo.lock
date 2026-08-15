@@ -4633,12 +4633,16 @@ dependencies = [
 name = "yanyan"
 version = "0.3.0"
 dependencies = [
+ "base64 0.22.1",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "time",
+ "webview2-com",
+ "windows",
+ "windows-core 0.61.2",
 ]
 
 [[package]]

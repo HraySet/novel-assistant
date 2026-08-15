@@ -91,6 +91,9 @@
             @keydown.ctrl.enter.prevent="handleSend"
           />
         </div>
+        <p v-if="showKeyHint && !settings.aiApiKey" class="text-[10px] text-warning mt-1.5">
+          请先在设置中配置 API Key（Ctrl+,）
+        </p>
         <div v-if="chatStore.streaming" class="chat-input-actions">
           <button class="chat-stop-btn" @click="chatStore.abortStreaming()">
             <Square :size="12" /> 停止生成
@@ -145,6 +148,7 @@ async function handleApplyDiff(merged: string) {
 const inputText = ref('')
 const chatEl = ref<HTMLElement>()
 const inputEl = ref<HTMLTextAreaElement>()
+const showKeyHint = ref(false)
 
 function sanitizeHtml(html: string): string { return DOMPurify.sanitize(html) }
 
@@ -183,6 +187,11 @@ function formatDate(iso: string) {
 async function handleSend() {
   const text = inputText.value.trim()
   if (!text || chatStore.streaming) return
+  if (!settings.aiApiKey) {
+    showKeyHint.value = true
+    return
+  }
+  showKeyHint.value = false
 
   let conv = activeConversation.value
   if (!conv) conv = chatStore.createConversation(undefined, props.activeFile?.path)

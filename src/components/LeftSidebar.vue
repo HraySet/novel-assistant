@@ -42,7 +42,14 @@
         :depth="0"
       />
 
-      <div class="flex-1 min-h-[80px]" @contextmenu.self.prevent="fileStore.openContextMenu($event.clientX, $event.clientY, '', 'blank')" />
+      <div
+        class="flex-1 min-h-[80px]"
+        @contextmenu.self.prevent="fileStore.openContextMenu($event.clientX, $event.clientY, '', 'blank')"
+        @dragenter.prevent.stop="handleRootDragEnter"
+        @dragover.prevent.stop="handleRootDragOver"
+        @dragleave="handleRootDragLeave"
+        @drop.prevent.stop="handleRootDrop"
+      />
     </div>
 
   </aside>
@@ -55,6 +62,7 @@ import { FilePlus, FolderPlus, FoldVertical } from 'lucide-vue-next'
 import { useFileStore } from '../stores/file'
 import FileTreeNode from './FileTreeNode.vue'
 import DraftRow from './DraftRow.vue'
+import { importDroppedFilesInto } from '../composables/useExternalFileImport'
 
 const fileStore = useFileStore()
 const { tree: treeNodes, draft: draftState } = storeToRefs(fileStore)
@@ -69,17 +77,31 @@ function handleCreate(type: 'file' | 'dir') {
 const dragOverRoot = ref(false)
 
 function handleRootDragEnter(e: DragEvent) {
-  if (e.dataTransfer?.types.includes('text/plain')) dragOverRoot.value = true
+  const types = e.dataTransfer ? Array.from(e.dataTransfer.types) : []
+  if (types.includes('text/plain') || types.includes('Files')) dragOverRoot.value = true
 }
 function handleRootDragOver(e: DragEvent) {
-  if (e.dataTransfer?.types.includes('text/plain')) e.dataTransfer.dropEffect = 'move'
+  const dt = e.dataTransfer
+  if (!dt) return
+  const types = Array.from(dt.types)
+  // 源只允许 COPY，根级落点同样请求 copy 保证协商成功
+  if (types.includes('text/plain') || types.includes('Files')) dt.dropEffect = 'copy'
 }
 function handleRootDragLeave() { dragOverRoot.value = false }
-function handleRootDrop(e: DragEvent) {
+async function handleRootDrop(e: DragEvent) {
   dragOverRoot.value = false
-  const sourcePath = e.dataTransfer?.getData('text/plain')
-  if (!sourcePath) return
-  fileStore.handleDrop(sourcePath, fileStore.projectRoot)
+  const dt = e.dataTransfer
+  if (!dt) return
+  // 1) 内部移动优先：应用内拖拽同时携带 text/plain 与 Files
+  const sourcePath = dt.getData('text/plain')
+  if (sourcePath && fileStore.findNode(sourcePath)) {
+    fileStore.handleDrop(sourcePath, fileStore.projectRoot)
+    return
+  }
+  // 2) 外部文件拖入 → 复制进项目根目录
+  if (dt.files.length > 0) {
+    await importDroppedFilesInto(dt, fileStore.projectRoot)
+  }
 }
 </script>
 

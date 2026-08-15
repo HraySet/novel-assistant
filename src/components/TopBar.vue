@@ -35,8 +35,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
 import { FolderOpen, ChevronLeft, ChevronRight, Sun, Moon } from 'lucide-vue-next'
+import { useSettingsStore } from '../stores/settings'
 
 defineProps<{
   projectName: string
@@ -46,18 +47,17 @@ defineProps<{
   hasForward?: boolean
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   goLibrary: []
   goBack: []
   goForward: []
-  toggleTheme: []
 }>()
 
-const isDark = ref(document.documentElement.getAttribute('data-theme')?.includes('dark') ?? false)
+const settings = useSettingsStore()
+const isDark = computed(() => settings.themeDark)
 
 function handleToggleTheme() {
-  isDark.value = !isDark.value
-  emit('toggleTheme')
+  settings.toggleDark()
 }
 </script>
 

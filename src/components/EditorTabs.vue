@@ -1,4 +1,5 @@
 <template>
+  <Transition name="fade">
   <div v-if="openFiles.length > 0" class="tabs-bar">
     <div class="tabs-scroll" ref="scrollRef">
       <div
@@ -6,30 +7,32 @@
         :key="file.path"
         class="tab-item"
         :class="{ 'tab-item--active': openFile?.path === file.path }"
-        :title="file.path"
+        :title="file.path + '（中键点击关闭）'"
         role="button"
         tabindex="0"
         @click="switchTab(file.path)"
         @auxclick.middle.prevent="closeTab(file.path)"
         @keydown.enter="switchTab(file.path)"
       >
-        <span v-if="file.isDirty" class="tab-dirty" />
+        <StatusDot v-if="file.isDirty" level="low" size="sm" :glow="false" class="shrink-0" />
         <span class="tab-name">{{ file.name }}</span>
         <button
           class="tab-close"
           @click.stop="closeTab(file.path)"
           title="关闭"
-        >&times;</button>
+        ><X :size="12" /></button>
       </div>
     </div>
   </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
 import { watch, nextTick, ref } from 'vue'
 import { storeToRefs } from 'pinia'
+import { X } from 'lucide-vue-next'
 import { useFileStore } from '../stores/file'
-
+import StatusDot from './StatusDot.vue'
 const fileStore = useFileStore()
 const { openFiles, openFile } = storeToRefs(fileStore)
 const scrollRef = ref<HTMLElement>()
@@ -90,7 +93,7 @@ watch(() => openFile.value?.path, () => {
   white-space: nowrap;
   flex-shrink: 0;
   max-width: 150px;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 .tab-item:hover {
   background: var(--color-bg-surface-hover);
@@ -108,12 +111,6 @@ watch(() => openFile.value?.path, () => {
   white-space: nowrap;
 }
 
-.tab-dirty {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--color-accent);
-  flex-shrink: 0;
-}
 
 .tab-close {
   width: 16px; height: 16px;
@@ -131,5 +128,14 @@ watch(() => openFile.value?.path, () => {
 .tab-close:hover {
   background: var(--color-bg-surface-hover);
   color: var(--color-danger);
+}
+/* 标签栏整体淡入淡出，关闭最后一个标签时布局不“咯噔” */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

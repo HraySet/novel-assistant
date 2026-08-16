@@ -1,9 +1,10 @@
 <template>
-  <div class="hist-overlay" @click.self="$emit('close')">
+  <Transition name="fade">
+  <div v-if="show" class="hist-overlay" @click.self="$emit('close')">
     <div class="hist-modal">
       <div class="hist-header">
         <span class="hist-title">{{ fileName ? `历史版本 · ${fileName}` : '历史版本' }}</span>
-        <button class="hist-close" title="关闭" @click="$emit('close')">&times;</button>
+        <button class="hist-close" title="关闭" @click="$emit('close')"><X :size="14" /></button>
       </div>
 
       <div class="hist-body">
@@ -12,13 +13,18 @@
           <button v-for="b in backups" :key="b.path" class="hist-item"
             :class="{ 'hist-item--active': selected?.path === b.path }"
             @click="selectBackup(b)">
+            <Clock :size="12" class="hist-item-icon" />
             {{ formatTime(b.timestamp) }}
           </button>
-          <div v-if="backups.length === 0" class="hist-empty">暂无备份</div>
+          <div v-if="backups.length === 0" class="hist-empty">
+            <History :size="24" class="hist-empty-icon" />
+            <div>暂无备份</div>
+          </div>
         </div>
 
         <!-- 内容预览 -->
         <div class="hist-preview">
+          <div v-if="preview" class="hist-preview-hint">以下为该版本的完整内容</div>
           <pre class="hist-pre">{{ preview }}</pre>
         </div>
       </div>
@@ -31,13 +37,15 @@
       </div>
     </div>
   </div>
+  </Transition>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { X, Clock, History } from 'lucide-vue-next'
 import * as api from '../api/files'
-
 const props = defineProps<{
+  show: boolean
   filePath: string
   fileName?: string
 }>()
@@ -97,7 +105,7 @@ onMounted(load)
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(74, 64, 50, 0.1);
 }
 
 .hist-modal {
@@ -135,8 +143,6 @@ onMounted(load)
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  line-height: 1;
   color: var(--color-text-muted);
   background: none;
   border: none;
@@ -159,7 +165,9 @@ onMounted(load)
 }
 
 .hist-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   text-align: left;
   padding: 6px 10px;
@@ -172,6 +180,8 @@ onMounted(load)
   font-family: inherit;
   transition: background 0.1s, color 0.1s;
 }
+.hist-item-icon { color: var(--color-text-muted); flex-shrink: 0; }
+.hist-item--active .hist-item-icon { color: var(--color-accent); }
 .hist-item:hover { background: var(--color-bg-surface-hover); color: var(--color-text-primary); }
 .hist-item--active { background: var(--color-accent-bg); color: var(--color-accent); }
 
@@ -180,13 +190,26 @@ onMounted(load)
   text-align: center;
   font-size: 12px;
   color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
+.hist-empty-icon { opacity: 0.3; }
 
 .hist-preview {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   padding: 12px 16px;
+}
+
+.hist-preview-hint {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-bottom: 8px;
 }
 
 .hist-pre {
@@ -229,4 +252,12 @@ onMounted(load)
 }
 .hist-btn--primary:hover:not(:disabled) { background: var(--color-accent-hover); }
 .hist-btn--primary:disabled { opacity: 0.4; cursor: default; }
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>

@@ -14,7 +14,7 @@
               >
                 清空<span class="trash-count">{{ entries.length }}</span>
               </button>
-              <button class="trash-close" title="关闭" @click="$emit('close')">&times;</button>
+              <button class="trash-close" title="关闭" @click="$emit('close')"><X :size="14" /></button>
             </div>
           </div>
 
@@ -76,6 +76,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { X } from 'lucide-vue-next'
 import * as api from '../api/files'
 import ConfirmDialog from './ConfirmDialog.vue'
 

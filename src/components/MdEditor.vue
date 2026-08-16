@@ -93,7 +93,7 @@
       </div>
     </div>
 
-    <HistoryModal v-if="showHistory && path" :file-path="path" :file-name="name"
+    <HistoryModal v-if="path" :show="showHistory" :file-path="path" :file-name="name"
       @close="showHistory = false" @restored="handleRestored" />
   </div>
 </template>

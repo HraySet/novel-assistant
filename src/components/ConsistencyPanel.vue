@@ -1,8 +1,6 @@
 <template>
-  <Teleport to="body">
-    <Transition name="fade">
-      <div v-if="show" class="dialog-overlay" @click.self="$emit('close')">
-        <div class="consistency-panel">
+  <BaseModal :show="show" width="min(560px, calc(100vw - 48px))" max-height="calc(100vh - 96px)" @close="$emit('close')">
+    <div class="consistency-panel">
           <!-- 头部 -->
           <div class="cp-header">
             <span class="cp-title flex items-center gap-1.5"><ShieldCheck :size="14" class="text-text-muted" /> 人物 / 大纲变化检测</span>
@@ -131,10 +129,8 @@
             </div>
             <p v-if="store.lastError" class="cp-error">检测失败：{{ store.lastError }}</p>
           </div>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+    </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -143,6 +139,7 @@ import { storeToRefs } from 'pinia'
 import { X, Sparkles, RefreshCw, ShieldCheck } from 'lucide-vue-next'
 import { useDetectionStore, type CharacterChange } from '../stores/detection'
 import * as api from '../api/files'
+import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{
   show: boolean
@@ -277,16 +274,10 @@ function runNow() {
 </script>
 
 <style scoped>
+/* 盒子外壳（背景/圆角/阴影/进出场）由 BaseModal 统一提供 */
 .consistency-panel {
-  width: min(560px, calc(100vw - 48px));
-  max-height: calc(100vh - 96px);
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-elevated, var(--color-bg-surface));
-  border: 1px solid var(--color-border-strong, var(--color-border));
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
-  overflow: hidden;
 }
 
 .cp-header {

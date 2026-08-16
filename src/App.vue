@@ -79,10 +79,8 @@
     </div>
 
     <!-- 新建项目命名弹窗 -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showNewProjectDialog" class="dialog-overlay" @click.self="showNewProjectDialog = false">
-          <div class="dialog-box">
+    <BaseModal :show="showNewProjectDialog" @close="showNewProjectDialog = false">
+      <div class="dialog-box">
             <div class="flex items-center justify-between mb-4">
               <span class="text-sm font-medium text-text-primary">新建项目</span>
               <button class="dialog-close" @click="showNewProjectDialog = false">
@@ -101,10 +99,8 @@
                 创建
               </button>
             </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+      </div>
+    </BaseModal>
 
     <!-- 搜索浮层 -->
     <SearchModal :show="showSearch" :files="fileTree" @close="showSearch = false"
@@ -119,10 +115,8 @@
       @close="showTrash = false" @restored="onTrashRestored" />
 
     <!-- 设置弹窗 -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showSettings" class="dialog-overlay" @click.self="showSettings = false">
-          <div class="settings-modal">
+    <BaseModal :show="showSettings" width="800px" max-height="620px" @close="showSettings = false">
+      <div class="settings-modal">
             <div class="settings-modal-header">
               <span class="text-sm font-medium text-text-primary">设置</span>
               <button class="dialog-close" @click="showSettings = false">
@@ -137,12 +131,11 @@
                 <SettingsContent :section="settingsSection" />
               </div>
             </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+      </div>
+    </BaseModal>
 
     <!-- 全局右键菜单 -->
+    <!-- 全局右键菜单（文件树） -->
     <GlobalContextMenu />
   </div>
 
@@ -181,6 +174,7 @@ import LeftSidebar from './components/LeftSidebar.vue'
 import GlobalContextMenu from './components/GlobalContextMenu.vue'
 import EditorTabs from './components/EditorTabs.vue'
 import SettingsNav from './components/SettingsNav.vue'
+import BaseModal from './components/BaseModal.vue'
 // 弹层类组件按需加载（减小主包，项目库/编辑器首屏更快）
 const AiChatView = defineAsyncComponent(() => import('./components/AiChatView.vue'))
 const SearchModal = defineAsyncComponent(() => import('./components/SearchModal.vue'))
@@ -585,22 +579,9 @@ onUnmounted(() => {
 
 /* ── Dialog ── */
 
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(74, 64, 50, 0.1);
-}
 
 .dialog-box {
   width: 380px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
   padding: 20px;
 }
 
@@ -675,14 +656,8 @@ onUnmounted(() => {
 
 /* ── Settings Modal ── */
 
+/* 盒子外壳（背景/圆角/阴影/进出场）由 BaseModal 统一提供 */
 .settings-modal {
-  width: 800px;
-  max-height: 620px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
 }

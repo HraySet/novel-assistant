@@ -1,6 +1,5 @@
 <template>
-  <Transition name="fade">
-  <div v-if="show" class="hist-overlay" @click.self="$emit('close')">
+  <BaseModal :show="show" width="640px" height="420px" @close="$emit('close')">
     <div class="hist-modal">
       <div class="hist-header">
         <span class="hist-title">{{ fileName ? `历史版本 · ${fileName}` : '历史版本' }}</span>
@@ -45,14 +44,14 @@
         </button>
       </div>
     </div>
-  </div>
-  </Transition>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { X, Clock, History } from 'lucide-vue-next'
 import DiffView from './DiffView.vue'
+import BaseModal from './BaseModal.vue'
 import * as api from '../api/files'
 const props = defineProps<{
   show: boolean
@@ -114,28 +113,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.hist-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(74, 64, 50, 0.1);
-}
 
-.hist-modal {
-  width: 640px;
-  max-width: 90vw;
-  height: 420px;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
-  overflow: hidden;
-}
 
 .hist-header {
   display: flex;
@@ -287,12 +265,4 @@ onMounted(load)
 }
 .hist-btn--primary:hover:not(:disabled) { background: var(--color-accent-hover); }
 .hist-btn--primary:disabled { opacity: 0.4; cursor: default; }
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
 </style>

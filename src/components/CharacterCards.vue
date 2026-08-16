@@ -1,8 +1,6 @@
 <template>
-  <Teleport to="body">
-    <Transition name="fade">
-      <div v-if="show" class="dialog-overlay" @click.self="$emit('close')">
-        <div class="char-modal">
+  <BaseModal :show="show" :close-on-esc="false" width="780px" height="540px" @close="$emit('close')">
+    <div class="char-modal">
           <div class="char-modal-header">
             <span class="char-modal-title">角色卡片</span>
             <span class="char-modal-hint">保存后自动进入 AI 上下文（角色设定）</span>
@@ -68,10 +66,8 @@
               <div v-else class="char-editor-empty">从左侧选择一张角色卡片</div>
             </div>
           </div>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+    </div>
+  </BaseModal>
 
   <ConfirmDialog
     :show="!!pending"
@@ -90,6 +86,7 @@ import { X, Plus, Users, RefreshCw } from 'lucide-vue-next'
 import * as api from '../api/files'
 import { roleColor } from '../composables/useTheme'
 import ConfirmDialog from './ConfirmDialog.vue'
+import BaseModal from './BaseModal.vue'
 import StatusDot from './StatusDot.vue'
 
 interface CharEntry {
@@ -302,17 +299,6 @@ async function doDelete() {
 </script>
 
 <style scoped>
-/* 遮罩与关闭按钮（本组件自持，不依赖外部 scoped 样式） */
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(74, 64, 50, 0.1);
-}
-
 .dialog-close {
   width: 24px;
   height: 24px;
@@ -331,35 +317,10 @@ async function doDelete() {
   color: var(--color-text-primary);
 }
 
-/* 过渡动画 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-/* 大弹窗位移动效（780×540，体量最大，淡入+上移更柔和） */
-.fade-enter-from .char-modal,
-.fade-leave-to .char-modal {
-  transform: scale(0.97) translateY(6px);
-  opacity: 0;
-}
-
+/* 盒子外壳（背景/圆角/阴影/进出场）由 BaseModal 统一提供 */
 .char-modal {
-  width: 780px;
-  height: 540px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
 .char-modal-header {

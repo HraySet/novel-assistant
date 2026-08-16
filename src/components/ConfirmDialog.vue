@@ -1,8 +1,6 @@
 <template>
-  <Teleport to="body">
-    <Transition name="fade">
-      <div v-if="show" class="confirm-overlay" @click.self="$emit('cancel')">
-        <div class="confirm-box">
+  <BaseModal :show="show" overlay-color="rgba(74, 64, 50, 0.18)" width="min(420px, calc(100vw - 48px))" @close="$emit('cancel')">
+    <div class="confirm-box">
           <div class="confirm-title">{{ title }}</div>
           <div class="confirm-msg">{{ message }}</div>
           <div class="confirm-actions">
@@ -16,15 +14,13 @@
               {{ okLabel }}
             </button>
           </div>
-        </div>
-      </div>
-    </Transition>
-  </Teleport>
+    </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
-
+import BaseModal from './BaseModal.vue'
 const props = withDefaults(defineProps<{
   show: boolean
   title?: string
@@ -59,26 +55,9 @@ defineEmits<{
 </script>
 
 <style scoped>
-/* 自持遮罩与动画，不依赖外部 scoped 样式 */
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(74, 64, 50, 0.18);
-}
-
 .confirm-box {
   min-width: 300px;
-  max-width: 420px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
   padding: 20px 22px;
-  transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
 .confirm-title {
@@ -144,20 +123,4 @@ defineEmits<{
   border-color: var(--color-danger-hover, var(--color-danger));
 }
 
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-/* 母版级弹窗动效：所有确认框共享的位移 + 缩放 */
-.fade-enter-from .confirm-box,
-.fade-leave-to .confirm-box {
-  transform: scale(0.96) translateY(4px);
-  opacity: 0;
-}
 </style>

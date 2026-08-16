@@ -1,9 +1,6 @@
 <template>
-  <Teleport to="body">
-    <Transition name="fade">
-      <div v-if="show" class="sum-overlay" @click.self="$emit('close')">
-        <Transition name="sum-modal" appear>
-          <div class="sum-modal">
+  <BaseModal :show="show" overlay-color="rgba(74, 64, 50, 0.12)" width="640px" height="440px" @close="$emit('close')">
+    <div class="sum-modal">
             <div class="sum-header">
               <div class="sum-header-text">
                 <span class="sum-title">摘要库</span>
@@ -54,21 +51,18 @@
                 </div>
               </div>
             </div>
-          </div>
-        </Transition>
+    </div>
 
-        <ConfirmDialog
-          :show="confirmDelete"
-          title="删除摘要"
-          :message="'确定删除摘要「' + (selected?.name ?? '') + '」吗？此操作不可恢复。'"
-          ok-label="删除"
-          danger
-          @confirm="doDelete"
-          @cancel="confirmDelete = false"
-        />
-      </div>
-    </Transition>
-  </Teleport>
+    <ConfirmDialog
+      :show="confirmDelete"
+      title="删除摘要"
+      :message="'确定删除摘要「' + (selected?.name ?? '') + '」吗？此操作不可恢复。'"
+      ok-label="删除"
+      danger
+      @confirm="doDelete"
+      @cancel="confirmDelete = false"
+    />
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -76,6 +70,7 @@ import { ref, watch } from 'vue'
 import { X, RefreshCw, BookOpen } from 'lucide-vue-next'
 import * as api from '../api/files'
 import ConfirmDialog from './ConfirmDialog.vue'
+import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{ show: boolean; projectRoot?: string }>()
 const emit = defineEmits<{ close: []; insert: [text: string] }>()
@@ -138,40 +133,6 @@ watch(() => props.show, (v) => {
 </script>
 
 <style scoped>
-/* ── 进出场：遮罩淡入淡出 + 弹窗位移缩放（贴合暖色遮罩的调性） ── */
-.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-.sum-modal-enter-active, .sum-modal-leave-active {
-  transition: transform 0.18s ease, opacity 0.18s ease;
-}
-.sum-modal-enter-from, .sum-modal-leave-to {
-  transform: scale(0.97) translateY(6px);
-  opacity: 0;
-}
-
-.sum-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 250;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(74, 64, 50, 0.12);
-}
-
-.sum-modal {
-  width: 640px;
-  max-width: 90vw;
-  height: 440px;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
-  overflow: hidden;
-}
-
 /* header：标题与说明上下两行，hint 不再被压缩 */
 .sum-header {
   display: flex;

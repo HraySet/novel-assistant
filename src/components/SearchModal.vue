@@ -1,9 +1,6 @@
 <template>
-  <Teleport to="body">
-    <Transition name="fade">
-      <div v-if="show" class="search-overlay" @click.self="$emit('close')">
-        <Transition name="search-modal" appear>
-          <div class="search-modal">
+  <BaseModal :show="show" align="top" overlay-color="rgba(74, 64, 50, 0.08)" width="480px" max-height="420px" @close="$emit('close')">
+    <div class="search-modal">
           <div class="search-header">
             <Search :size="16" class="text-text-muted shrink-0" />
             <input
@@ -85,11 +82,8 @@
               <div>没有找到匹配的文件</div>
             </div>
           </div>
-          </div>
-        </Transition>
-      </div>
-    </Transition>
-  </Teleport>
+    </div>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -97,6 +91,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { Search, SearchX, FileText, Folder, X } from 'lucide-vue-next'
 import type { FileNode } from '../types/file'
 import * as api from '../api/files'
+import BaseModal from './BaseModal.vue'
 
 interface SearchResult {
   name: string
@@ -314,28 +309,11 @@ watch(() => props.show, (v) => {
 </script>
 
 <style scoped>
-.search-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  justify-content: center;
-  padding-top: 120px;
-  background: rgba(74, 64, 50, 0.08);
-}
-
+/* 盒子外壳（背景/圆角/阴影/进出场）由 BaseModal 统一提供 */
 .search-modal {
-  width: 480px;
-  max-height: 420px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
-  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-
 .search-header {
   display: flex;
   align-items: center;
@@ -501,24 +479,4 @@ watch(() => props.show, (v) => {
   font-weight: 600;
 }
 
-/* 弹窗：从上方轻轻落下（“召唤”感） */
-.search-modal-enter-active,
-.search-modal-leave-active {
-  transition: transform 0.15s ease, opacity 0.15s ease;
-}
-.search-modal-enter-from,
-.search-modal-leave-to {
-  transform: translateY(-8px) scale(0.98);
-  opacity: 0;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
 </style>

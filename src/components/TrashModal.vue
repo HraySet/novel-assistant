@@ -1,8 +1,6 @@
 <template>
-  <Transition name="trash-overlay">
-    <div v-if="show" class="trash-overlay" @click.self="$emit('close')">
-      <Transition name="trash-modal" appear>
-        <div class="trash-modal">
+  <BaseModal :show="show" overlay-color="rgba(0, 0, 0, 0.3)" backdrop-blur width="560px" height="440px" @close="$emit('close')">
+    <div class="trash-modal">
           <div class="trash-header">
             <span class="trash-title">回收站</span>
             <div class="flex items-center gap-2">
@@ -59,7 +57,6 @@
             <span v-else>删除的内容保存在项目 .trash 目录，恢复时回到原位置</span>
           </div>
         </div>
-      </Transition>
 
       <ConfirmDialog
         :show="confirmEmpty"
@@ -70,8 +67,7 @@
         @confirm="emptyAll"
         @cancel="confirmEmpty = false"
       />
-    </div>
-  </Transition>
+  </BaseModal>
 </template>
 
 <script setup lang="ts">
@@ -79,6 +75,7 @@ import { ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import * as api from '../api/files'
 import ConfirmDialog from './ConfirmDialog.vue'
+import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{
   show: boolean
@@ -155,49 +152,6 @@ function formatTime(ts: number): string {
 </script>
 
 <style scoped>
-/* ── 进出场：遮罩淡入淡出 + 弹窗缩放淡入 ── */
-.trash-overlay-enter-active,
-.trash-overlay-leave-active {
-  transition: opacity 0.15s ease;
-}
-.trash-overlay-enter-from,
-.trash-overlay-leave-to {
-  opacity: 0;
-}
-.trash-modal-enter-active {
-  transition: transform 0.18s ease, opacity 0.18s ease;
-}
-.trash-modal-enter-from,
-.trash-modal-leave-to {
-  transform: scale(0.96) translateY(4px);
-  opacity: 0;
-}
-
-.trash-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-}
-
-.trash-modal {
-  width: 560px;
-  max-width: 90vw;
-  height: 440px;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-popover);
-  overflow: hidden;
-}
-
 .trash-header {
   display: flex;
   align-items: center;

@@ -51,13 +51,14 @@
       <div ref="chatEl" class="chat-messages">
         <div class="chat-messages-inner">
           <div v-if="!activeConversation || activeConversation.messages.length === 0" class="chat-empty">
-            <div class="text-4xl mb-4">✦</div>
+            <Sparkles :size="32" class="chat-empty-icon" />
             <p>在这里跟 AI 深入讨论你的故事</p>
             <p class="text-xs mt-1 text-text-muted">Ctrl+Enter 发送，纯 Enter 换行</p>
             <p v-if="contextLabel" class="text-[10px] mt-2 text-text-muted">{{ contextLabel }}</p>
           </div>
 
           <div v-for="(msg, i) in activeConversation?.messages || []" :key="i" class="chat-msg"
+            style="animation: msg-in 0.15s ease"
             :class="[msg.role === 'user' ? 'chat-msg--user' : 'chat-msg--ai', msg.originalContent ? 'chat-msg--diff' : '']">
             <div class="chat-msg-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
             <DiffView
@@ -70,7 +71,7 @@
             />
             <div v-else class="chat-msg-content" v-html="messageHtml(msg, i)" />
             <div v-if="msg.role === 'assistant' && msg.content && !msg.originalContent" class="chat-msg-actions">
-              <span v-if="appliedIndex === i" class="chat-applied-note">✓ 已应用到文件</span>
+              <span v-if="appliedIndex === i" class="chat-applied-note"><Check :size="11" />已应用到文件</span>
               <template v-else>
                 <button class="chat-action-btn" @click="handleInsertClick(msg.content, i)">{{ insertedIndex === i ? '✓ 已插入' : '插入编辑器' }}</button>
                 <button class="chat-action-btn" :disabled="!activeFile" @click="saveAsSummary(msg.content, i)">
@@ -87,6 +88,8 @@
             </div>
           </div>
 
+          <!-- 打字中指示器：首个 token 返回前的唯一反馈 -->
+          <div v-if="loading" class="chat-typing"><span /><span /><span /></div>
         </div>
       </div>
 
@@ -128,7 +131,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Plus, X, Minimize2, Square, NotebookText } from 'lucide-vue-next'
+import { Plus, X, Minimize2, Square, NotebookText, Sparkles, Check } from 'lucide-vue-next'
 import { useSettingsStore } from '../stores/settings'
 import { useChatStore } from '../stores/chat'
 import { useAiChat } from '../composables/useAiChat'
@@ -160,6 +163,7 @@ const showSummaries = ref(false)
 // AI 对话共享逻辑（与紧凑面板共用）
 const {
   activeConversation,
+  loading,
   contextLabel,
   contextCounts,
   showKeyHint,
@@ -253,10 +257,12 @@ async function handleSend() {
 .chat-sidebar-date { font-size: 9px; color: var(--color-text-muted); flex-shrink: 0; }
 .chat-sidebar-del {
   width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
-  display: none; align-items: center; justify-content: center;
+  display: flex; align-items: center; justify-content: center;
   color: var(--color-text-muted); background: none; border: none; cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease, background 0.1s ease, color 0.1s ease;
 }
-.chat-sidebar-item:hover .chat-sidebar-del { display: flex; }
+.chat-sidebar-item:hover .chat-sidebar-del { opacity: 1; }
 .chat-sidebar-del:hover { background: var(--color-danger-bg); color: var(--color-danger); }
 
 .chat-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -275,7 +281,9 @@ async function handleSend() {
 .chat-messages { flex: 1; overflow-y: auto; padding: 24px 0; }
 .chat-messages-inner { max-width: 680px; margin: 0 auto; padding: 0 24px; }
 .chat-empty { text-align: center; color: var(--color-text-muted); padding: 64px 0; }
-.chat-msg { margin-bottom: 20px; }
+.chat-empty-icon { color: var(--color-accent); opacity: 0.4; margin-bottom: 16px; }
+.chat-msg { margin-bottom: 20px; animation: msg-in 0.15s ease; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .chat-msg--user { text-align: right; }
 .chat-msg-role { font-size: 11px; font-weight: 600; margin-bottom: 4px; color: var(--color-accent); }
 .chat-msg--user .chat-msg-role { color: var(--color-text-muted); }
@@ -284,14 +292,15 @@ async function handleSend() {
 .chat-msg-content { font-size: 14px; line-height: 1.7; color: var(--color-text-primary); white-space: pre-wrap; word-break: break-word; }
 .chat-msg--user .chat-msg-content { color: var(--color-text-secondary); }
 .chat-msg-actions { margin-top: 6px; }
-.chat-applied-note { font-size: 11px; color: var(--color-success); }
+.chat-applied-note { font-size: 11px; color: var(--color-success); display: inline-flex; align-items: center; gap: 3px; }
 .chat-action-btn {
   padding: 2px 10px; font-size: 11px; font-family: inherit;
   border-radius: var(--radius-sm); border: 1px solid var(--color-border);
   background: var(--color-bg-surface); color: var(--color-text-secondary); cursor: pointer;
 }
 .chat-action-btn:hover { background: var(--color-accent-bg); color: var(--color-accent); border-color: var(--color-accent-border); }
-.cursor-blink { animation: blink 1s step-end infinite; color: var(--color-accent); }
+/* 流式光标：messageHtml 注入的内容无 scoped 属性，需用 :deep 匹配 */
+.chat-msg-content :deep(.cursor-blink) { animation: blink 1s step-end infinite; color: var(--color-accent); }
 @keyframes blink { 50% { opacity: 0; } }
 
 .chat-input-area { padding: 16px 20px; border-top: 1px solid var(--color-border); flex-shrink: 0; }
@@ -311,7 +320,7 @@ async function handleSend() {
   color: var(--color-danger); background: var(--color-danger-bg);
   border: 1px solid var(--color-danger-border); cursor: pointer;
 }
-.chat-stop-btn:hover { background: var(--color-danger); color: #fff; }
+.chat-stop-btn:hover { background: var(--color-danger); color: var(--color-text-on-accent); }
 
 /* Markdown 渲染样式 */
 .chat-msg-content :deep(h1) { font-size: 1.3em; font-weight: 700; margin: 12px 0 6px; }
@@ -332,4 +341,16 @@ async function handleSend() {
 .chat-msg-content :deep(hr) { border: none; border-top: 1px solid var(--color-border); margin: 12px 0; }
 .chat-msg-content :deep(strong) { font-weight: 700; }
 .chat-msg-content :deep(em) { font-style: italic; }
+.chat-typing { display: flex; gap: 3px; padding: 8px 0; }
+.chat-typing span {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.chat-typing span:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
 </style>

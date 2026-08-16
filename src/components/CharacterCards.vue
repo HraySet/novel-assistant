@@ -14,9 +14,10 @@
             <!-- 左：卡片列表 -->
             <div class="char-list">
               <div class="char-list-toolbar">
-                <button class="char-new-btn" @click="createCharacter">＋ 新建角色</button>
+                <button class="char-new-btn" @click="createCharacter"><Plus :size="13" />新建角色</button>
               </div>
               <div class="char-list-scroll">
+                <div v-if="loading" class="char-loading"><RefreshCw :size="14" class="spinning" />加载中…</div>
                 <div
                   v-for="ch in characters"
                   :key="ch.path"
@@ -28,7 +29,7 @@
                     <span class="char-name">{{ ch.name }}</span>
                     <span
                       class="char-role"
-                      :style="{ color: roleColor(ch.content), borderColor: roleColor(ch.content) + '55' }"
+                      :style="{ color: roleColor(ch.content), borderColor: `color-mix(in srgb, ${roleColor(ch.content)} 33%, transparent)` }"
                     >
                       {{ detectRole(ch.content) }}
                     </span>
@@ -36,7 +37,9 @@
                   <div class="char-preview">{{ preview(ch.content) }}</div>
                 </div>
                 <div v-if="!loading && characters.length === 0" class="char-empty">
-                  还没有角色。<br />点「＋ 新建角色」创建第一张卡片。
+                  <Users :size="28" class="char-empty-icon" />
+                  <div>还没有角色</div>
+                  <div class="char-empty-hint">点「新建角色」创建第一张卡片</div>
                 </div>
               </div>
             </div>
@@ -46,7 +49,7 @@
               <template v-if="selected">
                 <div class="char-editor-head">
                   <span class="char-editor-name">{{ selected.name }}</span>
-                  <span v-if="dirty" class="char-dirty">● 未保存</span>
+                  <span v-if="dirty" class="char-dirty"><StatusDot level="mid" size="sm" :glow="false" />未保存</span>
                 </div>
                 <textarea
                   v-model="editingContent"
@@ -83,10 +86,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { X } from 'lucide-vue-next'
+import { X, Plus, Users, RefreshCw } from 'lucide-vue-next'
 import * as api from '../api/files'
 import { roleColor } from '../composables/useTheme'
 import ConfirmDialog from './ConfirmDialog.vue'
+import StatusDot from './StatusDot.vue'
 
 interface CharEntry {
   name: string
@@ -338,6 +342,13 @@ async function doDelete() {
   opacity: 0;
 }
 
+/* 大弹窗位移动效（780×540，体量最大，淡入+上移更柔和） */
+.fade-enter-from .char-modal,
+.fade-leave-to .char-modal {
+  transform: scale(0.97) translateY(6px);
+  opacity: 0;
+}
+
 .char-modal {
   width: 780px;
   height: 540px;
@@ -348,6 +359,7 @@ async function doDelete() {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
 .char-modal-header {
@@ -405,6 +417,10 @@ async function doDelete() {
   background: none;
   color: var(--color-text-secondary);
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   transition: border-color 0.12s ease, color 0.12s ease;
 }
 
@@ -460,7 +476,7 @@ async function doDelete() {
 .char-role {
   font-size: 10px;
   padding: 1px 6px;
-  border: 1px solid;
+  border: 1px solid var(--color-border); /* fallback：:style 有值时覆盖，没有时不裸露浏览器默认色 */
   border-radius: 999px;
   flex-shrink: 0;
 }
@@ -479,9 +495,27 @@ async function doDelete() {
   padding: 30px 12px;
   text-align: center;
   font-size: 12px;
-  line-height: 1.8;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.char-empty-icon { opacity: 0.25; }
+.char-empty-hint { font-size: 11px; opacity: 0.7; }
+
+.char-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 14px 0;
+  font-size: 11px;
   color: var(--color-text-muted);
 }
+
+.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { 100% { transform: rotate(360deg); } }
 
 /* ── 右：编辑区 ── */
 .char-editor {
@@ -506,6 +540,9 @@ async function doDelete() {
 }
 
 .char-dirty {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 11px;
   color: var(--color-warning);
 }

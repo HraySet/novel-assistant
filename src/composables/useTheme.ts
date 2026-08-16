@@ -23,7 +23,11 @@ const ROLE_COLORS: Record<string, string> = {
   "家人": "#fb923c",
 };
 
-/** 根据角色定位返回对应颜色，未匹配时返回主题适配灰色 */
+/**
+ * 根据角色定位返回对应颜色，未匹配时返回主题适配灰色。
+ * 注意：返回值恒为 6 位十六进制 #rrggbb —— 调用方依赖此格式拼接透明色
+ * （如 color-mix / 十六进制后缀），修改实现时勿改成 rgb()/hsl() 等其它格式。
+ */
 export function roleColor(role: string): string {
   const s = useSettingsStore();
   const fallback = s.themeDark ? "#6b7280" : "#9ca3af";

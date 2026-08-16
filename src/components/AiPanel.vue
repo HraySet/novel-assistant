@@ -3,7 +3,7 @@
     :style="{ width: panelWidth + 'px', borderColor: 'var(--color-border)' }">
 
     <!-- 宽度拖拽手柄（面板左缘） -->
-    <div class="resize-handle" title="拖动调整面板宽度" @mousedown.prevent="startResize" />
+    <div class="resize-handle" :class="{ 'resize-handle--active': isResizing }" title="拖动调整面板宽度" @mousedown.prevent="startResize" />
 
     <div class="flex items-center justify-between px-3 py-2 border-b shrink-0"
       style="border-color: var(--color-border)">
@@ -31,10 +31,11 @@
       style="border-color: var(--color-border)">
       <span class="text-[10px] text-text-muted">{{ settings.aiProvider }} · {{ settings.aiModel }}</span>
       <span v-if="!settings.aiApiKey" class="text-[10px] text-warning">未配置</span>
-      <span v-else-if="activeFile" class="text-[10px] text-text-muted truncate max-w-[150px]" :title="activeFile.name">📄 {{ activeFile.name }}<template v-if="selection"> · 选中 {{ selection.words }} 字</template></span>
+      <span v-else-if="activeFile" class="text-[10px] text-text-muted truncate max-w-[150px] flex items-center gap-1" :title="activeFile.name"><FileText :size="10" />{{ activeFile.name }}<template v-if="selection"> · 选中 {{ selection.words }} 字</template></span>
     </div>
 
     <!-- 快捷操作（可折叠） -->
+    <Transition name="fade-fast">
     <div v-if="showQuickActions" class="px-3 py-2 border-b shrink-0" style="border-color: var(--color-border)">
       <div class="grid grid-cols-4 gap-1.5">
         <button v-for="a in quickActions" :key="a.label" class="quick-btn"
@@ -43,6 +44,7 @@
         </button>
       </div>
     </div>
+    </Transition>
 
     <!-- 对话 -->
     <div ref="chatEl" class="flex-1 overflow-y-auto px-3 py-2 space-y-3">
@@ -50,7 +52,7 @@
         点击上方快捷操作，或直接输入对话
       </div>
       <div v-for="(msg, i) in (activeConversation?.messages || [])" :key="i"
-        :class="[msg.role === 'user' ? 'chat-user' : 'chat-ai', msg.originalContent ? 'chat-msg--diff' : '']">
+        :class="[msg.role === 'user' ? 'chat-user' : 'chat-ai', msg.originalContent ? 'chat-msg--diff' : '']" style="animation: msg-in 0.15s ease">
         <div class="chat-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
         <DiffView
           v-if="msg.originalContent && msg.content"
@@ -63,7 +65,7 @@
         />
         <div v-else class="chat-content" v-html="messageHtml(msg, i)" />
         <div v-if="msg.role === 'assistant' && msg.content && !msg.originalContent" class="chat-actions-row">
-          <span v-if="appliedIndex === i" class="chat-applied-note">✓ 已应用到文件</span>
+          <span v-if="appliedIndex === i" class="chat-applied-note"><Check :size="11" />已应用到文件</span>
           <template v-else>
             <button class="chat-mini-btn" @click="handleInsertClick(msg.content, i)">{{ insertedIndex === i ? '✓ 已插入' : '插入编辑器' }}</button>
             <button class="chat-mini-btn" :disabled="!activeFile" @click="saveAsSummary(msg.content, i)">
@@ -72,7 +74,7 @@
           </template>
         </div>
       </div>
-      <div v-if="loading" class="text-xs text-text-muted">...</div>
+      <div v-if="loading" class="chat-typing"><span /><span /><span /></div>
     </div>
 
     <!-- 输入区：上下文条 + 输入框 -->
@@ -107,7 +109,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, onUnmounted } from 'vue'
-import { Expand, Square, NotebookText, Zap, ListChecks } from 'lucide-vue-next'
+import { Expand, Square, NotebookText, Zap, ListChecks, FileText, Check } from 'lucide-vue-next'
 import { useSettingsStore } from '../stores/settings'
 import { useAiChat } from '../composables/useAiChat'
 import { storeToRefs } from 'pinia'
@@ -153,6 +155,7 @@ const panelWidth = ref<number>(360)
 }
 
 let resizeState: { startX: number; startWidth: number } | null = null
+const isResizing = ref(false)
 
 function onResizeMove(e: MouseEvent) {
   if (!resizeState) return
@@ -162,6 +165,7 @@ function onResizeMove(e: MouseEvent) {
 function onResizeEnd() {
   if (!resizeState) return
   resizeState = null
+  isResizing.value = false
   window.removeEventListener('mousemove', onResizeMove)
   window.removeEventListener('mouseup', onResizeEnd)
   document.body.style.userSelect = ''
@@ -169,6 +173,7 @@ function onResizeEnd() {
 }
 function startResize(e: MouseEvent) {
   resizeState = { startX: e.clientX, startWidth: panelWidth.value }
+  isResizing.value = true
   window.addEventListener('mousemove', onResizeMove)
   window.addEventListener('mouseup', onResizeEnd)
   document.body.style.userSelect = 'none'
@@ -327,6 +332,10 @@ async function handleSend() {
 .ai-btn:hover { background: var(--color-bg-surface-hover); color: var(--color-text-primary); }
 .ai-btn--active { color: var(--color-accent); }
 .chat-user, .chat-ai { margin-bottom: 8px; }
+/* 流式光标：messageHtml 注入的内容无 scoped 属性，需用 :deep 匹配 */
+.chat-content :deep(.cursor-blink) { animation: blink 1s step-end infinite; color: var(--color-accent); }
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes msg-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .chat-msg--diff { max-width: none; }
 .chat-msg--diff .chat-role { margin-bottom: 6px; }
 .chat-role { font-size: 11px; font-weight: 600; margin-bottom: 2px; color: var(--color-text-muted); }
@@ -344,7 +353,7 @@ async function handleSend() {
   border: 1px solid var(--color-danger-border); cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 4px;
 }
-.chat-stop-btn:hover { background: var(--color-danger); color: #fff; }
+.chat-stop-btn:hover { background: var(--color-danger); color: var(--color-text-on-accent); }
 .chat-actions-row { margin-top: 4px; }
 .chat-mini-btn {
   font-size: 10px; padding: 2px 8px; border-radius: var(--radius-sm);
@@ -356,7 +365,7 @@ async function handleSend() {
   background: var(--color-accent-bg); color: var(--color-accent); border-color: var(--color-accent-border);
 }
 .chat-mini-btn:disabled { opacity: 0.4; cursor: default; }
-.chat-applied-note { font-size: 10px; color: var(--color-success); }
+.chat-applied-note { font-size: 10px; color: var(--color-success); display: inline-flex; align-items: center; gap: 3px; }
 
 .chat-content :deep(h1) { font-size: 1.2em; font-weight: 700; margin: 8px 0 4px; }
 .chat-content :deep(h2) { font-size: 1.1em; font-weight: 600; margin: 6px 0 3px; }
@@ -366,9 +375,33 @@ async function handleSend() {
 .chat-content :deep(pre code) { background: none; padding: 0; }
 .chat-content :deep(strong) { font-weight: 700; }
 .chat-content :deep(em) { font-style: italic; }
+/* 待处理项是提醒不是错误，用强调色而非危险色 */
 .ai-btn-dot {
   position: absolute; top: 2px; right: 2px;
   width: 7px; height: 7px; border-radius: 50%;
-  background: var(--color-danger);
+  background: var(--color-accent);
+}
+
+/* 快捷操作区折叠淡入淡出 */
+.fade-fast-enter-active,
+.fade-fast-leave-active { transition: opacity 0.12s ease; }
+.fade-fast-enter-from,
+.fade-fast-leave-to { opacity: 0; }
+
+/* 拖拽中手柄持续高亮 */
+.resize-handle--active { background: var(--color-accent); }
+
+/* 打字中指示器 */
+.chat-typing { display: flex; gap: 3px; padding: 4px 0; }
+.chat-typing span {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--color-text-muted);
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.chat-typing span:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-3px); opacity: 1; }
 }
 </style>

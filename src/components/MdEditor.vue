@@ -13,7 +13,7 @@
         @keydown.enter.prevent="commitTitle"
         @input="titleSyncError = ''"
       />
-      <div v-if="titleSyncError" class="title-sync-error">{{ titleSyncError }}</div>
+      <div v-if="titleSyncError" class="title-sync-error"><AlertCircle :size="11" />{{ titleSyncError }}</div>
     </div>
 
     <!-- 编辑器容器 -->
@@ -64,7 +64,11 @@
       <span class="mx-1">·</span>
       <span class="stat" :title="'阅读位置 ' + scrollPercent + '%'">{{ scrollPercent }}%</span>
       <span class="mx-1">·</span>
-      <span :class="savedClass">{{ savedText }}</span>
+      <span class="stat flex items-center gap-1" :class="savedClass">
+        <StatusDot v-if="!isSaved" level="mid" size="sm" :glow="false" />
+        <CircleCheck v-else :size="11" />
+        {{ savedText }}
+      </span>
 
       <div class="flex-1"></div>
 
@@ -73,8 +77,9 @@
       <span class="stat-progress" :title="`今日目标进度 ${todayGoalPercent}%`">
         <span class="stat-progress-fill" :class="{ met: todayGoalMet }" :style="{ width: todayGoalPercent + '%' }"></span>
       </span>
-      <span v-if="streakDays > 0" class="stat" title="连续写作天数">🔥 {{ streakDays }}</span>
-      <span class="stat" title="本次写作时长">⏱ {{ sessionFormatted }}</span>
+      <span v-if="streakDays > 0" class="stat flex items-center gap-1" title="连续写作天数"><Flame :size="11" />{{ streakDays }}</span>
+      <span class="stat flex items-center gap-1" title="本次写作时长"><Timer :size="11" />{{ sessionFormatted }}</span>
+      <span v-if="settings.focusLineMode" class="stat flex items-center" title="聚焦行已开启"><Focus :size="11" /></span>
       <div class="stat-more-wrap">
         <button class="nav-btn stat-btn--more" title="更多" @click="showMore = !showMore">
           <MoreHorizontal :size="13" />
@@ -107,8 +112,9 @@ import { useFileStore } from '../stores/file'
 import { useSelectionStore } from '../stores/selection'
 import { QUICK_ACTIONS } from '../composables/aiQuickActions'
 import { countWords } from '../utils/countWords'
-import { ListTree, ChevronUp, ChevronDown, MoreHorizontal, Sparkles, ArrowLeftRight, CheckCircle2 } from 'lucide-vue-next'
+import { ListTree, ChevronUp, ChevronDown, MoreHorizontal, Sparkles, ArrowLeftRight, CheckCircle2, CircleCheck, Flame, Timer, AlertCircle, Focus } from 'lucide-vue-next'
 import HistoryModal from './HistoryModal.vue'
+import StatusDot from './StatusDot.vue'
 import * as api from '../api/files'
 
 const props = defineProps<{
@@ -259,8 +265,8 @@ async function commitTitle() {
 
 
 const savedText = computed(() => {
-  if (!isSaved.value) return '● 未保存'
-  return lastSavedTime.value ? `自动保存 ${formatTime(lastSavedTime.value)}` : '已保存 ✓'
+  if (!isSaved.value) return '未保存'
+  return lastSavedTime.value ? `自动保存 ${formatTime(lastSavedTime.value)}` : '已保存'
 })
 const savedClass = computed(() => isSaved.value ? 'text-success' : 'text-warning')
 
@@ -900,16 +906,26 @@ watch(() => props.content, (newContent) => {
 }
 
 .title-sync-error {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   font-size: 11px;
   color: var(--color-danger);
   margin-top: 2px;
+  animation: shake 0.3s ease;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
 }
 
 
 .stat {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  transition: opacity 0.15s ease;
 }
 
 .stat-progress {
@@ -930,7 +946,7 @@ watch(() => props.content, (newContent) => {
 }
 
 .stat-progress-fill.met {
-  background: #34d399;
+  background: var(--color-success);
 }
 
 .stat-more-wrap {
@@ -1080,4 +1096,14 @@ watch(() => props.content, (newContent) => {
   border-radius: var(--radius-sm); cursor: pointer;
 }
 .sel-dropdown-item:hover { background: var(--color-accent-bg); color: var(--color-accent); }
+/* 编辑器内浮层（大纲/更多/划词菜单）统一轻量入场 */
+.outline-panel,
+.more-popover,
+.sel-toolbar {
+  animation: popover-in 0.12s ease;
+}
+@keyframes popover-in {
+  from { opacity: 0; transform: scale(0.97) translateY(2px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
 </style>

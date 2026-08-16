@@ -9,6 +9,7 @@
     <!-- 顶栏 -->
     <TopBar :project-name="currentProject?.name ?? ''" :file-name="activeFile?.name" :is-dirty="activeFile?.isDirty ?? false"
       :prev-path="prevChapterPath" :next-path="nextChapterPath" :focus-mode="focusMode"
+      :chapter-index="chapterIndex" :chapter-total="chapterTotal"
       @go-library="view = 'library'" @navigate="(p: string) => fileStore.handleFileSelect(p)"
       @open-search="showSearch = true" @toggle-focus="focusMode = !focusMode" />
 
@@ -227,6 +228,16 @@ const nextChapterPath = computed(() => {
   const i = orderedFiles.value.indexOf(p)
   return i >= 0 && i < orderedFiles.value.length - 1 ? orderedFiles.value[i + 1] : undefined
 })
+
+/** 当前章节在项目章节序列中的位置（1 起始） */
+const chapterIndex = computed(() => {
+  const p = activeFile.value?.path
+  if (!p) return undefined
+  const i = orderedFiles.value.indexOf(p)
+  return i >= 0 ? i + 1 : undefined
+})
+
+const chapterTotal = computed(() => orderedFiles.value.length)
 
 const recentFiles = computed(() => {
   const seen = new Set<string>()

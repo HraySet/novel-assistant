@@ -2,7 +2,8 @@
   <Teleport to="body">
     <Transition name="fade">
       <div v-if="show" class="search-overlay" @click.self="$emit('close')">
-        <div class="search-modal">
+        <Transition name="search-modal" appear>
+          <div class="search-modal">
           <div class="search-header">
             <Search :size="16" class="text-text-muted shrink-0" />
             <input
@@ -15,6 +16,9 @@
               @keydown.up.prevent="moveUp"
               @keydown.down.prevent="moveDown"
             />
+            <button v-if="searchQuery && !searching" class="search-clear" title="清空" @click="clearQuery">
+              <X :size="12" />
+            </button>
             <span v-if="searching" class="search-spinner" />
             <span v-else class="search-kbd">ESC</span>
           </div>
@@ -57,7 +61,7 @@
 
             <!-- 内容匹配 -->
             <template v-if="contentMatches.length">
-              <div class="results-label">文件内容 ({{ contentMatches.length }})</div>
+              <div class="results-label">文件内容 ({{ contentMatches.length }})<span class="results-label-note">仅搜索 .md/.txt 文本</span></div>
               <div
                 v-for="(item, i) in contentMatches"
                 :key="'content-' + item.path"
@@ -77,10 +81,12 @@
 
             <!-- 空态 -->
             <div v-if="searchQuery && allResults.length === 0 && !searching" class="search-empty">
-              没有找到匹配的文件
+              <SearchX :size="24" class="search-empty-icon" />
+              <div>没有找到匹配的文件</div>
             </div>
           </div>
-        </div>
+          </div>
+        </Transition>
       </div>
     </Transition>
   </Teleport>
@@ -88,7 +94,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue'
-import { Search, FileText, Folder } from 'lucide-vue-next'
+import { Search, SearchX, FileText, Folder, X } from 'lucide-vue-next'
 import type { FileNode } from '../types/file'
 import * as api from '../api/files'
 
@@ -290,6 +296,11 @@ function selectFile(path: string) {
   emit('select-file', path)
 }
 
+function clearQuery() {
+  searchQuery.value = ''
+  nextTick(() => searchInput.value?.focus())
+}
+
 watch(() => props.show, (v) => {
   if (v) {
     searchQuery.value = ''
@@ -348,11 +359,24 @@ watch(() => props.show, (v) => {
   color: var(--color-text-muted);
 }
 
+/* 与设置页 .kbd 同一套快捷键徽标视觉 */
 .search-kbd {
   font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--color-bg-surface);
   color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
   flex-shrink: 0;
 }
+
+.search-clear {
+  display: flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%;
+  color: var(--color-text-muted); background: none; border: none; cursor: pointer; flex-shrink: 0;
+}
+.search-clear:hover { background: var(--color-bg-surface-hover); color: var(--color-text-primary); }
 
 .search-spinner {
   width: 14px;
@@ -403,6 +427,11 @@ watch(() => props.show, (v) => {
   align-items: flex-start;
 }
 
+/* 内容匹配项：图标与文件名基线对齐，而不是贴多行块顶部 */
+.search-item--content > svg {
+  margin-top: 1px;
+}
+
 .search-name {
   font-size: 13px;
   color: var(--color-text-primary);
@@ -443,6 +472,19 @@ watch(() => props.show, (v) => {
   color: var(--color-text-muted);
   text-align: center;
   padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.search-empty-icon { opacity: 0.3; }
+
+.results-label-note {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-left: 4px;
+  opacity: 0.7;
 }
 
 /* 匹配高亮 */
@@ -451,6 +493,22 @@ watch(() => props.show, (v) => {
   color: var(--color-accent);
   border-radius: 2px;
   padding: 0 1px;
+}
+
+/* 文件名高亮更“实”：是你要找的目标，而不是上下文证据 */
+.search-name :deep(mark) {
+  font-weight: 600;
+}
+
+/* 弹窗：从上方轻轻落下（“召唤”感） */
+.search-modal-enter-active,
+.search-modal-leave-active {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.search-modal-enter-from,
+.search-modal-leave-to {
+  transform: translateY(-8px) scale(0.98);
+  opacity: 0;
 }
 
 .fade-enter-active,

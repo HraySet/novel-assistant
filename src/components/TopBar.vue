@@ -6,7 +6,7 @@
     <button class="topbar-project" @click="$emit('goLibrary')">
       <FolderOpen :size="14" class="flex-shrink-0" />
       <span class="topbar-project-name">{{ projectName }}</span>
-      <span v-if="isDirty" class="text-warning text-[10px] ml-0.5" title="有未保存修改">●</span>
+      <span v-if="isDirty" class="dirty-dot" title="有未保存修改" />
     </button>
 
     <div class="topbar-divider" />
@@ -17,7 +17,12 @@
         <button class="topbar-btn" title="上一章" :disabled="!prevPath" @click="prevPath && $emit('navigate', prevPath)">
           <ChevronLeft :size="15" />
         </button>
-        <span class="chapter-name" :title="fileName">{{ fileName }}</span>
+        <div class="flex flex-col items-center min-w-0">
+          <span class="chapter-name" :title="fileName">{{ fileName }}</span>
+          <span v-if="chapterIndex !== undefined && chapterTotal !== undefined && chapterTotal > 0" class="chapter-progress">
+            {{ chapterIndex }} / {{ chapterTotal }}
+          </span>
+        </div>
         <button class="topbar-btn" title="下一章" :disabled="!nextPath" @click="nextPath && $emit('navigate', nextPath)">
           <ChevronRight :size="15" />
         </button>
@@ -29,8 +34,9 @@
 
     <!-- 操作按钮 -->
     <div class="flex items-center gap-1">
-      <button class="topbar-btn" title="搜索文件 (Ctrl+P)" @click="$emit('openSearch')">
-        <Search :size="14" />
+      <button class="topbar-search" title="搜索文件 (Ctrl+P)" @click="$emit('openSearch')">
+        <Search :size="13" />
+        <kbd class="topbar-kbd">Ctrl P</kbd>
       </button>
       <button
         class="topbar-btn"
@@ -55,6 +61,10 @@ defineProps<{
   prevPath?: string
   /** 下一章路径 */
   nextPath?: string
+  /** 当前章节在项目章节序列中的位置（1 起始） */
+  chapterIndex?: number
+  /** 项目章节总数 */
+  chapterTotal?: number
   /** 专注模式开关状态（按钮高亮显示） */
   focusMode?: boolean
 }>()
@@ -98,16 +108,18 @@ defineEmits<{
   white-space: nowrap;
 }
 
+/* 纯色竖线改为上下渐隐，更柔和 */
 .topbar-divider {
   width: 1px;
   height: 16px;
-  background: var(--color-border);
+  background: linear-gradient(to bottom, transparent, var(--color-border) 30%, var(--color-border) 70%, transparent);
   flex-shrink: 0;
 }
 
 .chapter-name {
   font-size: 12px;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
+  font-weight: 500;
   max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -134,12 +146,16 @@ defineEmits<{
   border: none;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.1s ease, color 0.1s ease;
+  transition: background 0.1s ease, color 0.1s ease, transform 0.1s ease;
 }
 
 .topbar-btn:hover:not(:disabled) {
   background: var(--color-bg-surface-hover);
   color: var(--color-text-primary);
+}
+
+.topbar-btn:active:not(:disabled) {
+  transform: scale(0.92);
 }
 
 .topbar-btn:disabled {
@@ -150,5 +166,55 @@ defineEmits<{
 .topbar-btn--active {
   color: var(--color-accent);
   background: var(--color-accent-bg);
+}
+/* 未保存呼吸点 */
+.dirty-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  margin-left: 2px;
+  flex-shrink: 0;
+  animation: dirty-pulse 2s ease-in-out infinite;
+}
+@keyframes dirty-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* 章节进度提示 */
+.chapter-progress {
+  font-size: 9px;
+  color: var(--color-text-muted);
+  line-height: 1;
+  margin-top: 1px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 搜索条样式（露出快捷键） */
+.topbar-search {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface-hover);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+.topbar-search:hover {
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
+}
+.topbar-kbd {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+  font-family: inherit;
 }
 </style>

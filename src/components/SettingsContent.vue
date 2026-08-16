@@ -3,15 +3,7 @@
     <div class="p-6 space-y-8">
       <!-- ========== 写作 ========== -->
       <section v-if="section === 'writing'">
-        <div class="mb-5">
-          <div class="flex items-center gap-3 mb-1.5">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-accent-bg text-accent">
-              <PenLine :size="18" />
-            </div>
-            <h3 class="text-base font-semibold text-text-primary">写作</h3>
-          </div>
-          <p class="text-xs text-text-muted ml-13">每日字数目标与编辑器偏好</p>
-        </div>
+        <SectionHeader :icon="PenLine" title="写作" desc="每日字数目标与编辑器偏好" />
         <div class="space-y-3">
           <SurfaceCard class="p-4">
             <span class="text-xs font-medium text-text-secondary block mb-3">每日目标字数</span>
@@ -61,7 +53,7 @@
               >
                 <span class="text-[9px] text-text-muted leading-none">{{ d.count > 0 ? d.count : '' }}</span>
                 <div
-                  class="w-full rounded-sm"
+                  class="w-full rounded-sm stat-bar"
                   :style="{ height: barHeight(d.count), background: d.count > 0 ? 'var(--color-accent)' : 'var(--color-bg-surface-hover)' }"
                 />
                 <span class="text-[9px] text-text-muted leading-none">{{ d.label }}</span>
@@ -149,15 +141,7 @@
 
       <!-- ========== 主题 ========== -->
       <section v-if="section === 'theme'">
-        <div class="mb-5">
-          <div class="flex items-center gap-3 mb-1.5">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-accent-bg text-accent">
-              <Palette :size="18" />
-            </div>
-            <h3 class="text-base font-semibold text-text-primary">主题</h3>
-          </div>
-          <p class="text-xs text-text-muted ml-13">自定义界面配色方案</p>
-        </div>
+        <SectionHeader :icon="Palette" title="主题" desc="自定义界面配色方案" />
 
         <!-- 当前主题预览 -->
         <SurfaceCard class="p-4 mb-4">
@@ -210,15 +194,7 @@
 
       <!-- ========== AI 接口 ========== -->
       <section v-if="section === 'ai'">
-        <div class="mb-5">
-          <div class="flex items-center gap-3 mb-1.5">
-            <div class="w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-accent-bg text-accent">
-              <Cpu :size="18" />
-            </div>
-            <h3 class="text-base font-semibold text-text-primary">AI 接口</h3>
-          </div>
-          <p class="text-xs text-text-muted ml-13">配置大模型连接参数</p>
-        </div>
+        <SectionHeader :icon="Cpu" title="AI 接口" desc="配置大模型连接参数" />
 
         <div class="space-y-3">
           <!-- 状态 -->
@@ -242,7 +218,9 @@
               </button>
             </div>
             <div v-if="form.testResult.value" class="mt-3 text-xs flex items-center gap-1" :class="form.testOk.value ? 'text-success' : 'text-danger'">
-              <span>{{ form.testOk.value ? '✓' : '✗' }}</span><span>{{ form.testResult.value }}</span>
+              <CircleCheck v-if="form.testOk.value" :size="13" />
+              <XCircle v-else :size="13" />
+              <span>{{ form.testResult.value }}</span>
             </div>
           </SurfaceCard>
 
@@ -277,9 +255,8 @@
             </div>
             <div v-if="form.modelList.value.length" class="flex flex-wrap gap-2">
               <button v-for="m in form.modelList.value" :key="m"
-                class="px-3 py-1.5 rounded-lg border text-xs transition-all"
-                :class="store.aiModel === m ? '' : 'border-border text-text-secondary hover:border-border-strong'"
-                :style="store.aiModel === m ? { background: 'var(--color-accent)', color: 'var(--color-text-on-accent)', borderColor: 'var(--color-accent)' } : {}"
+                class="model-pill"
+                :class="{ 'model-pill--active': store.aiModel === m }"
                 @click="store.aiModel = m">
                 {{ m }}
               </button>
@@ -310,7 +287,7 @@
               <details v-for="a in quickActions" :key="a.label" class="prompt-item">
                 <summary class="prompt-summary">
                   <span>{{ a.label }}</span>
-                  <span v-if="store.aiQuickPrompts[a.label]" class="prompt-custom-dot" title="已自定义">●</span>
+                  <span v-if="store.aiQuickPrompts[a.label]" class="inline-flex" title="已自定义"><StatusDot level="mid" size="sm" :glow="false" /></span>
                   <span class="text-[10px] text-text-muted truncate flex-1">{{ store.aiQuickPrompts[a.label] || a.hint }}</span>
                 </summary>
                 <textarea
@@ -334,13 +311,15 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { PenLine, Palette, Cpu, CircleCheck, AlertCircle } from "lucide-vue-next";
+import { PenLine, Palette, Cpu, CircleCheck, AlertCircle, XCircle } from "lucide-vue-next";
 import { useSettingsStore } from "../stores/settings";
 import { useSettingsForm } from "../composables/useSettingsForm";
 import { useFileStore } from "../stores/file";
 import { useStatsStore } from "../stores/stats";
 import type { FileNode } from "../types/file";
 import SurfaceCard from "./SurfaceCard.vue";
+import StatusDot from "./StatusDot.vue";
+import SectionHeader from "./SectionHeader.vue";
 import SegmentedGroup from "./SegmentedGroup.vue";
 import WritingCalendar from "./WritingCalendar.vue";
 import { QUICK_ACTIONS } from "../composables/aiQuickActions";
@@ -473,7 +452,7 @@ const shortcuts = [
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  color: #fff;
+  color: var(--color-text-on-accent);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
@@ -519,8 +498,8 @@ const shortcuts = [
 
 .prompt-summary > span:first-child { font-weight: 600; flex-shrink: 0; }
 
-.prompt-custom-dot { color: var(--color-accent); font-size: 8px; flex-shrink: 0; }
-
+/* 近 7 天柱状图：数据实时变化时柱子平滑生长而不是瞬移 */
+.stat-bar { transition: height 0.3s ease; }
 .prompt-textarea { display: block; resize: vertical; min-height: 84px; }
 .setting-input {
   border: 1px solid var(--color-border); border-radius: var(--radius-md);
@@ -549,5 +528,37 @@ const shortcuts = [
   padding: 1px 5px; border-radius: 3px;
   background: var(--color-bg-surface); color: var(--color-text-muted);
   border: 1px solid var(--color-border);
+}
+/* 模型选择 pill：与 SegmentedGroup 同一套单选视觉（class 驱动状态，hover/focus/active 齐备）；
+   字号用 12px 是因为模型 ID 通常较长 */
+.model-pill {
+  padding: 4px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.model-pill:hover {
+  background-color: var(--color-bg-surface-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+}
+.model-pill:active { filter: brightness(0.95); }
+.model-pill:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+.model-pill--active {
+  background-color: var(--color-accent);
+  color: var(--color-text-on-accent);
+  border-color: var(--color-accent);
+}
+.model-pill--active:hover {
+  background-color: var(--color-accent);
+  color: var(--color-text-on-accent);
 }
 </style>

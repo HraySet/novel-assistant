@@ -2,7 +2,16 @@
   <div class="project-library">
     <!-- 顶栏 -->
     <div class="header">
-      <span class="title">我的项目</span>
+      <div class="title-block">
+        <div class="title">
+          <FolderOpen :size="18" class="title-icon" />
+          <span>我的项目</span>
+        </div>
+        <div v-if="projects.length" class="header-sub">
+          共 {{ projects.length }} 个项目
+          <template v-if="totalWords">· 累计 {{ formatWordCount(totalWords) }}</template>
+        </div>
+      </div>
       <div class="actions">
         <button class="btn btn-accent" @click="$emit('newProject')">
           + 新建项目
@@ -15,7 +24,7 @@
 
     <!-- 空状态 -->
     <div v-if="projects.length === 0" class="empty-state">
-      <div class="empty-icon">📖</div>
+      <BookOpen :size="40" class="empty-icon" />
       <p class="empty-title">还没有项目</p>
       <p class="empty-desc">创建一个新项目，或打开已有的小说文件夹</p>
       <div class="empty-actions">
@@ -40,11 +49,11 @@
       >
         <div
           class="card-cover"
-          :style="{ background: project.color }"
+          :style="{ '--cover-color': project.color }"
         />
         <div class="card-name">{{ project.name }}</div>
         <div class="card-meta">
-          <span v-if="project.broken" class="card-broken">路径失效</span>
+          <span v-if="project.broken" class="card-broken"><AlertTriangle :size="11" /> 路径失效</span>
           <template v-else>
               <span>{{ formatTime(project.lastOpened) }}</span>
               <span v-if="project.wordCount" class="card-sep">·</span>
@@ -55,12 +64,14 @@
 
       <!-- 添加项目占位 -->
       <div class="card card--add" @click="$emit('addProject')">
-        <span>+ 添加项目</span>
+        <Plus :size="20" />
+        <span>添加项目</span>
       </div>
     </div>
 
     <!-- 右键菜单 -->
     <Teleport to="body">
+      <Transition name="ctx-menu">
       <div
         v-if="contextMenu.show"
         class="context-menu"
@@ -82,6 +93,7 @@
           移出列表
         </button>
       </div>
+      </Transition>
     </Teleport>
 
     <!-- 点击空白关闭右键菜单 -->
@@ -96,9 +108,8 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed } from 'vue'
+import { BookOpen, FolderOpen, Plus, AlertTriangle } from 'lucide-vue-next'
 import type { ProjectEntry } from '../types/project'
-import { pickCoverColor } from '../types/project'
-
 // ── Props & Emits ──
 
 const props = defineProps<{
@@ -116,6 +127,8 @@ const emit = defineEmits<{
 }>()
 
 // ── Time formatting ──
+
+const totalWords = computed(() => props.projects.reduce((s, p) => s + (p.wordCount || 0), 0))
 
 function formatTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -203,9 +216,22 @@ function handleRemove() {
 }
 
 .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 18px;
   font-weight: 600;
   color: var(--color-text-primary, #4a4032);
+}
+
+.title-icon {
+  color: var(--color-accent, #b5652f);
+}
+
+.header-sub {
+  font-size: 12px;
+  color: var(--color-text-muted, #b0a48f);
+  margin-top: 2px;
 }
 
 .actions {
@@ -271,7 +297,8 @@ function handleRemove() {
 }
 
 .empty-icon {
-  font-size: 48px;
+  color: var(--color-accent, #b5652f);
+  opacity: 0.35;
   margin-bottom: 16px;
 }
 
@@ -322,8 +349,15 @@ function handleRemove() {
 }
 
 .card--broken {
-  opacity: 0.5;
   cursor: default;
+}
+
+.card--broken .card-cover {
+  filter: grayscale(1) opacity(0.6);
+}
+
+.card--broken .card-name {
+  opacity: 0.6;
 }
 
 .card--broken:hover {
@@ -331,11 +365,27 @@ function handleRemove() {
   box-shadow: none;
 }
 
+/* 书封：渐变 + 左侧书脊，让色块变成“一本书” */
 .card-cover {
   width: 100%;
   height: 64px;
-  border-radius: 6px;
+  border-radius: 6px 6px 2px 2px;
   margin-bottom: 12px;
+  position: relative;
+  background: var(--cover-color, #f5e4d5);
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.25), rgba(0, 0, 0, 0.08));
+  box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.card-cover::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  border-radius: 6px 0 0 2px;
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .card-name {
@@ -362,12 +412,17 @@ function handleRemove() {
 
 .card-broken {
   color: var(--color-warning, #c08a2e);
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 
 /* ── Add card placeholder ── */
 
 .card--add {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
   align-items: center;
   justify-content: center;
   color: var(--color-text-muted, #b0a48f);
@@ -389,6 +444,16 @@ function handleRemove() {
   position: fixed;
   inset: 0;
   z-index: 998;
+}
+
+/* 右键菜单：轻微缩放淡入，减少“弹出生硬”感 */
+.ctx-menu-enter-active {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+}
+.ctx-menu-enter-from,
+.ctx-menu-leave-to {
+  transform: scale(0.95) translateY(-4px);
+  opacity: 0;
 }
 
 .context-menu {

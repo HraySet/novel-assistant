@@ -3,9 +3,8 @@
     <button
       v-for="opt in options"
       :key="opt.value"
-      class="rounded-[var(--radius-md)] transition-all"
-      :class="size === 'sm' ? 'px-2.5 py-1.5 text-xs font-medium' : 'px-4 py-2 text-sm font-medium'"
-      :style="modelValue === opt.value ? activeStyle : inactiveStyle"
+      class="seg-btn rounded-[var(--radius-md)] transition-all"
+      :class="[size === 'sm' ? 'px-2.5 py-1.5 text-xs font-medium' : 'px-4 py-2 text-sm font-medium', modelValue === opt.value && 'seg-btn--active']"
       @click="$emit('update:modelValue', opt.value)"
     >
       <slot :option="opt" :active="modelValue === opt.value">{{ opt.label }}</slot>
@@ -30,7 +29,39 @@ withDefaults(
 );
 
 defineEmits<{ (e: "update:modelValue", v: string | number): void }>();
-
-const activeStyle = { backgroundColor: "var(--color-accent)", color: "var(--color-text-on-accent)" };
-const inactiveStyle = { backgroundColor: "var(--color-bg-surface)", color: "var(--color-text-secondary)" };
 </script>
+
+<style scoped>
+/* 颜色全部走 class（而非内联 style），hover/focus/active 才能正常叠加与过渡 */
+.seg-btn {
+  background-color: var(--color-bg-surface);
+  color: var(--color-text-secondary);
+  border: 1px solid transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.seg-btn:hover {
+  background-color: var(--color-bg-surface-hover);
+  color: var(--color-text-primary);
+}
+
+.seg-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.seg-btn:active {
+  filter: brightness(0.95);
+}
+
+.seg-btn--active {
+  background-color: var(--color-accent);
+  color: var(--color-text-on-accent);
+}
+
+.seg-btn--active:hover {
+  background-color: var(--color-accent);
+  color: var(--color-text-on-accent);
+}
+</style>

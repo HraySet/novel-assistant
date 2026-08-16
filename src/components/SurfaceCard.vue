@@ -1,8 +1,9 @@
 <template>
   <div
-    class="rounded-[var(--radius-md)] border transition-colors duration-150"
-    :class="[paddingClass, interactive && !selected ? 'sc-interactive' : '']"
-    :style="cardStyle"
+    class="sc-root"
+    :class="[paddingClass, interactive && !selected ? 'sc-interactive' : '', selected ? 'sc-selected' : '']"
+    :tabindex="interactive ? 0 : undefined"
+    :role="interactive ? 'button' : undefined"
   >
     <slot />
   </div>
@@ -26,25 +27,38 @@ const props = withDefaults(
 const paddingClass = computed(
   () => ({ none: "", sm: "px-3 py-2.5", md: "p-4" }[props.padding])
 );
-
-const cardStyle = computed(() => {
-  if (props.selected) {
-    return {
-      backgroundColor: "var(--color-accent-bg)",
-      borderColor: "var(--color-accent-border)",
-      borderLeft: "2px solid var(--color-accent)",
-    };
-  }
-  return {
-    backgroundColor: "var(--color-bg-page)",
-    borderColor: "var(--color-border)",
-  };
-});
 </script>
 
 <style scoped>
+.sc-root {
+  border: 1px solid var(--color-border);
+  /* 选中态只切换左边条颜色，不改变宽度——避免 0→2px 的硬跳变与内容重排 */
+  border-left: 2px solid transparent;
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg-page);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.sc-root.sc-selected {
+  background-color: var(--color-accent-bg);
+  border-color: var(--color-accent-border);
+  border-left-color: var(--color-accent);
+}
+
+/* interactive 卡片：hover 微亮、按下极轻反馈、键盘焦点可见 */
 .sc-interactive:hover {
   background-color: var(--color-bg-surface-hover);
   border-color: var(--color-border-strong);
+}
+
+.sc-interactive:active {
+  background-color: var(--color-bg-surface-hover);
+  border-color: var(--color-border-strong);
+  filter: brightness(0.97);
+}
+
+.sc-interactive:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -1px;
 }
 </style>

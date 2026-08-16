@@ -32,7 +32,7 @@
         <div class="fav-header" @click="showFavorites = !showFavorites">
           <Star :size="11" class="fav-star-icon" />
           <span class="fav-title">收藏</span>
-          <span class="fav-count">{{ favoriteNodes.length }}</span>
+          <span class="count-badge">{{ favoriteNodes.length }}</span>
           <ChevronRight :size="12" class="fav-chevron" :class="{ 'fav-chevron--open': showFavorites }" />
         </div>
         <Transition name="fav-list">
@@ -184,14 +184,6 @@ async function handleRootDrop(e: DragEvent) {
 
 .fav-title { font-size: 11px; font-weight: 600; }
 
-.fav-count {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  background: var(--color-bg-surface-hover);
-  border-radius: 999px;
-  padding: 0 6px;
-  line-height: 14px;
-}
 
 /* 展开指示：lucide chevron + 旋转过渡 */
 .fav-chevron {

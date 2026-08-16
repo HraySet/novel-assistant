@@ -36,7 +36,7 @@ export function useKeyboardShortcuts(opts: {
       return
     }
 
-    if (opts.view.value === 'ai-chat') {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'A') {
       if (e.ctrlKey && e.shiftKey && e.key === 'A') {
         e.preventDefault()
         opts.view.value = 'editor'
@@ -50,12 +50,12 @@ export function useKeyboardShortcuts(opts: {
     const active = document.activeElement as HTMLElement | null
     const inTextInput = active !== null && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)
     if (!inTextInput && !isEditorFocused()) {
-      if (e.ctrlKey && !e.altKey && !e.shiftKey && e.key === 'z') {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === 'z') {
         e.preventDefault()
         opts.onUndo?.()
         return
       }
-      if (e.ctrlKey && !e.altKey && (e.key === 'y' || (e.shiftKey && (e.key === 'Z' || e.key === 'z')))) {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'y' || (e.shiftKey && (e.key === 'Z' || e.key === 'z')))) {
         e.preventDefault()
         opts.onRedo?.()
         return
@@ -63,25 +63,25 @@ export function useKeyboardShortcuts(opts: {
     }
 
     // Ctrl+W 关闭当前标签
-    if (e.ctrlKey && !e.altKey && e.key === 'w') {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === 'w') {
       e.preventDefault()
       opts.onCloseTab?.()
       return
     }
     // Ctrl+Tab / Ctrl+Shift+Tab 循环切换标签
-    if (e.ctrlKey && !e.altKey && e.key === 'Tab') {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key === 'Tab') {
       e.preventDefault()
       opts.onCycleTab?.(e.shiftKey ? -1 : 1)
       return
     }
     // Ctrl+= / Ctrl+- 调编辑器字号（写作高频操作）
-    if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
       e.preventDefault()
       const s = useSettingsStore()
       s.setEditorFontSize(s.editorFontSize + 1)
       return
     }
-    if (e.ctrlKey && e.key === '-') {
+    if ((e.ctrlKey || e.metaKey) && e.key === '-') {
       e.preventDefault()
       const s = useSettingsStore()
       s.setEditorFontSize(s.editorFontSize - 1)
@@ -97,30 +97,30 @@ export function useKeyboardShortcuts(opts: {
       return
     }
 
-    if (e.ctrlKey && e.shiftKey && e.key === 'F') {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
       e.preventDefault()
       opts.focusMode.value = true
       return
     }
 
-    if (e.ctrlKey && e.key === 'b' && !isEditorFocused()) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'b' && !isEditorFocused()) {
       e.preventDefault()
       opts.showSidebar.value = !opts.showSidebar.value
     }
-    if (e.ctrlKey && e.key === 'j') {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
       e.preventDefault()
       opts.showAiPanel.value = !opts.showAiPanel.value
     }
-    if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'A') {
       e.preventDefault()
       opts.view.value = 'ai-chat'
     }
-    if (e.ctrlKey && e.key === ',') {
+    if ((e.ctrlKey || e.metaKey) && e.key === ',') {
       e.preventDefault()
       opts.showSettings.value = true
       opts.settingsSection.value = 'writing'
     }
-    if (e.ctrlKey && e.key === 'p') {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
       e.preventDefault()
       if (!isEditorFocused()) opts.showSearch.value = true
     }

@@ -40,7 +40,7 @@
 
             <!-- 文件名匹配 -->
             <template v-if="nameResults.length">
-              <div v-if="searchQuery" class="results-label">文件名<span class="results-count">{{ nameResults.length }}</span></div>
+              <div v-if="searchQuery" class="results-label">文件名<span class="count-badge">{{ nameResults.length }}</span></div>
               <div
                 v-for="(item, i) in nameResults"
                 :key="'name-' + item.path"
@@ -58,7 +58,7 @@
 
             <!-- 内容匹配 -->
             <template v-if="contentMatches.length">
-              <div class="results-label">文件内容<span class="results-count">{{ contentMatches.length }}</span><span class="results-label-note">仅搜索 .md/.txt 文本</span></div>
+              <div class="results-label">文件内容<span class="count-badge">{{ contentMatches.length }}</span><span class="results-label-note">仅搜索 .md/.txt 文本</span></div>
               <div
                 v-for="(item, i) in contentMatches"
                 :key="'content-' + item.path"
@@ -374,16 +374,9 @@ watch(() => props.show, (v) => {
   padding: 8px 16px 4px;
 }
 
-/* 数量标记：圆角胶囊（与侧栏收藏/上下文开关同一标准） */
-.results-count {
-  font-size: 10px;
-  font-weight: 400;
-  line-height: 12px;
-  padding: 0 4px;
+/* 结果计数：全局 count-badge 胶囊 + 标签内间距 */
+.results-label .count-badge {
   margin-left: 4px;
-  border-radius: 999px;
-  background: var(--color-bg-surface-hover);
-  color: var(--color-text-muted);
 }
 
 .search-item {

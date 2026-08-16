@@ -7,7 +7,9 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { useSettingsStore } from '../stores/settings'
 import { useChatStore, type ChatMessage } from '../stores/chat'
+import { useStatsStore } from '../stores/stats'
 import { useFileStore } from '../stores/file'
+import { countWords } from '../utils/countWords'
 import { streamChat, AiRequestError } from './useAiStream'
 import { renderMarkdown, escapeHtml } from './useMarkdown'
 import { useAiContext } from './useAiContext'
@@ -30,6 +32,7 @@ export function useAiChat(target: AiChatTarget) {
   const settings = useSettingsStore()
   const chatStore = useChatStore()
   const fileStore = useFileStore()
+  const statsStore = useStatsStore()
   const activeConversation = computed(() => chatStore.activeConversation())
 
   const loading = ref(false)
@@ -91,6 +94,8 @@ export function useAiChat(target: AiChatTarget) {
         await api.writeFile(path, merged)
         fileStore.updateActiveFile({ content: merged, isDirty: false })
       }
+      // 应用修改后累计今日字数（与手动保存同一口径）
+      statsStore.recordChapterEdit(path, countWords(merged))
       // 收起 diff：消息变为纯文本（应用后的最终内容），并短暂提示已应用
       if (convId) chatStore.patchMessage(convId, index, { content: merged, originalContent: undefined, targetRange: undefined })
       appliedIndex.value = index

@@ -349,6 +349,7 @@ export const useFileStore = defineStore('file', () => {
       selectedPath.value = null
     }
     openFiles.value = openFiles.value.filter((item) => item.path !== path)
+    persistOpenTabs() // 删除后同步标签持久化，避免重启后残留失效路径
   }
 
   async function renamePath(path: string, newName: string) {
@@ -486,8 +487,11 @@ export const useFileStore = defineStore('file', () => {
 
   // ── File select / click ──
 
+  let selectSeq = 0
+
   async function handleFileSelect(path: string) {
     if (openFile.value?.path === path) return
+    const seq = ++selectSeq
 
     // The editor updates `openFile` synchronously but persists changes on a
     // debounce. Persist the current file before replacing it so a quick file
@@ -499,6 +503,8 @@ export const useFileStore = defineStore('file', () => {
 
     try {
       const content = await api.readFile(path)
+      // 快速连续切换文件时，作废旧读取，防止最终激活的文件由异步完成顺序决定
+      if (seq !== selectSeq) return
       const name = path.split(/[/\\]/).pop() || path
       setOpenFile({ path, name, content, isDirty: false })
       stats.syncChapterSnapshot(path, countWords(content))

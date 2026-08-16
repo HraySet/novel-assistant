@@ -231,7 +231,6 @@ export function useAiContext(
         try {
           const { label, chars, truncated } = await build()
           contextLabel.value = label ? `上下文: ${label} · 约 ${(chars / 1000).toFixed(1)}k 字${truncated ? '·已截断' : ''}` : ''
-          contextLabel.value = label ? `上下文: ${label} · 约 ${(chars / 1000).toFixed(1)}k 字` : ''
         } catch {
           contextLabel.value = ''
         }

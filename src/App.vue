@@ -164,8 +164,9 @@ import type { ProjectEntry } from './types/project'
 import { pickCoverColor } from './types/project'
 import type { FileNode } from './types/file'
 import * as api from './api/files'
-import { invoke, isTauri } from '@tauri-apps/api/core'
-import { save, confirm } from '@tauri-apps/plugin-dialog'
+import { isTauri } from '@tauri-apps/api/core'
+import { confirm } from '@tauri-apps/plugin-dialog'
+import { exportFiles } from './composables/useExport'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import TopBar from './components/TopBar.vue'
 import MdEditor from './components/MdEditor.vue'
@@ -285,40 +286,10 @@ function handleEditorDirty() {
 
 // ── 导出 ──
 
-function collectFilePaths(nodes: FileNode[], acc: string[] = []): string[] {
-  for (const n of nodes) {
-    if (n.isDir) {
-      if (n.children) collectFilePaths(n.children, acc)
-    } else if (/\.(md|txt)$/i.test(n.name)) {
-      acc.push(n.path)
-    }
-  }
-  return acc
-}
+// ── 导出（逻辑在 useExport：章节收集 + 格式分发） ──
 
 async function handleExport() {
-  const paths = collectFilePaths(fileTree.value)
-  if (paths.length === 0) return
-  const projectName = currentProject.value?.name || '导出'
-  try {
-    const destPath = await save({
-      defaultPath: `${projectName}.epub`,
-      filters: [
-        { name: 'EPUB 电子书', extensions: ['epub'] },
-        { name: 'Markdown', extensions: ['md'] },
-        { name: '纯文本', extensions: ['txt'] },
-      ],
-    })
-    if (!destPath) return
-    if (destPath.toLowerCase().endsWith('.epub')) {
-      await api.exportEpub(paths, destPath, projectName)
-    } else {
-      const withTitles = destPath.toLowerCase().endsWith('.md')
-      await invoke('export_project', { paths, destPath, withTitles })
-    }
-  } catch (e) {
-    console.error('导出失败:', e)
-  }
+  await exportFiles(fileTree.value, currentProject.value?.name || '导出')
 }
 
 // ── AI ──

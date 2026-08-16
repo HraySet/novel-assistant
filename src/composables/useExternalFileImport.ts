@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useFileStore } from '../stores/file'
 
 const MAX_FILE_BYTES = 100 * 1024 * 1024 // 单文件 100MB 上限，防止误拖大文件卡死
+const MAX_TOTAL_BYTES = 500 * 1024 * 1024 // 单次拖入总量 500MB 上限，防内存膨胀
 
 interface DroppedFile {
   relPath: string
@@ -80,6 +81,13 @@ export async function collectDroppedFiles(dt: DataTransfer): Promise<{ relPath: 
   }
 
   await Promise.all(entries.map((e) => walkEntry(e, '', out)))
+
+  // 总量上限：从尾部截掉超出部分（先收集的先保留）
+  let total = 0
+  for (let i = out.length - 1; i >= 0; i--) {
+    total += out[i].bytes.length
+    if (total > MAX_TOTAL_BYTES) out.splice(i, 1)
+  }
   return out
 }
 

@@ -12,7 +12,7 @@
         @click="toggle(t.key)"
       >
         {{ t.label }}
-        <span v-if="t.count !== undefined && t.count > 0" class="ctx-chip-count">{{ t.count }}</span>
+        <span v-if="t.count !== undefined && t.count > 0" class="count-badge">{{ t.count }}</span>
       </button>
       <!-- 前情章数选择：始终占位渲染，避免开关切换时布局跳动；关闭前情时置灰 -->
       <span class="ctx-select-wrap">
@@ -123,15 +123,6 @@ function toggle(key: ToggleKey) {
   cursor: default;
 }
 
-/* 数量徽标：圆角胶囊，与侧栏收藏数量同一风格 */
-.ctx-chip-count {
-  font-size: 10px;
-  line-height: 12px;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: var(--color-bg-surface-hover);
-  color: var(--color-text-muted);
-}
 
 .ctx-select-wrap { position: relative; display: inline-flex; align-items: center; }
 .ctx-select {

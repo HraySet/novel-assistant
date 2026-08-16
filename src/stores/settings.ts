@@ -257,7 +257,9 @@ export const useSettingsStore = defineStore("settings", () => {
   const LINE_HEIGHT_MIN = 1.5;
   const LINE_HEIGHT_MAX = 2.2;
   function loadEditorLineHeight(): number {
-    const n = Number(localStorage.getItem("editor_line_height"));
+    const raw = localStorage.getItem("editor_line_height");
+    if (!raw) return 1.8; // 首次使用：无存储值时 Number(null)=0 会落到下限，需显式判空
+    const n = Number(raw);
     if (!Number.isFinite(n)) return 1.8;
     return Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, Math.round(n * 10) / 10));
   }
@@ -339,7 +341,7 @@ export const useSettingsStore = defineStore("settings", () => {
     themeDark.value = !themeDark.value;
   }
 
-  watch([aiConfigs, aiProvider], () => {
+  watch([aiConfigs, aiProvider, aiTemperature], () => {
     scheduleAISave({ activeProvider: aiProvider.value, configs: aiConfigs.value, temperature: aiTemperature.value });
   }, { deep: true });
 

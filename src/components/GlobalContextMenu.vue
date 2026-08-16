@@ -39,12 +39,15 @@
         </button>
         <div class="context-divider" />
         <button class="context-menu-item" @click="handleToggleFavorite">
-          <Star :size="14" />
+          <Star :size="14"
+            :fill="isCurrentFavorite ? 'var(--color-warning)' : 'none'"
+            :style="{ color: isCurrentFavorite ? 'var(--color-warning)' : undefined }" />
           <span>{{ isCurrentFavorite ? '取消收藏' : '收藏' }}</span>
         </button>
-        <div class="context-divider" />
+        <div class="context-divider context-divider--danger" />
         <button class="context-menu-item context-menu-item--danger" @click="handleDelete">
-          删除
+          <Trash2 :size="14" />
+          <span>删除</span>
         </button>
       </template>
 
@@ -60,12 +63,15 @@
         </button>
         <div class="context-divider" />
         <button class="context-menu-item" @click="handleToggleFavorite">
-          <Star :size="14" />
+          <Star :size="14"
+            :fill="isCurrentFavorite ? 'var(--color-warning)' : 'none'"
+            :style="{ color: isCurrentFavorite ? 'var(--color-warning)' : undefined }" />
           <span>{{ isCurrentFavorite ? '取消收藏' : '收藏' }}</span>
         </button>
-        <div class="context-divider" />
+        <div class="context-divider context-divider--danger" />
         <button class="context-menu-item context-menu-item--danger" @click="handleDelete">
-          删除
+          <Trash2 :size="14" />
+          <span>删除</span>
         </button>
       </template>
     </div>
@@ -86,7 +92,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { onClickOutside } from '@vueuse/core'
-import { FilePlus, FolderPlus, Pencil, Copy, Star } from 'lucide-vue-next'
+import { FilePlus, FolderPlus, Pencil, Copy, Star, Trash2 } from 'lucide-vue-next'
 import { useFileStore } from '../stores/file'
 import { storeToRefs } from 'pinia'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -103,6 +109,8 @@ const menuStyle = computed(() => ({
 }))
 
 // Edge overflow correction
+// 边缘溢出修正 + 入场动画：先隐藏（visibility:hidden），
+// 计算完修正位置后再从动画起点切到终点，避免“先闪一帧再跳”
 watch(
   () => contextMenu.value.visible,
   (visible) => {
@@ -114,6 +122,13 @@ watch(
       const maxY = window.innerHeight - menu.offsetHeight - 8
       menu.style.left = `${Math.min(contextMenu.value.x, maxX)}px`
       menu.style.top = `${Math.min(contextMenu.value.y, maxY)}px`
+      menu.style.opacity = '0'
+      menu.style.transform = 'scale(0.96) translateY(-4px)'
+      menu.style.visibility = 'visible'
+      requestAnimationFrame(() => {
+        menu.style.opacity = '1'
+        menu.style.transform = 'scale(1) translateY(0)'
+      })
     })
   }
 )
@@ -198,6 +213,9 @@ function handleToggleFavorite() {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
+  /* 先隐藏，边缘修正计算完再显示（配合 rAF 入场动画） */
+  visibility: hidden;
+  transition: transform 0.1s ease, opacity 0.1s ease;
 }
 
 .context-menu-item {
@@ -228,5 +246,10 @@ function handleToggleFavorite() {
   height: 1px;
   margin: 4px 0;
   background: var(--color-border);
+}
+
+/* 删除前的那条分隔线加深，预告“接下来是危险操作” */
+.context-divider--danger {
+  background: var(--color-danger-border, var(--color-border));
 }
 </style>

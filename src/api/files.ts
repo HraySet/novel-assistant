@@ -87,15 +87,6 @@ export async function emptyTrash(): Promise<void> {
   return invoke('empty_trash')
 }
 
-export interface ImportFile {
-  relPath: string
-  base64Data: string
-}
-
-/** 外部拖入：把文件复制进项目目录，返回写入数量 */
-export async function importFiles(destDir: string, files: ImportFile[]): Promise<number> {
-  return invoke('import_files', { destDir, files })
-}
 
 export async function pathExists(path: string): Promise<boolean> {
   return invoke('path_exists', { path })

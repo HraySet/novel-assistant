@@ -146,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
 import { FolderOpen, Search, Sparkles, X, Settings, Download, Users, Trash2 } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useProjectOperations } from './composables/useProjectOperations'

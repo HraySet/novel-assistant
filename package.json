@@ -23,6 +23,7 @@
     "vue-tsc": "^3.3.5"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-markdown": "^6.3.2",
     "@codemirror/search": "^6.7.1",
     "@codemirror/state": "^6.5.2",
@@ -30,7 +31,6 @@
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@vueuse/core": "^10.11.1",
-    "codemirror": "^6.0.1",
     "dompurify": "^3.4.12",
     "lucide-vue-next": "^0.469.0",
     "pinia": "^3.0.4",

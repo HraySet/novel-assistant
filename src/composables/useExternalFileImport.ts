@@ -3,7 +3,7 @@ import { useFileStore } from '../stores/file'
 
 const MAX_FILE_BYTES = 100 * 1024 * 1024 // 单文件 100MB 上限，防止误拖大文件卡死
 
-export interface DroppedFile {
+interface DroppedFile {
   relPath: string
   base64Data: string
 }

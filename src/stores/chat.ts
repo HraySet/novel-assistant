@@ -37,7 +37,6 @@ export const useChatStore = defineStore('chat', () => {
   const conversations = ref<ChatConversation[]>([])
   const activeId = ref<string | null>(null)
   const projectRoot = ref('')
-  const loading = ref(false)
   const streaming = ref(false)
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   // 待落盘的会话 id 集合：防抖到期时保存所有变脏的会话，
@@ -274,7 +273,6 @@ export const useChatStore = defineStore('chat', () => {
     conversations,
     activeId,
     projectRoot,
-    loading,
     streaming,
     abortStreaming,
     createAbortController,

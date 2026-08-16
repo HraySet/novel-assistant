@@ -12,16 +12,6 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-function hexToRgbTuple(hex: string): string {
-  const clean = hex.replace("#", "");
-  const full = clean.length === 3 ? clean.split("").map(c => c + c).join("") : clean;
-  const bigint = parseInt(full, 16);
-  const r = (bigint >> 16) & 255;
-  const g = (bigint >> 8) & 255;
-  const b = bigint & 255;
-  return `${r}, ${g}, ${b}`;
-}
-
 /** 按比例提亮（正值）或压暗（负值）一个 #rrggbb 颜色，返回同格式颜色 */
 function shift(hex: string, amount: number): string {
   const clean = hex.replace("#", "");
@@ -79,13 +69,6 @@ export function useDesignTokens() {
     root.style.setProperty("--color-accent-bg", hexToRgba(accent, dark ? 0.16 : 0.12));
     root.style.setProperty("--color-accent-border", hexToRgba(accent, 0.45));
     root.style.setProperty("--color-text-on-accent", readableTextColor(accent));
-
-    // 旧版短变量（SurfaceCard / StatusDot / SectionHeader / EmptyState 直接引用）
-    root.style.setProperty("--accent", accent);
-    root.style.setProperty("--accent-rgb", hexToRgbTuple(accent));
-    root.style.setProperty("--surface-accent", hexToRgba(accent, dark ? 0.1 : 0.06));
-    root.style.setProperty("--surface-accent-strong", hexToRgba(accent, dark ? 0.18 : 0.12));
-    root.style.setProperty("--border-accent", hexToRgba(accent, 0.45));
 
     // 语义色 / 字体 / 圆角 / 阴影等静态变量仍由 style.css 的
     // :root 与 html[data-theme="warm-paper-dark"] 规则提供，这里只同步 data-theme

@@ -67,7 +67,6 @@ export const useFileStore = defineStore('file', () => {
   const openFile = ref<OpenFile | null>(null)
   const openFiles = ref<OpenFile[]>([])
   const openHistory = ref<string[]>([])
-  const historyIndex = ref(-1)
   const selectedPath = ref<string | null>(null)
   const expandedPaths = ref<string[]>([])
   const projectRoot = ref<string>('')
@@ -233,7 +232,6 @@ export const useFileStore = defineStore('file', () => {
     const lastPath = openHistory.value[openHistory.value.length - 1]
     if (lastPath !== file.path) {
       openHistory.value = [...openHistory.value, file.path]
-      historyIndex.value = openHistory.value.length - 1
     }
     persistOpenTabs()
   }
@@ -420,31 +418,6 @@ export const useFileStore = defineStore('file', () => {
     await loadTree(projectRoot.value)
   }
 
-  // ── Navigation ──
-
-  function goBack(): string | null {
-    if (historyIndex.value > 0) {
-      historyIndex.value--
-      return openHistory.value[historyIndex.value]
-    }
-    return null
-  }
-
-  function goForward(): string | null {
-    if (historyIndex.value < openHistory.value.length - 1) {
-      historyIndex.value++
-      return openHistory.value[historyIndex.value]
-    }
-    return null
-  }
-
-  function hasBack(): boolean {
-    return historyIndex.value > 0
-  }
-
-  function hasForward(): boolean {
-    return historyIndex.value < openHistory.value.length - 1
-  }
 
   // ── Context menu ──
 
@@ -692,7 +665,6 @@ export const useFileStore = defineStore('file', () => {
     openFile,
     openFiles,
     openHistory,
-    historyIndex,
     selectedPath,
     expandedPaths,
     projectRoot,
@@ -723,11 +695,6 @@ export const useFileStore = defineStore('file', () => {
     expandPath,
     isExpanded,
     collapseAll,
-    // Navigation
-    goBack,
-    goForward,
-    hasBack,
-    hasForward,
     // Context menu
     openContextMenu,
     closeContextMenu,

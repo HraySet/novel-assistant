@@ -38,8 +38,6 @@ export function roleColor(role: string): string {
   return fallback;
 }
 
-/** 导出角色颜色映射供直接使用 */
-export { ROLE_COLORS };
 
 /**
  * 根据背景色计算可读的前景色（黑色或白色）

@@ -12,25 +12,32 @@
         @click="toggle(t.key)"
       >
         {{ t.label }}
-        <span v-if="t.count !== undefined && t.count > 0" class="ctx-chip-count"> · {{ t.count }}</span>
+        <span v-if="t.count !== undefined && t.count > 0" class="ctx-chip-count">{{ t.count }}</span>
       </button>
       <!-- 前情章数选择：始终占位渲染，避免开关切换时布局跳动；关闭前情时置灰 -->
-      <select
-        v-model.number="recapChapters"
-        class="ctx-select"
-        :class="{ 'ctx-select--off': !opts.recap }"
-        :disabled="!opts.recap"
-        :title="opts.recap ? '前情提要包含最近几章' : '开启前情提要后可选章数'"
-      >
-        <option v-for="n in RECAP_OPTIONS" :key="n" :value="n">前 {{ n }} 章</option>
-      </select>
+      <span class="ctx-select-wrap">
+        <select
+          v-model.number="recapChapters"
+          class="ctx-select"
+          :class="{ 'ctx-select--off': !opts.recap }"
+          :disabled="!opts.recap"
+          :title="opts.recap ? '前情提要包含最近几章' : '开启前情提要后可选章数'"
+        >
+          <option v-for="n in RECAP_OPTIONS" :key="n" :value="n">前 {{ n }} 章</option>
+        </select>
+        <ChevronDown :size="10" class="ctx-select-arrow" />
+      </span>
     </div>
-    <div v-if="label" class="ctx-label" :title="label">{{ label }}</div>
+    <div v-if="label" class="ctx-label">
+      <Info :size="10" class="ctx-label-icon" />
+      <span :title="label">{{ label }}</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ChevronDown, Info } from 'lucide-vue-next'
 import { useSettingsStore, type AiContextOptions } from '../stores/settings'
 
 /** 前情提要可选章数（常量提出来，方便后续按项目章节总数动态过滤） */
@@ -110,28 +117,41 @@ function toggle(key: ToggleKey) {
   border-color: var(--color-accent-border);
 }
 
+/* 暂时不可用（目录为空），不是永久作废——不用删除线 */
 .ctx-chip--disabled {
   opacity: 0.45;
   cursor: default;
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
 }
 
+/* 数量徽标：圆角胶囊，与侧栏收藏数量同一风格 */
 .ctx-chip-count {
-  color: var(--color-text-muted);
   font-size: 10px;
+  line-height: 12px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-bg-surface-hover);
+  color: var(--color-text-muted);
 }
 
+.ctx-select-wrap { position: relative; display: inline-flex; align-items: center; }
 .ctx-select {
   font-size: 11px;
   background: transparent;
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  padding: 3px 5px;
+  padding: 3px 20px 3px 5px;
   outline: none;
   font-family: inherit;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.ctx-select-arrow {
+  position: absolute;
+  right: 5px;
+  pointer-events: none;
+  color: var(--color-text-muted);
 }
 
 .ctx-select:hover:not(:disabled) {
@@ -145,9 +165,13 @@ function toggle(key: ToggleKey) {
 
 /* 上下文说明允许换行完整展示（决定 AI 生成质量的重要信息，不再单行截断） */
 .ctx-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
   font-size: 10px;
   line-height: 1.5;
   color: var(--color-text-muted);
   word-break: break-word;
 }
+.ctx-label-icon { flex-shrink: 0; margin-top: 1px; opacity: 0.6; }
 </style>

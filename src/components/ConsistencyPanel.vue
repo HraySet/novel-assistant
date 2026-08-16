@@ -5,7 +5,7 @@
         <div class="consistency-panel">
           <!-- 头部 -->
           <div class="cp-header">
-            <span class="cp-title">人物 / 大纲变化检测</span>
+            <span class="cp-title flex items-center gap-1.5"><ShieldCheck :size="14" class="text-text-muted" /> 人物 / 大纲变化检测</span>
             <button class="cp-close" title="关闭 (Esc)" @click="$emit('close')">
               <X :size="14" />
             </button>
@@ -25,7 +25,7 @@
 
           <!-- 人物 Tab -->
           <div v-if="activeTab === 'char'" class="cp-body">
-            <div v-if="loading" class="cp-empty">加载中…</div>
+            <div v-if="loading" class="cp-empty cp-loading"><RefreshCw :size="16" class="spinning" /> 加载中…</div>
             <div v-else-if="allCharacters.length === 0" class="cp-empty">
               暂无角色卡。可在角色面板创建，或在项目「角色/」目录下放置 .md 文件。
             </div>
@@ -41,7 +41,7 @@
                   <span class="cp-char-tag">{{ tagOf(c.name) }}</span>
                 </button>
               </div>
-              <div class="cp-char-detail">
+              <div class="cp-char-detail" :key="selectedChar ?? ''">
                 <template v-if="selectedChange">
                   <p class="cp-detail-hint">
                     <Sparkles :size="13" class="cp-detail-icon" />
@@ -67,7 +67,7 @@
 
           <!-- 大纲 Tab -->
           <div v-else class="cp-body">
-            <div v-if="loading" class="cp-empty">加载中…</div>
+            <div v-if="loading" class="cp-empty cp-loading"><RefreshCw :size="16" class="spinning" /> 加载中…</div>
             <div v-else-if="outlineItems.length === 0" class="cp-empty">
               暂无大纲文件。可在项目「大纲/」目录下创建。
             </div>
@@ -140,7 +140,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { X, Sparkles, RefreshCw } from 'lucide-vue-next'
+import { X, Sparkles, RefreshCw, ShieldCheck } from 'lucide-vue-next'
 import { useDetectionStore, type CharacterChange } from '../stores/detection'
 import * as api from '../api/files'
 
@@ -307,16 +307,18 @@ function runNow() {
   border: none; border-bottom: 2px solid transparent; background: none;
   color: var(--color-text-secondary);
   display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: color 0.12s ease, border-color 0.12s ease;
 }
 .cp-tab.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
 .cp-tab-badge {
   min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
-  background: var(--color-danger); color: #fff; font-size: 10px;
+  background: var(--color-accent); color: var(--color-text-on-accent); font-size: 10px;
   display: inline-flex; align-items: center; justify-content: center;
 }
 
 .cp-body { flex: 1; overflow-y: auto; padding: 14px; }
 .cp-empty { padding: 24px 12px; text-align: center; font-size: 12px; color: var(--color-text-muted); }
+.cp-loading { display: flex; align-items: center; justify-content: center; gap: 6px; }
 
 .cp-char-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .cp-char-card {
@@ -330,7 +332,8 @@ function runNow() {
 .cp-char-card.selected { border-color: var(--color-accent-border); background: var(--color-accent-bg); }
 .cp-char-dot {
   position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%;
-  background: var(--color-danger);
+  /* 待确认变化是中性提醒，用强调色而非危险色 */
+  background: var(--color-accent);
 }
 .cp-char-head { display: flex; align-items: center; gap: 8px; }
 .cp-avatar {
@@ -345,7 +348,8 @@ function runNow() {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-.cp-char-detail { margin-top: 12px; }
+.cp-char-detail { margin-top: 12px; animation: fade-in 0.12s ease; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .cp-detail-hint { font-size: 11px; color: var(--color-text-muted); margin: 0 0 8px; display: flex; align-items: center; gap: 4px; }
 .cp-detail-icon { vertical-align: -2px; }
 .cp-diff-old {
@@ -367,7 +371,7 @@ function runNow() {
   transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
 .cp-btn--primary { border-color: var(--color-accent-border); color: var(--color-accent); background: var(--color-accent-bg); }
-.cp-btn--primary:hover:not(:disabled) { background: var(--color-accent); color: #fff; }
+.cp-btn--primary:hover:not(:disabled) { background: var(--color-accent); color: var(--color-text-on-accent); }
 .cp-btn--ghost { color: var(--color-text-muted); }
 .cp-btn:disabled { opacity: 0.5; cursor: default; }
 
@@ -379,7 +383,7 @@ function runNow() {
 .cp-outline-item.last { border-bottom: none; }
 .cp-status-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
 .cp-status--done { background: var(--color-success); }
-.cp-status--suggest { background: var(--color-danger); }
+.cp-status--suggest { background: var(--color-accent); }
 .cp-status--planned { background: var(--color-border-strong, var(--color-border)); }
 .cp-outline-main { flex: 1; min-width: 0; }
 .cp-outline-title { font-size: 13px; margin: 0; color: var(--color-text-primary); }
@@ -416,6 +420,7 @@ function runNow() {
 .cp-toggle input { position: absolute; opacity: 0; width: 100%; height: 100%; cursor: pointer; margin: 0; }
 .cp-toggle-knob {
   position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  /* 有意保留纯白：开关滑块不随轨道/主题变色，保持可辨识 */
   background: #fff; transition: left 0.15s;
 }
 .cp-toggle.on .cp-toggle-knob { left: 16px; }

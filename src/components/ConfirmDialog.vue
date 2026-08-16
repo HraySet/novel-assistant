@@ -6,8 +6,9 @@
           <div class="confirm-title">{{ title }}</div>
           <div class="confirm-msg">{{ message }}</div>
           <div class="confirm-actions">
-            <button class="confirm-btn confirm-btn--ghost" @click="$emit('cancel')">{{ cancelLabel }}</button>
+            <button ref="cancelBtnRef" class="confirm-btn confirm-btn--ghost" @click="$emit('cancel')">{{ cancelLabel }}</button>
             <button
+              ref="okBtnRef"
               class="confirm-btn confirm-btn--primary"
               :class="{ 'confirm-btn--danger': danger }"
               @click="$emit('confirm')"
@@ -22,7 +23,9 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
+import { ref, watch, nextTick } from 'vue'
+
+const props = withDefaults(defineProps<{
   show: boolean
   title?: string
   message?: string
@@ -35,6 +38,18 @@ withDefaults(defineProps<{
   okLabel: '确定',
   cancelLabel: '取消',
   danger: false,
+})
+
+const cancelBtnRef = ref<HTMLButtonElement>()
+const okBtnRef = ref<HTMLButtonElement>()
+
+// 危险操作默认焦点落在「取消」防误触；普通确认落在主按钮方便 Enter
+watch(() => props.show, (v) => {
+  if (!v) return
+  nextTick(() => {
+    if (props.danger) cancelBtnRef.value?.focus()
+    else okBtnRef.value?.focus()
+  })
 })
 
 defineEmits<{
@@ -62,7 +77,8 @@ defineEmits<{
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-popover);
-  padding: 18px;
+  padding: 20px 22px;
+  transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
 .confirm-title {
@@ -75,7 +91,7 @@ defineEmits<{
   font-size: 12px;
   line-height: 1.7;
   color: var(--color-text-secondary);
-  margin-top: 6px;
+  margin-top: 8px;
   white-space: pre-line;
 }
 
@@ -120,13 +136,12 @@ defineEmits<{
 .confirm-btn--danger {
   background: var(--color-danger);
   border-color: var(--color-danger);
-  color: #fff;
+  color: var(--color-text-on-danger, var(--color-text-on-accent));
 }
 
 .confirm-btn--danger:hover {
-  background: var(--color-danger);
-  border-color: var(--color-danger);
-  filter: brightness(1.1);
+  background: var(--color-danger-hover, var(--color-danger));
+  border-color: var(--color-danger-hover, var(--color-danger));
 }
 
 .fade-enter-active,
@@ -136,6 +151,13 @@ defineEmits<{
 
 .fade-enter-from,
 .fade-leave-to {
+  opacity: 0;
+}
+
+/* 母版级弹窗动效：所有确认框共享的位移 + 缩放 */
+.fade-enter-from .confirm-box,
+.fade-leave-to .confirm-box {
+  transform: scale(0.96) translateY(4px);
   opacity: 0;
 }
 </style>

@@ -36,6 +36,7 @@
   --color-danger: #a13f35;
   --color-danger-bg: #f5e6e2;
   --color-danger-border: #d4a5a0;
+  --color-danger-hover: #8a3329;
   --color-warning: #c08a2e;
   --color-warning-bg: #f7ecd8;
   --color-star: #eab308; /* 收藏星标：主题内统一定义，各处引用 */
@@ -85,6 +86,7 @@ html[data-theme="warm-paper-dark"] {
   --color-danger: #c45a50;
   --color-danger-bg: #352828;
   --color-danger-border: #6b3a3a;
+  --color-danger-hover: #d06a60;
   --color-warning: #d4a040;
   --color-warning-bg: #353028;
   --color-star: #fbbf24; /* 暗色主题下更亮一档，避免发闷 */

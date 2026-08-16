@@ -25,6 +25,7 @@ const PERSIST_FILE = '.stats/consistency.json'
 const RECENT_CHAPTERS = 5
 const CHAPTER_MAX_CHARS = 4000
 const DIR_FILE_MAX_CHARS = 4000
+const DIR_TOTAL_MAX_CHARS = 30000
 
 const SYSTEM_PROMPT = `你是小说一致性检查器。根据提供的【角色设定】【大纲】与【最近章节】，检测两类问题：
 1. 角色变化：最新章节中角色表现出与既有设定不一致的新性格特质或关系变化；
@@ -42,7 +43,7 @@ interface CheckInput {
 
 export const useDetectionStore = defineStore('detection', () => {
   const autoEnabled = ref(localStorage.getItem('detect-auto') !== '0')
-  const threshold = ref(Number(localStorage.getItem('detect-threshold')) || 800)
+  const threshold = ref(Number(localStorage.getItem('detect-threshold')) || 1500)
   const characterChanges = ref<CharacterChange[]>([])
   const outlineSuggestions = ref<OutlineSuggestion[]>([])
   const wordsSinceCheck = ref(0)
@@ -140,10 +141,16 @@ export const useDetectionStore = defineStore('detection', () => {
     }
     const files = entries.filter((e) => !e.isDir)
     const out: { name: string; content: string }[] = []
+    // 目录总量上限（与上下文注入同预算）：角色卡/大纲文件多了之后，
+    // 避免每次检测调用把整个设定目录灌进输入
+    let budget = DIR_TOTAL_MAX_CHARS
     for (const f of files) {
+      if (budget <= 0) break
       try {
         const content = await api.readFile(f.path)
-        out.push({ name: f.name.replace(/\.(md|txt)$/i, ''), content: content.slice(0, DIR_FILE_MAX_CHARS) })
+        const part = content.slice(0, Math.min(DIR_FILE_MAX_CHARS, budget))
+        budget -= part.length
+        out.push({ name: f.name.replace(/\.(md|txt)$/i, ''), content: part })
       } catch { /* skip */ }
     }
     return out

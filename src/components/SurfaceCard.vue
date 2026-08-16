@@ -43,6 +43,8 @@ const paddingClass = computed(
   background-color: var(--color-accent-bg);
   border-color: var(--color-accent-border);
   border-left-color: var(--color-accent);
+  /* 极淡内阴影加强选中感（与左边条同源，不引入第二种选中语法） */
+  box-shadow: inset 0 0 0 1px var(--color-accent-border);
 }
 
 /* interactive 卡片：hover 微亮、按下极轻反馈、键盘焦点可见 */

@@ -36,7 +36,7 @@
     <div class="flex items-center gap-1">
       <button class="topbar-search" title="搜索文件 (Ctrl+P)" @click="$emit('openSearch')">
         <Search :size="13" />
-        <kbd class="topbar-kbd">Ctrl P</kbd>
+        <kbd class="kbd">Ctrl P</kbd>
       </button>
       <button
         class="topbar-btn"
@@ -210,11 +210,5 @@ defineEmits<{
 .topbar-search:hover {
   background: var(--color-bg-surface);
   color: var(--color-text-primary);
-}
-.topbar-kbd {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  opacity: 0.7;
-  font-family: inherit;
 }
 </style>

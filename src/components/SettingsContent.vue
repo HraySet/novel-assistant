@@ -523,12 +523,6 @@ const shortcuts = [
   width: 16px; height: 16px; accent-color: var(--color-accent); cursor: pointer; flex-shrink: 0;
 }
 
-.kbd {
-  font-size: 10px; font-family: var(--font-mono);
-  padding: 1px 5px; border-radius: 3px;
-  background: var(--color-bg-surface); color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-}
 /* 模型选择 pill：与 SegmentedGroup 同一套单选视觉（class 驱动状态，hover/focus/active 齐备）；
    字号用 12px 是因为模型 ID 通常较长 */
 .model-pill {

@@ -24,8 +24,17 @@
 
         <!-- 内容预览 -->
         <div class="hist-preview">
-          <div v-if="preview" class="hist-preview-hint">以下为该版本的完整内容</div>
-          <pre class="hist-pre">{{ preview }}</pre>
+          <div class="hist-preview-toolbar">
+            <button class="hist-mode-btn" :class="{ active: viewMode === 'diff' }" @click="viewMode = 'diff'">与当前对比</button>
+            <button class="hist-mode-btn" :class="{ active: viewMode === 'full' }" @click="viewMode = 'full'">查看全文</button>
+          </div>
+          <template v-if="viewMode === 'diff' && selected">
+            <DiffView :old-text="preview" :new-text="currentContent" :editable="false" granularity="word" />
+          </template>
+          <template v-else>
+            <div v-if="preview" class="hist-preview-hint">以下为该版本的完整内容</div>
+            <pre class="hist-pre">{{ preview }}</pre>
+          </template>
         </div>
       </div>
 
@@ -43,6 +52,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { X, Clock, History } from 'lucide-vue-next'
+import DiffView from './DiffView.vue'
 import * as api from '../api/files'
 const props = defineProps<{
   show: boolean
@@ -58,14 +68,20 @@ const emit = defineEmits<{
 const backups = ref<api.BackupEntry[]>([])
 const selected = ref<api.BackupEntry | null>(null)
 const preview = ref('')
+const currentContent = ref('')
+const viewMode = ref<'diff' | 'full'>('diff')
 const restoring = ref(false)
-
 async function load() {
   try {
     backups.value = await api.listBackups(props.filePath)
     if (backups.value.length > 0) await selectBackup(backups.value[0])
   } catch (e) {
     console.error('加载备份失败:', e)
+  }
+  try {
+    currentContent.value = await api.readFile(props.filePath)
+  } catch {
+    currentContent.value = ''
   }
 }
 
@@ -206,10 +222,29 @@ onMounted(load)
   padding: 12px 16px;
 }
 
-.hist-preview-hint {
-  font-size: 10px;
+.hist-preview-toolbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.hist-mode-btn {
+  font-size: 11px;
+  padding: 3px 10px;
+  font-family: inherit;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: transparent;
   color: var(--color-text-muted);
-  margin-bottom: 8px;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+.hist-mode-btn:hover { color: var(--color-text-primary); border-color: var(--color-border-strong); }
+.hist-mode-btn.active {
+  background: var(--color-accent-bg);
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
 }
 
 .hist-pre {

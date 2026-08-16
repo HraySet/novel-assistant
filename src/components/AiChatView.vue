@@ -20,6 +20,7 @@
           @keydown.enter="chatStore.switchConversation(conv.id)"
         >
           <span class="chat-sidebar-title">{{ conv.title }}</span>
+          <span v-if="conv.fileContext" class="chat-sidebar-file" :title="conv.fileContext">{{ conv.fileContext.split(/[/\\]/).pop() }}</span>
           <span class="chat-sidebar-date">{{ formatDate(conv.updatedAt) }}</span>
           <button class="chat-sidebar-del" @click.stop="handleDelete(conv.id)">
             <X :size="10" />
@@ -255,6 +256,18 @@ async function handleSend() {
 .chat-sidebar-item--active { background: var(--color-accent-bg); color: var(--color-accent); }
 .chat-sidebar-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-sidebar-date { font-size: 9px; color: var(--color-text-muted); flex-shrink: 0; }
+.chat-sidebar-file {
+  font-size: 9px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-surface-hover);
+  border-radius: 3px;
+  padding: 0 4px;
+  flex-shrink: 0;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chat-sidebar-del {
   width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;

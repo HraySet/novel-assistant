@@ -20,7 +20,7 @@
               <X :size="12" />
             </button>
             <span v-if="searching" class="search-spinner" />
-            <span v-else class="search-kbd">ESC</span>
+            <span v-else class="kbd">ESC</span>
           </div>
 
           <div class="search-results" ref="resultsEl">
@@ -43,7 +43,7 @@
 
             <!-- 文件名匹配 -->
             <template v-if="nameResults.length">
-              <div v-if="searchQuery" class="results-label">文件名 ({{ nameResults.length }})</div>
+              <div v-if="searchQuery" class="results-label">文件名<span class="results-count">{{ nameResults.length }}</span></div>
               <div
                 v-for="(item, i) in nameResults"
                 :key="'name-' + item.path"
@@ -61,7 +61,7 @@
 
             <!-- 内容匹配 -->
             <template v-if="contentMatches.length">
-              <div class="results-label">文件内容 ({{ contentMatches.length }})<span class="results-label-note">仅搜索 .md/.txt 文本</span></div>
+              <div class="results-label">文件内容<span class="results-count">{{ contentMatches.length }}</span><span class="results-label-note">仅搜索 .md/.txt 文本</span></div>
               <div
                 v-for="(item, i) in contentMatches"
                 :key="'content-' + item.path"
@@ -359,17 +359,6 @@ watch(() => props.show, (v) => {
   color: var(--color-text-muted);
 }
 
-/* 与设置页 .kbd 同一套快捷键徽标视觉 */
-.search-kbd {
-  font-size: 10px;
-  font-family: var(--font-mono);
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: var(--color-bg-surface);
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
 
 .search-clear {
   display: flex; align-items: center; justify-content: center;
@@ -405,6 +394,18 @@ watch(() => props.show, (v) => {
   letter-spacing: 0.5px;
   color: var(--color-text-muted);
   padding: 8px 16px 4px;
+}
+
+/* 数量标记：圆角胶囊（与侧栏收藏/上下文开关同一标准） */
+.results-count {
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 12px;
+  padding: 0 4px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: var(--color-bg-surface-hover);
+  color: var(--color-text-muted);
 }
 
 .search-item {

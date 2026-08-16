@@ -30,7 +30,7 @@
     <div class="px-3 py-1.5 border-b shrink-0 flex items-center justify-between gap-2"
       style="border-color: var(--color-border)">
       <span class="text-[10px] text-text-muted">{{ settings.aiProvider }} · {{ settings.aiModel }}</span>
-      <span v-if="!settings.aiApiKey" class="text-[10px] text-warning">未配置</span>
+      <span v-if="!settings.aiApiKey" class="text-[10px] text-warning flex items-center gap-0.5"><AlertCircle :size="10" />未配置</span>
       <span v-else-if="activeFile" class="text-[10px] text-text-muted truncate max-w-[150px] flex items-center gap-1" :title="activeFile.name"><FileText :size="10" />{{ activeFile.name }}<template v-if="selection"> · 选中 {{ selection.words }} 字</template></span>
     </div>
 
@@ -109,7 +109,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, onUnmounted } from 'vue'
-import { Expand, Square, NotebookText, Zap, ListChecks, FileText, Check } from 'lucide-vue-next'
+import { Expand, Square, NotebookText, Zap, ListChecks, FileText, Check, AlertCircle } from 'lucide-vue-next'
 import { useSettingsStore } from '../stores/settings'
 import { useAiChat } from '../composables/useAiChat'
 import { storeToRefs } from 'pinia'

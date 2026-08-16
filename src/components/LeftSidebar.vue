@@ -33,8 +33,9 @@
           <Star :size="11" class="fav-star-icon" />
           <span class="fav-title">收藏</span>
           <span class="fav-count">{{ favoriteNodes.length }}</span>
-          <span class="fav-toggle">{{ showFavorites ? '▾' : '▸' }}</span>
+          <ChevronRight :size="12" class="fav-chevron" :class="{ 'fav-chevron--open': showFavorites }" />
         </div>
+        <Transition name="fav-list">
         <div v-if="showFavorites" class="fav-list">
           <button
             v-for="f in favoriteNodes"
@@ -48,6 +49,7 @@
             <span class="fav-name">{{ f.name }}</span>
           </button>
         </div>
+        </Transition>
       </div>
       <DraftRow
         v-if="draftState && draftState.parentPath === fileStore.projectRoot"
@@ -78,9 +80,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { FilePlus, FolderPlus, FoldVertical, Star, FileText } from 'lucide-vue-next'
+import { FilePlus, FolderPlus, FoldVertical, Star, FileText, ChevronRight } from 'lucide-vue-next'
 import type { FileNode } from '../types/file'
 import { useFileStore } from '../stores/file'
 import FileTreeNode from './FileTreeNode.vue'
@@ -108,7 +110,7 @@ const favoriteNodes = computed(() => {
 
 // 收藏分组折叠状态（跨会话记忆）
 const showFavorites = ref(localStorage.getItem('file-fav-section-open') !== '0')
-
+watch(showFavorites, (v) => localStorage.setItem('file-fav-section-open', v ? '1' : '0'))
 function handleCreate(type: 'file' | 'dir') {
   const selectedNode = fileStore.selectedPath ? fileStore.findNode(fileStore.selectedPath) : null
   const parentPath = selectedNode?.isDir ? selectedNode.path : fileStore.projectRoot
@@ -158,7 +160,7 @@ async function handleRootDrop(e: DragEvent) {
 }
 .header-action-btn:hover { background: var(--color-bg-surface-hover); color: var(--color-accent); }
 
-.drop-root { outline: 2px dashed var(--color-accent-border); outline-offset: -4px; }
+.drop-root { outline: 2px dashed var(--color-accent-border); outline-offset: -4px; background: var(--color-accent-bg); }
 
 .fav-section {
   margin-bottom: 6px;
@@ -178,7 +180,7 @@ async function handleRootDrop(e: DragEvent) {
 }
 .fav-header:hover { background: var(--color-bg-surface-hover); }
 
-.fav-star-icon { color: #eab308; }
+.fav-star-icon { color: var(--color-warning); }
 
 .fav-title { font-size: 11px; font-weight: 600; }
 
@@ -191,10 +193,23 @@ async function handleRootDrop(e: DragEvent) {
   line-height: 14px;
 }
 
-.fav-toggle {
+/* 展开指示：lucide chevron + 旋转过渡 */
+.fav-chevron {
   margin-left: auto;
-  font-size: 10px;
+  flex-shrink: 0;
   color: var(--color-text-muted);
+  transition: transform 0.15s ease;
+}
+.fav-chevron--open { transform: rotate(90deg); }
+
+/* 收藏列表展开/收起淡入淡出 */
+.fav-list-enter-active,
+.fav-list-leave-active {
+  transition: opacity 0.12s ease;
+}
+.fav-list-enter-from,
+.fav-list-leave-to {
+  opacity: 0;
 }
 
 .fav-list {

@@ -58,36 +58,14 @@
             <p v-if="contextLabel" class="text-[10px] mt-2 text-text-muted">{{ contextLabel }}</p>
           </div>
 
-          <div v-for="(msg, i) in activeConversation?.messages || []" :key="i" class="chat-msg"
-            style="animation: msg-in 0.15s ease"
-            :class="[msg.role === 'user' ? 'chat-msg--user' : 'chat-msg--ai', msg.originalContent ? 'chat-msg--diff' : '']">
-            <div class="chat-msg-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
-            <DiffView
-              v-if="msg.originalContent && msg.content"
-              :editable="true"
-              :old-text="msg.originalContent"
-              :new-text="msg.content"
-              @accept="(merged) => handleApplyDiff(merged, i)"
-              @reject="handleRejectDiff(i)"
-            />
-            <div v-else class="chat-msg-content" v-html="messageHtml(msg, i)" />
-            <div v-if="msg.role === 'assistant' && msg.content && !msg.originalContent" class="chat-msg-actions">
-              <span v-if="appliedIndex === i" class="chat-applied-note"><Check :size="11" />已应用到文件</span>
-              <template v-else>
-                <button class="chat-action-btn" @click="handleInsertClick(msg.content, i)">{{ insertedIndex === i ? '✓ 已插入' : '插入编辑器' }}</button>
-                <button class="chat-action-btn" :disabled="!activeFile" @click="saveAsSummary(msg.content, i)">
-                  {{ savedIndex === i ? '✓ 已存入前情' : '存为摘要' }}
-                </button>
-              </template>
-            </div>
-            <div
-              v-if="msg.role === 'assistant' && msg.content && i === (activeConversation?.messages.length ?? 0) - 1 && !chatStore.streaming"
-              class="chat-msg-actions"
-            >
-              <button class="chat-action-btn" @click="regenerate()">重新生成</button>
-              <button class="chat-action-btn" @click="copyMessage(msg.content)">复制</button>
-            </div>
-          </div>
+          <ChatMessage v-for="(msg, i) in activeConversation?.messages || []" :key="i"
+            :msg="msg" :html="messageHtml(msg, i)" density="roomy"
+            :applied="appliedIndex === i" :inserted="insertedIndex === i" :saved="savedIndex === i"
+            :can-save-summary="!!activeFile"
+            :show-extras="i === (activeConversation?.messages.length ?? 0) - 1 && !chatStore.streaming"
+            @apply-diff="(merged) => handleApplyDiff(merged, i)" @reject-diff="handleRejectDiff(i)"
+            @insert="handleInsertClick(msg.content, i)" @save-summary="saveAsSummary(msg.content, i)"
+            @regenerate="regenerate()" @copy="copyMessage(msg.content)" />
 
           <!-- 打字中指示器：首个 token 返回前的唯一反馈 -->
           <div v-if="loading" class="chat-typing"><span /><span /><span /></div>
@@ -132,11 +110,11 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
-import { Plus, X, Minimize2, Square, NotebookText, Sparkles, Check } from 'lucide-vue-next'
+import { Plus, X, Minimize2, Square, NotebookText, Sparkles } from 'lucide-vue-next'
 import { useSettingsStore } from '../stores/settings'
 import { useChatStore } from '../stores/chat'
 import { useAiChat } from '../composables/useAiChat'
-import DiffView from './DiffView.vue'
+import ChatMessage from './ChatMessage.vue'
 import AiContextBar from './AiContextBar.vue'
 import SummaryLibrary from './SummaryLibrary.vue'
 
@@ -295,65 +273,7 @@ async function handleSend() {
 .chat-messages-inner { max-width: 680px; margin: 0 auto; padding: 0 24px; }
 .chat-empty { text-align: center; color: var(--color-text-muted); padding: 64px 0; }
 .chat-empty-icon { color: var(--color-accent); opacity: 0.4; margin-bottom: 16px; }
-.chat-msg { margin-bottom: 20px; animation: msg-in 0.15s ease; }
-@keyframes msg-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-.chat-msg--user { text-align: right; }
-.chat-msg-role { font-size: 11px; font-weight: 600; margin-bottom: 4px; color: var(--color-accent); }
-.chat-msg--user .chat-msg-role { color: var(--color-text-muted); }
-.chat-msg--diff { max-width: none; }
-.chat-msg--diff .chat-msg-role { margin-bottom: 6px; }
-.chat-msg-content { font-size: 14px; line-height: 1.7; color: var(--color-text-primary); white-space: pre-wrap; word-break: break-word; }
-.chat-msg--user .chat-msg-content { color: var(--color-text-secondary); }
-.chat-msg-actions { margin-top: 6px; }
-.chat-applied-note { font-size: 11px; color: var(--color-success); display: inline-flex; align-items: center; gap: 3px; }
-.chat-action-btn {
-  padding: 2px 10px; font-size: 11px; font-family: inherit;
-  border-radius: var(--radius-sm); border: 1px solid var(--color-border);
-  background: var(--color-bg-surface); color: var(--color-text-secondary); cursor: pointer;
-}
-.chat-action-btn:hover { background: var(--color-accent-bg); color: var(--color-accent); border-color: var(--color-accent-border); }
-/* 流式光标：messageHtml 注入的内容无 scoped 属性，需用 :deep 匹配 */
-.chat-msg-content :deep(.cursor-blink) { animation: blink 1s step-end infinite; color: var(--color-accent); }
-@keyframes blink { 50% { opacity: 0; } }
-
-.chat-input-area { padding: 16px 20px; border-top: 1px solid var(--color-border); flex-shrink: 0; }
-.chat-input-row { display: flex; max-width: 680px; margin: 0 auto; }
-.chat-input {
-  width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-lg);
-  padding: 12px 16px; font-size: 14px; font-family: inherit;
-  background: var(--color-bg-elevated); color: var(--color-text-primary);
-  resize: none; outline: none;
-}
-.chat-input:focus { border-color: var(--color-accent-border); }
-.chat-input:disabled { opacity: 0.5; }
-.chat-input-actions { max-width: 680px; margin: 0 auto; padding-top: 8px; display: flex; justify-content: flex-end; }
-.chat-stop-btn {
-  display: flex; align-items: center; gap: 4px;
-  padding: 4px 12px; border-radius: var(--radius-sm); font-size: 12px; font-family: inherit;
-  color: var(--color-danger); background: var(--color-danger-bg);
-  border: 1px solid var(--color-danger-border); cursor: pointer;
-}
-.chat-stop-btn:hover { background: var(--color-danger); color: var(--color-text-on-accent); }
-
-/* Markdown 渲染样式 */
-.chat-msg-content :deep(h1) { font-size: 1.3em; font-weight: 700; margin: 12px 0 6px; }
-.chat-msg-content :deep(h2) { font-size: 1.15em; font-weight: 600; margin: 10px 0 4px; }
-.chat-msg-content :deep(h3) { font-size: 1.05em; font-weight: 600; margin: 8px 0 4px; }
-.chat-msg-content :deep(p) { margin: 4px 0; }
-.chat-msg-content :deep(ul) { padding-left: 16px; margin: 4px 0; }
-.chat-msg-content :deep(li) { margin: 2px 0; }
-.chat-msg-content :deep(code) {
-  font-family: var(--font-mono); font-size: 0.9em;
-  background: var(--color-bg-surface); padding: 1px 5px; border-radius: var(--radius-sm);
-}
-.chat-msg-content :deep(pre) {
-  background: var(--color-bg-surface); padding: 10px 14px; border-radius: var(--radius-md);
-  overflow-x: auto; margin: 8px 0;
-}
-.chat-msg-content :deep(pre code) { background: none; padding: 0; }
-.chat-msg-content :deep(hr) { border: none; border-top: 1px solid var(--color-border); margin: 12px 0; }
-.chat-msg-content :deep(strong) { font-weight: 700; }
-.chat-msg-content :deep(em) { font-style: italic; }
+/* 消息渲染样式（角色/Diff/Markdown/操作按钮）由 ChatMessage 组件统一提供 */
 .chat-typing { display: flex; gap: 3px; padding: 8px 0; }
 .chat-typing span {
   width: 5px; height: 5px; border-radius: 50%;

@@ -95,6 +95,13 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
+/* 内容根容器占满盒高并允许收缩：内容超高时由弹窗自身的滚动区接管，
+   否则 flex 子项默认 min-height:auto 会把盒子撑出 max-height 被裁剪（滚不动） */
+.base-box :deep(> *) {
+  flex: 1;
+  min-height: 0;
+}
+
 /* 进出场：遮罩淡入淡出 + 弹窗位移缩放 */
 .base-modal-enter-active,
 .base-modal-leave-active {

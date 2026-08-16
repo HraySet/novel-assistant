@@ -1307,6 +1307,85 @@ fn file_mtime(app: tauri::AppHandle, path: String) -> Option<u64> {
         .map(|d| d.as_secs())
 }
 
+// ── 角色出场统计 ──
+
+#[derive(serde::Serialize)]
+struct MentionStat {
+    name: String,
+    count: usize,
+    last_file: String,
+}
+
+/// 角色名在正文中的出现统计（纯本地规则匹配，零 AI 消耗）。
+/// 返回每个名字的总出现次数与最近出现的正文文件（相对路径）。
+/// 排除 角色/大纲/.summaries/.stats/.trash/.backups 目录与 _ 开头文件，
+/// 避免设定文件自身、摘要与回收站内容造成失真。
+#[tauri::command]
+fn scan_mentions(app: tauri::AppHandle, names: Vec<String>) -> Result<Vec<MentionStat>, String> {
+    let root = project_root_of(&app).ok_or_else(|| "尚未设置项目目录".to_string())?;
+
+    let mut stats: Vec<MentionStat> = names
+        .iter()
+        .map(|n| n.trim().to_string())
+        .filter(|n| n.chars().count() >= 2 && !n.chars().all(|c| c.is_ascii_digit()))
+        .map(|name| MentionStat { name, count: 0, last_file: String::new() })
+        .collect();
+    if stats.is_empty() {
+        return Ok(stats);
+    }
+
+    // 收集正文文件（相对路径 + 小写全文），内容总量超 32MB 停止
+    let mut files: Vec<(String, String)> = Vec::new();
+    collect_body_files(&root, &root, &mut files, 0);
+
+    let lowered: Vec<String> = stats.iter().map(|s| s.name.to_lowercase()).collect();
+    for (rel, text) in &files {
+        for i in 0..stats.len() {
+            let c = text.matches(lowered[i].as_str()).count();
+            if c > 0 {
+                stats[i].count += c;
+                stats[i].last_file = rel.clone();
+            }
+        }
+    }
+    Ok(stats)
+}
+
+/// 递归收集正文 .md/.txt 文件：跳过设定/摘要/统计/回收站目录与 _ 开头文件
+fn collect_body_files(root: &Path, dir: &Path, out: &mut Vec<(String, String)>, mut bytes: usize) -> usize {
+    if bytes > 32 * 1024 * 1024 {
+        return bytes;
+    }
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return bytes,
+    };
+    for ent in entries.flatten() {
+        let path = ent.path();
+        let name = ent.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') || name.starts_with('_') {
+            continue;
+        }
+        if matches!(name.as_str(), "角色" | "大纲" | ".summaries" | ".stats" | ".trash" | ".backups" | ".chatlog") {
+            continue;
+        }
+        if path.is_dir() {
+            bytes = collect_body_files(root, &path, out, bytes);
+        } else if name.ends_with(".md") || name.ends_with(".txt") {
+            if let Ok(raw) = fs::read(&path) {
+                bytes += raw.len();
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                out.push((rel, String::from_utf8_lossy(&raw).to_lowercase()));
+            }
+        }
+    }
+    bytes
+}
+
 // ── Backups ──
 
 /// 列出指定文件的备份历史（按时间倒序，最新在前）
@@ -1372,6 +1451,7 @@ pub fn run() {
             export_project,
             export_epub,
             file_mtime,
+            scan_mentions,
             list_backups,
             import_files,
             path_exists,

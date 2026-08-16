@@ -108,6 +108,7 @@
 
     <!-- 角色卡片 -->
     <CharacterCards :show="showCharacters" :project-root="currentProject?.path ?? ''"
+      :current-content="activeFile?.content ?? ''"
       @close="showCharacters = false" />
 
     <!-- 回收站 -->

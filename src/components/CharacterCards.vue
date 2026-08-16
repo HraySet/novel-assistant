@@ -13,6 +13,12 @@
             <div class="char-list">
               <div class="char-list-toolbar">
                 <button class="char-new-btn" @click="createCharacter"><Plus :size="13" />新建角色</button>
+                <button class="char-extract-btn" :disabled="extracting || !canExtract"
+                  :title="canExtract ? '从当前打开的章节抽取新角色名（一次小调用）' : '先打开一章正文（至少 200 字）'"
+                  @click="extractCharacters">
+                  <Sparkles :size="13" />{{ extracting ? '抽取中…' : '从本章抽取' }}
+                </button>
+                <div v-if="extractNote" class="char-extract-note">{{ extractNote }}</div>
               </div>
               <div class="char-list-scroll">
                 <div v-if="loading" class="char-loading"><RefreshCw :size="14" class="spinning" />加载中…</div>
@@ -33,6 +39,7 @@
                     </span>
                   </div>
                   <div class="char-preview">{{ preview(ch.content) }}</div>
+                  <div class="char-mention" :class="{ 'char-mention--none': !mentionCount(ch.name) }">{{ mentionText(ch.name) }}</div>
                 </div>
                 <div v-if="!loading && characters.length === 0" class="char-empty">
                   <Users :size="28" class="char-empty-icon" />
@@ -82,9 +89,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { X, Plus, Users, RefreshCw } from 'lucide-vue-next'
+import { X, Plus, Users, RefreshCw, Sparkles } from 'lucide-vue-next'
 import * as api from '../api/files'
 import { roleColor } from '../composables/useTheme'
+import { streamChat } from '../composables/useAiStream'
+import { useSettingsStore } from '../stores/settings'
 import ConfirmDialog from './ConfirmDialog.vue'
 import BaseModal from './BaseModal.vue'
 import StatusDot from './StatusDot.vue'
@@ -95,7 +104,7 @@ interface CharEntry {
   content: string
 }
 
-const props = defineProps<{ show: boolean; projectRoot: string }>()
+const props = defineProps<{ show: boolean; projectRoot: string; currentContent: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const characters = ref<CharEntry[]>([])
@@ -104,14 +113,26 @@ const editingContent = ref('')
 const dirty = ref(false)
 const saving = ref(false)
 const loading = ref(false)
-const pending = ref<{ kind: 'delete' } | { kind: 'switch'; target: CharEntry } | null>(null)
+const pending = ref<{ kind: 'delete' } | { kind: 'switch'; target: CharEntry } | { kind: 'extract' } | null>(null)
+const mentions = ref<Record<string, api.MentionStat>>({})
+const extracting = ref(false)
+const extractCandidates = ref<string[]>([])
+const extractNote = ref('')
 
-const confirmTitle = computed(() => (pending.value?.kind === 'delete' ? '删除角色' : '放弃修改'))
+const confirmTitle = computed(() => {
+  const p = pending.value
+  if (p?.kind === 'delete') return '删除角色'
+  if (p?.kind === 'extract') return '从本章抽取角色'
+  return '放弃修改'
+})
 const confirmMessage = computed(() => {
   const p = pending.value
   if (!p) return ''
   if (p.kind === 'delete') {
     return `确定删除角色「${selected.value?.name ?? ''}」吗？\n文件会移入项目回收站 .trash。`
+  }
+  if (p.kind === 'extract') {
+    return `将为以下新角色创建卡片（创建后可编辑设定）：\n${extractCandidates.value.join('、')}`
   }
   return '有未保存的修改，放弃并切换吗？'
 })
@@ -119,6 +140,8 @@ const confirmMessage = computed(() => {
 const selected = computed(
   () => characters.value.find((c) => norm(c.path) === norm(selectedPath.value ?? '')) ?? null,
 )
+
+const canExtract = computed(() => (props.currentContent ?? '').trim().length >= 200)
 
 const charDir = () => `${props.projectRoot.replace(/\\/g, '/')}/角色`
 
@@ -140,6 +163,7 @@ async function loadCharacters() {
       } catch { /* 读不了就跳过 */ }
     }
     characters.value = list
+    void scanMentionsFor(list)
     if (!list.some((c) => norm(c.path) === norm(selectedPath.value ?? ''))) {
       selectedPath.value = list[0]?.path ?? null
     }
@@ -205,49 +229,132 @@ function preview(content: string): string {
   return lines[0]?.slice(0, 60) ?? '（空）'
 }
 
+/** 角色出场统计（零 token：本地扫描正文） */
+function mentionCount(name: string): number {
+  return mentions.value[name]?.count ?? 0
+}
+function mentionText(name: string): string {
+  const m = mentions.value[name]
+  if (!m || m.count <= 0) return '正文中未出场'
+  const file = m.lastFile.split('/').pop() || m.lastFile
+  return `出场 ${m.count} 次 · 最近 ${file}`
+}
+async function scanMentionsFor(list: CharEntry[]) {
+  if (list.length === 0) {
+    mentions.value = {}
+    return
+  }
+  try {
+    const stats = await api.scanMentions(list.map((c) => c.name))
+    const map: Record<string, api.MentionStat> = {}
+    for (const s of stats) map[s.name] = s
+    mentions.value = map
+  } catch { /* 扫描失败不阻塞面板 */ }
+}
+
 async function createCharacter() {
+  const created = await createCharFile('新角色')
+  if (!created) return
+  await loadCharacters()
+  const entry = characters.value.find((c) => norm(c.path) === norm(created))
+  if (entry) {
+    selectedPath.value = entry.path
+    editingContent.value = entry.content
+    dirty.value = false
+  }
+}
+
+/** 创建一张角色卡文件（重名自动加编号）；返回创建的路径，失败返回 null */
+async function createCharFile(name: string): Promise<string | null> {
+  const safe = name.replace(/[\\/:*?"<>|]/g, '').trim()
+  if (!safe) return null
   try {
     await api.createDir(charDir())
   } catch { /* 已存在 */ }
-
-  // 找一个磁盘上真正不存在的名字（同名字符串已存在时自动换编号）
   let n = 1
-  let name = '新角色'
-  let path = `${charDir()}/${name}.md`
-  let created = false
-  while (!created && n <= 50) {
-    const existsInList = characters.value.some((c) => norm(c.path) === norm(path))
-    if (existsInList) {
-      n++
-      name = `新角色 ${n}`
-      path = `${charDir()}/${name}.md`
-      continue
+  let candidate = safe
+  let path = `${charDir()}/${candidate}.md`
+  while (n <= 50) {
+    const exists = characters.value.some((c) => norm(c.path) === norm(path))
+    if (!exists) {
+      try {
+        await api.createFile(path)
+        const template = `# ${candidate}\n\n- 定位：主角 / 配角 / 反派 / 路人\n- 外貌：\n- 性格：\n- 背景：\n- 备注：\n`
+        try { await api.writeFile(path, template) } catch { /* 模板写失败不阻塞 */ }
+        return path
+      } catch { /* 磁盘上已存在 → 换编号 */ }
     }
-    try {
-      await api.createFile(path)
-      created = true
-    } catch {
-      // 磁盘上已存在（列表未及时同步等）：换下一个编号重试
-      n++
-      name = `新角色 ${n}`
-      path = `${charDir()}/${name}.md`
-    }
+    n++
+    candidate = `${safe} ${n}`
+    path = `${charDir()}/${candidate}.md`
   }
-  if (!created) return
+  return null
+}
 
-  const template = `# ${name}\n\n- 定位：主角 / 配角 / 反派 / 路人\n- 外貌：\n- 性格：\n- 背景：\n- 备注：\n`
-  try {
-    await api.writeFile(path, template)
-    await loadCharacters()
-    const createdEntry = characters.value.find((c) => norm(c.path) === norm(path))
-    if (createdEntry) {
-      selectedPath.value = createdEntry.path
-      editingContent.value = createdEntry.content
-      dirty.value = false
-    }
-  } catch (e) {
-    console.error('新建角色失败:', e)
+/** AI 抽取：从当前打开的章节提取人名（一次小调用，只输出名字 JSON，不重写内容） */
+const EXTRACT_SYSTEM = '你是小说人物名提取器。阅读给定正文，提取其中出现的人物名（人名，含明显指向人物的昵称）。只输出一个 JSON 字符串数组，例如 ["张三","李四"]。不要输出任何其他内容；没有人物则输出 []。'
+
+async function extractCharacters() {
+  if (extracting.value || !canExtract.value) return
+  const settings = useSettingsStore()
+  if (!settings.aiApiKey) {
+    extractNote.value = '需先在设置中配置 API Key'
+    clearNote()
+    return
   }
+  extracting.value = true
+  extractNote.value = ''
+  try {
+    const content = props.currentContent.slice(0, 8000)
+    const { text } = await streamChat({
+      provider: settings.aiProvider,
+      endpoint: settings.aiEndpoint,
+      apiKey: settings.aiApiKey,
+      model: settings.aiModel,
+      system: EXTRACT_SYSTEM,
+      temperature: 0.2,
+      messages: [{ role: 'user', content: `正文：\n${content}` }],
+      signal: new AbortController().signal,
+      onToken: () => {},
+    })
+    const fresh = parseNameList(text).filter(
+      (n) => !characters.value.some((c) => c.name === n),
+    )
+    if (fresh.length === 0) {
+      extractNote.value = '未发现新角色名'
+      clearNote()
+      return
+    }
+    extractCandidates.value = fresh
+    pending.value = { kind: 'extract' }
+  } catch (e) {
+    console.error('抽取失败:', e)
+    extractNote.value = '抽取失败，请重试'
+    clearNote()
+  } finally {
+    extracting.value = false
+  }
+}
+
+/** 容错解析 AI 返回的名字数组（只取 [ ] 之间的 JSON） */
+function parseNameList(text: string): string[] {
+  const start = text.indexOf('[')
+  const end = text.lastIndexOf(']')
+  if (start < 0 || end <= start) return []
+  try {
+    const arr = JSON.parse(text.slice(start, end + 1))
+    if (!Array.isArray(arr)) return []
+    return arr
+      .filter((x) => typeof x === 'string')
+      .map((x) => x.trim())
+      .filter((n) => n.length >= 2 && n.length <= 12 && !/^[\d\s]+$/.test(n))
+  } catch {
+    return []
+  }
+}
+
+function clearNote() {
+  setTimeout(() => { extractNote.value = '' }, 4000)
 }
 
 async function saveCharacter() {
@@ -277,10 +384,26 @@ async function confirmPending() {
     applySelect(p.target)
     return
   }
-  await doDelete()
+  if (p.kind === 'delete') {
+    await doDelete()
+    return
+  }
+  // extract：批量创建候选角色卡
+  const names = extractCandidates.value
+  extractCandidates.value = []
+  let created = 0
+  for (const n of names) {
+    if (await createCharFile(n)) created++
+  }
+  if (created > 0) {
+    await loadCharacters()
+    extractNote.value = `已创建 ${created} 张角色卡`
+    clearNote()
+  }
 }
 
 function cancelPending() {
+  extractCandidates.value = []
   pending.value = null
 }
 
@@ -366,6 +489,9 @@ async function doDelete() {
   padding: 10px 12px;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .char-new-btn {
@@ -388,6 +514,36 @@ async function doDelete() {
 .char-new-btn:hover {
   border-color: var(--color-accent-border);
   color: var(--color-accent);
+}
+
+.char-extract-btn {
+  width: 100%;
+  padding: 6px 0;
+  font-size: 12px;
+  font-family: inherit;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+.char-extract-btn:hover:not(:disabled) {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent);
+}
+.char-extract-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.char-extract-note {
+  font-size: 11px;
+  color: var(--color-warning);
+  text-align: center;
 }
 
 .char-list-scroll {
@@ -450,6 +606,16 @@ async function doDelete() {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.char-mention {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--color-accent);
+}
+.char-mention--none {
+  color: var(--color-text-muted);
+  opacity: 0.6;
 }
 
 .char-empty {

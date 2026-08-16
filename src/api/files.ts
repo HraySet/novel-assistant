@@ -112,6 +112,18 @@ export async function fileMtime(path: string): Promise<number | null> {
   return invoke('file_mtime', { path })
 }
 
+/** 角色名在正文中的出现统计（零 AI，纯本地规则匹配） */
+export interface MentionStat {
+  name: string
+  count: number
+  lastFile: string
+}
+
+/** 统计角色名在正文中的出现次数与最近出现章节 */
+export async function scanMentions(names: string[]): Promise<MentionStat[]> {
+  return invoke('scan_mentions', { names })
+}
+
 /** 打开 WebView2 外部拖放开关（允许外部文件拖入与内部移动落回） */
 export async function enableExternalDrop(): Promise<void> {
   return invoke('enable_external_drop')

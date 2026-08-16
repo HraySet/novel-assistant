@@ -40,8 +40,8 @@
         <div class="context-divider" />
         <button class="context-menu-item" @click="handleToggleFavorite">
           <Star :size="14"
-            :fill="isCurrentFavorite ? 'var(--color-warning)' : 'none'"
-            :style="{ color: isCurrentFavorite ? 'var(--color-warning)' : undefined }" />
+            :fill="isCurrentFavorite ? 'var(--color-star)' : 'none'"
+            :style="{ color: isCurrentFavorite ? 'var(--color-star)' : undefined }" />
           <span>{{ isCurrentFavorite ? '取消收藏' : '收藏' }}</span>
         </button>
         <div class="context-divider context-divider--danger" />
@@ -64,8 +64,8 @@
         <div class="context-divider" />
         <button class="context-menu-item" @click="handleToggleFavorite">
           <Star :size="14"
-            :fill="isCurrentFavorite ? 'var(--color-warning)' : 'none'"
-            :style="{ color: isCurrentFavorite ? 'var(--color-warning)' : undefined }" />
+            :fill="isCurrentFavorite ? 'var(--color-star)' : 'none'"
+            :style="{ color: isCurrentFavorite ? 'var(--color-star)' : undefined }" />
           <span>{{ isCurrentFavorite ? '取消收藏' : '收藏' }}</span>
         </button>
         <div class="context-divider context-divider--danger" />

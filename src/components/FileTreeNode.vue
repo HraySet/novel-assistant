@@ -21,7 +21,7 @@
       :draggable="!isWindows"
       @dragstart="handleDragStart($event, node.path)"
     >
-      <span class="node-arrow">{{ isExpanded ? '▾' : '▸' }}</span>
+      <ChevronRight :size="12" class="node-chevron" :class="{ 'node-chevron--open': isExpanded }" />
       <Folder :size="14" class="text-text-muted shrink-0" />
 
       <template v-if="fileStore.renamingPath !== node.path">
@@ -73,7 +73,7 @@
       :draggable="!isWindows"
       @dragstart="handleDragStart($event, node.path)"
     >
-      <span class="node-arrow invisible">▸</span>
+      <ChevronRight :size="12" class="node-chevron invisible" />
       <FileText :size="14" class="text-text-muted shrink-0" />
 
       <!-- 脏状态点 -->
@@ -121,43 +121,30 @@
 
     <!-- Expanded children -->
 
-    <template v-if="isExpanded">
-
-      <DraftRow
-
-        v-if="draftState && draftState.parentPath === node.path"
-
-        :type="draftState.type"
-
-        :default-name="draftState.defaultName"
-
-        :depth="depth + 1"
-
-        @confirm="fileStore.confirmDraft($event)"
-
-        @cancel="fileStore.cancelDraft()"
-
-      />
-
-      <FileTreeNode
-
-        v-for="child in node.children"
-
-        :key="child.path"
-
-        :node="child"
-
-        :depth="depth + 1"
-
-      />
-
-    </template>
+    <Transition name="node-children">
+      <div v-if="isExpanded" class="node-children">
+        <DraftRow
+          v-if="draftState && draftState.parentPath === node.path"
+          :type="draftState.type"
+          :default-name="draftState.defaultName"
+          :depth="depth + 1"
+          @confirm="fileStore.confirmDraft($event)"
+          @cancel="fileStore.cancelDraft()"
+        />
+        <FileTreeNode
+          v-for="child in node.children"
+          :key="child.path"
+          :node="child"
+          :depth="depth + 1"
+        />
+      </div>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FileText, Folder, Star } from 'lucide-vue-next'
+import { FileText, Folder, Star, ChevronRight } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import type { FileNode } from '../types/file'
 import { useFileStore } from '../stores/file'
@@ -238,17 +225,15 @@ function formatWordCount(count: number): string {
   outline-offset: -1px;
 }
 
-.node-arrow {
+/* 展开指示：与侧栏收藏分组同款 chevron + 旋转过渡 */
+.node-chevron {
   width: 14px;
-  font-size: 11px;
   flex-shrink: 0;
   color: var(--color-text-muted);
+  transition: transform 0.15s ease;
 }
-
-.node-arrow.invisible {
-  visibility: hidden;
-}
-
+.node-chevron--open { transform: rotate(90deg); }
+.node-chevron.invisible { visibility: hidden; }
 .node-name {
   flex: 1;
   overflow: hidden;
@@ -294,7 +279,7 @@ function formatWordCount(count: number): string {
 }
 
 .fav-star--active {
-  color: #eab308;
+  color: var(--color-star);
 }
 
 .fav-star:hover {
@@ -313,4 +298,7 @@ function formatWordCount(count: number): string {
   padding: 1px 4px;
   outline: none;
 }
+/* 子节点展开淡入（不追求精确高度过渡，缓解“瞬间炸开”感） */
+.node-children-enter-active { transition: opacity 0.12s ease; }
+.node-children-enter-from { opacity: 0; }
 </style>

@@ -180,7 +180,7 @@ async function handleRootDrop(e: DragEvent) {
 }
 .fav-header:hover { background: var(--color-bg-surface-hover); }
 
-.fav-star-icon { color: var(--color-warning); }
+.fav-star-icon { color: var(--color-star); }
 
 .fav-title { font-size: 11px; font-weight: 600; }
 

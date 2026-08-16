@@ -38,6 +38,7 @@
   --color-danger-border: #d4a5a0;
   --color-warning: #c08a2e;
   --color-warning-bg: #f7ecd8;
+  --color-star: #eab308; /* 收藏星标：主题内统一定义，各处引用 */
 
   /* ---- 字体 ---- */
   --font-sans: "PingFang SC", -apple-system, "Helvetica Neue", "Segoe UI", sans-serif;
@@ -86,6 +87,7 @@ html[data-theme="warm-paper-dark"] {
   --color-danger-border: #6b3a3a;
   --color-warning: #d4a040;
   --color-warning-bg: #353028;
+  --color-star: #fbbf24; /* 暗色主题下更亮一档，避免发闷 */
 
   --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.2), 0 1px 4px rgba(0, 0, 0, 0.15);
 }

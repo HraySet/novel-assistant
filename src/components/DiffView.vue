@@ -10,10 +10,10 @@
         <span v-if="modifyCount > 0" class="diff-stat diff-stat--modify">≈{{ modifyCount }} 修改</span>
       </span>
     </div>
-    <div v-if="editable && hasMutable" class="diff-hint">点击行首图标可单独撤销该行修改</div>
 
     <!-- Diff 内容 -->
     <div v-if="addCount === 0 && removeCount === 0" class="diff-empty">
+      <CircleCheck :size="20" class="diff-empty-icon" />
       AI 未做出任何修改
     </div>
     <div v-else class="diff-body">
@@ -21,10 +21,10 @@
         v-for="(line, i) in diffLines"
         :key="i"
         class="diff-line"
-        :class="'diff-line--' + line.type"
+        :class="['diff-line--' + line.type, { 'diff-line--off': toggledOff.has(i) }]"
       >
         <span v-if="editable && line.type !== 'equal'" class="diff-toggle" :title="isOn(i) ? '点击取消这一行的修改' : '点击恢复这一行的修改'" @click.stop="toggle(i)">
-          <Check v-if="!toggledOff.has(i)" :size="12" />
+          <Check :size="12" class="diff-toggle-check" :class="{ 'diff-toggle-check--off': toggledOff.has(i) }" />
         </span>
         <span v-else class="diff-toggle" />
         <span v-if="!compact" class="diff-gutter diff-gutter--old">{{ line.oldLine ?? '' }}</span>
@@ -48,7 +48,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { X, Check } from 'lucide-vue-next'
+import { X, Check, CircleCheck } from 'lucide-vue-next'
 import { computeDiff, type DiffLine } from '../composables/useDiff'
 
 const props = defineProps<{
@@ -99,9 +99,6 @@ const modifyCount = computed(() => {
   }
   return count
 })
-
-// 是否存在可切换的行（增/删）
-const hasMutable = computed(() => addCount.value + removeCount.value > 0)
 // 所有可切换的行都被关闭时，应用结果等同原文——文案明确提示
 const allToggledOff = computed(() => {
   let mutable = 0
@@ -198,13 +195,22 @@ function marker(type: DiffLine['type']): string {
   font-size: 12px;
   color: var(--color-text-muted);
   font-family: var(--font-sans);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
+.diff-empty-icon { color: var(--color-success); opacity: 0.5; }
 
 .diff-line {
   display: flex;
   min-height: 22px;
   padding: 0 4px;
+  transition: background 0.15s ease;
 }
+
+/* toggle 关闭的行：背景淡出到透明 */
+.diff-line--off { background: transparent; }
 
 .diff-line--add { background: var(--color-success-bg); }
 .diff-line--remove { background: var(--color-danger-bg); }
@@ -223,6 +229,10 @@ function marker(type: DiffLine['type']): string {
 .diff-line--remove:hover .diff-toggle { opacity: 1; background: var(--color-bg-surface-hover); border-radius: 3px; }
 
 .diff-content--off { opacity: 0.3; text-decoration: line-through; }
+
+/* 勾选图标淡出（v-if 硬消失 → 透明度过渡） */
+.diff-toggle-check { transition: opacity 0.1s ease; }
+.diff-toggle-check--off { opacity: 0; }
 
 .diff-gutter {
   width: 36px;
@@ -271,11 +281,11 @@ function marker(type: DiffLine['type']): string {
 }
 .diff-btn--accept:hover {
   background: var(--color-success, #22c55e);
-  color: #fff;
+  color: var(--color-text-on-accent);
 }
 .diff-btn--reject:hover {
   background: var(--color-danger, #ef4444);
-  color: #fff;
+  color: var(--color-text-on-accent);
   border-color: var(--color-danger, #ef4444);
 }
 /* 紧凑模式：窄面板里去掉行号槽、收紧间距 */
@@ -283,11 +293,4 @@ function marker(type: DiffLine['type']): string {
 .diff-view--compact .diff-line { min-height: 20px; padding: 0 2px; }
 .diff-view--compact .diff-toggle { width: 16px; }
 .diff-view--compact .diff-footer { padding: 4px 8px; }
-.diff-hint {
-  padding: 4px 12px;
-  font-size: 10px;
-  color: var(--color-text-muted);
-  background: var(--color-bg-surface);
-  border-bottom: 1px solid var(--color-border);
-}
 </style>

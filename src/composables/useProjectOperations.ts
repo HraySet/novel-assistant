@@ -2,6 +2,7 @@ import { ref, type Ref } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { useFileStore } from '../stores/file'
 import { useStatsStore } from '../stores/stats'
+import { useToastStore } from '../stores/toast'
 import type { ProjectEntry } from '../types/project'
 import type { FileNode } from '../types/file'
 import { pickCoverColor } from '../types/project'
@@ -47,6 +48,7 @@ export function useProjectOperations(opts: {
       projectStore.addProject(updated)
     } catch (e) {
       console.error('打开项目失败:', e)
+      useToastStore().push('error', '打开项目失败', e instanceof Error ? e.message : String(e), 4000)
     }
   }
 
@@ -91,6 +93,7 @@ export function useProjectOperations(opts: {
       }
     } catch (e) {
       console.error('重新定位失败:', e)
+      useToastStore().push('error', '重新定位失败', e instanceof Error ? e.message : String(e), 4000)
     }
   }
 
@@ -103,6 +106,7 @@ export function useProjectOperations(opts: {
       showNewProjectDialog.value = true
     } catch (e) {
       console.error('新建项目失败:', e)
+      useToastStore().push('error', '新建项目失败', e instanceof Error ? e.message : String(e), 4000)
     }
   }
 
@@ -139,6 +143,7 @@ export function useProjectOperations(opts: {
       await openProject(project)
     } catch (e) {
       console.error('打开项目失败:', e)
+      useToastStore().push('error', '打开项目失败', e instanceof Error ? e.message : String(e), 4000)
     }
   }
 

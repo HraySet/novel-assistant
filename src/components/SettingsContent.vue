@@ -190,6 +190,31 @@
             <span v-if="store.accentColor === p.value && !store.themeDark" class="preset-check" :style="{ background: p.value }">✓</span>
           </button>
         </div>
+
+        <!-- 自定义主题：自由取强调色 / 背景色 / 明暗 -->
+        <SurfaceCard class="p-4 mt-6">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-medium text-text-secondary">自定义主题</span>
+            <button v-if="isCustomTheme" class="btn-sm" @click="store.resetTheme()">恢复默认</button>
+          </div>
+          <div class="flex items-center gap-6 flex-wrap">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="color" class="color-input" :value="store.accentColor" @input="onAccentInput" />
+              <span class="text-xs text-text-secondary">强调色</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="color" class="color-input" :value="store.bgColor" @input="onBgInput" />
+              <span class="text-xs text-text-secondary">背景色</span>
+            </label>
+            <SegmentedGroup
+              :options="[{ value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }]"
+              :model-value="store.themeDark ? 'dark' : 'light'"
+              size="md"
+              @update:model-value="onDarkChange"
+            />
+          </div>
+          <p class="text-[10px] text-text-muted mt-2">点击色块自由取色，改动即时生效并自动保存</p>
+        </SurfaceCard>
       </section>
 
       <!-- ========== AI 接口 ========== -->
@@ -349,6 +374,20 @@ const darkPresets = computed(() => store.colorPresets.filter(p => p.dark));
 const lightPresets = computed(() => store.colorPresets.filter(p => !p.dark));
 const widthOpts = ["窄", "中", "宽"];
 
+// ── 自定义主题 ──
+const isCustomTheme = computed(() =>
+  !store.colorPresets.some((p) => p.value === store.accentColor && p.bg === store.bgColor),
+)
+function onAccentInput(e: Event) {
+  store.applyCustomTheme((e.target as HTMLInputElement).value, store.bgColor)
+}
+function onBgInput(e: Event) {
+  store.applyCustomTheme(store.accentColor, (e.target as HTMLInputElement).value)
+}
+function onDarkChange(v: unknown) {
+  store.setCustomDark(v === 'dark')
+}
+
 // 快捷操作提示词编辑（覆盖内置默认）
 const quickActions = QUICK_ACTIONS;
 function onPromptChange(label: string, e: Event) {
@@ -412,7 +451,7 @@ const shortcuts = [
   align-items: flex-start;
   gap: 5px;
   padding: 10px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   border: 1px solid rgba(127, 127, 127, 0.35);
   cursor: pointer;
   text-align: left;
@@ -473,6 +512,28 @@ const shortcuts = [
   height: 14px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* ── 自定义主题取色器 ── */
+.color-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 42px;
+  height: 26px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-surface);
+  cursor: pointer;
+}
+.color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+.color-input::-moz-color-swatch {
+  border: none;
+  border-radius: 3px;
 }
 .prompt-item {
   border: 1px solid var(--color-border);

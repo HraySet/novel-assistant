@@ -38,11 +38,24 @@
     <Transition name="fade-fast">
     <div v-if="showQuickActions" class="px-3 py-2 border-b shrink-0" style="border-color: var(--color-border)">
       <div class="grid grid-cols-4 gap-1.5">
-        <button v-for="a in quickActions" :key="a.label" class="quick-btn"
+        <button v-for="a in coreActions" :key="a.label" class="quick-btn"
+          :disabled="quickDisabled(a)" :title="quickTitle(a)" @click="runQuick(a)">
+          {{ a.label }}
+        </button>
+        <button class="quick-btn quick-more" :class="{ 'quick-more--open': quickMoreOpen }"
+          :title="quickMoreOpen ? '收起' : '更多操作（摘要 / 大纲 / 起名）'"
+          @click="quickMoreOpen = !quickMoreOpen">
+          <MoreHorizontal :size="13" />
+        </button>
+      </div>
+      <Transition name="fade-fast">
+      <div v-if="quickMoreOpen" class="quick-more-list">
+        <button v-for="a in moreActions" :key="a.label" class="quick-btn"
           :disabled="quickDisabled(a)" :title="quickTitle(a)" @click="runQuick(a)">
           {{ a.label }}
         </button>
       </div>
+      </Transition>
     </div>
     </Transition>
 
@@ -92,7 +105,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, onUnmounted } from 'vue'
-import { Expand, Square, NotebookText, Zap, ListChecks, FileText, AlertCircle } from 'lucide-vue-next'
+import { Expand, Square, NotebookText, Zap, ListChecks, FileText, AlertCircle, MoreHorizontal } from 'lucide-vue-next'
 import { useSettingsStore } from '../stores/settings'
 import { useAiChat } from '../composables/useAiChat'
 import { storeToRefs } from 'pinia'
@@ -218,6 +231,12 @@ const quickActions = QUICK_ACTIONS.map((a) => ({
   prompt: settings.aiQuickPrompts[a.label] || a.prompt,
 }))
 
+// 高频操作常驻 4 格（续写/润色/扩写/检查），低频（摘要/大纲/起名）收进「更多」，
+// 避免 4 列排 7 个按钮参差
+const coreActions = quickActions.slice(0, 4)
+const moreActions = quickActions.slice(4)
+const quickMoreOpen = ref(false)
+
 // 编辑类操作保留原文供 DiffView 对比；续写/检查等不对比
 const DIFF_ACTIONS = new Set(['润色', '扩写'])
 // 依赖划词选区的操作：无选区时禁用并提示（而不是点了才发现没反应）
@@ -307,6 +326,24 @@ async function handleSend() {
   border-color: var(--color-accent-border);
 }
 .quick-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* 「更多」按钮与展开的低频操作列表 */
+.quick-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.quick-more--open {
+  background: var(--color-accent-bg);
+  color: var(--color-accent);
+  border-color: var(--color-accent-border);
+}
+.quick-more-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+}
 .ai-btn {
   width: 24px; height: 24px; border-radius: var(--radius-sm);
   display: flex; align-items: center; justify-content: center;
@@ -314,6 +351,46 @@ async function handleSend() {
 }
 .ai-btn:hover { background: var(--color-bg-surface-hover); color: var(--color-text-primary); }
 .ai-btn--active { color: var(--color-accent); }
+
+/* AI 输入框：主题化（此前无样式，一直以浏览器默认渲染） */
+.ai-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-family: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-bg-page);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  resize: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.ai-input::placeholder { color: var(--color-text-muted); }
+.ai-input:focus {
+  border-color: var(--color-accent-border);
+  box-shadow: 0 0 0 2px var(--color-accent-bg);
+}
+.ai-input:disabled { opacity: 0.5; }
+
+/* 停止生成按钮（此前同样无样式） */
+.chat-stop-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.chat-stop-btn:hover { background: var(--color-danger); color: var(--color-text-on-accent); }
+
 /* 消息渲染样式（角色/Diff/Markdown/操作按钮）由 ChatMessage 组件统一提供 */
 /* 待处理项是提醒不是错误，用强调色而非危险色 */
 .ai-btn-dot {

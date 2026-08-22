@@ -66,6 +66,13 @@
         :depth="0"
       />
 
+      <!-- 空树引导 -->
+      <div v-if="treeNodes.length === 0" class="tree-empty">
+        <div class="tree-empty-icon"><FilePlus :size="16" /></div>
+        <div class="tree-empty-title">还没有文件</div>
+        <div class="tree-empty-hint">点右上「新建文件」，或把 .md 文件拖进窗口</div>
+      </div>
+
       <div
         class="flex-1 min-h-[80px]"
         @contextmenu.self.prevent="fileStore.openContextMenu($event.clientX, $event.clientY, '', 'blank')"
@@ -161,6 +168,19 @@ async function handleRootDrop(e: DragEvent) {
 .header-action-btn:hover { background: var(--color-bg-surface-hover); color: var(--color-accent); }
 
 .drop-root { outline: 2px dashed var(--color-accent-border); outline-offset: -4px; background: var(--color-accent-bg); }
+/* ── 空树引导 ── */
+.tree-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 32px 12px 12px;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+.tree-empty-icon { opacity: 0.35; }
+.tree-empty-title { font-size: 12px; color: var(--color-text-secondary); }
+.tree-empty-hint { font-size: 11px; opacity: 0.7; line-height: 1.5; }
 
 .fav-section {
   margin-bottom: 6px;

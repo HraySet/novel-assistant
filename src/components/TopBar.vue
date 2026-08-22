@@ -6,7 +6,6 @@
     <button class="topbar-project" @click="$emit('goLibrary')">
       <FolderOpen :size="14" class="flex-shrink-0" />
       <span class="topbar-project-name">{{ projectName }}</span>
-      <span v-if="isDirty" class="dirty-dot" title="有未保存修改" />
     </button>
 
     <div class="topbar-divider" />
@@ -56,7 +55,7 @@ import { FolderOpen, ChevronLeft, ChevronRight, Search, Maximize2 } from 'lucide
 defineProps<{
   projectName: string
   fileName?: string
-  isDirty?: boolean
+
   /** 上一章路径（章节顺序导航，替代原来的打开历史后退） */
   prevPath?: string
   /** 下一章路径 */
@@ -166,20 +165,6 @@ defineEmits<{
 .topbar-btn--active {
   color: var(--color-accent);
   background: var(--color-accent-bg);
-}
-/* 未保存呼吸点 */
-.dirty-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-warning);
-  margin-left: 2px;
-  flex-shrink: 0;
-  animation: dirty-pulse 2s ease-in-out infinite;
-}
-@keyframes dirty-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
 }
 
 /* 章节进度提示 */

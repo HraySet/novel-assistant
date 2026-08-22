@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useFileStore } from '../stores/file'
+import { useToastStore } from '../stores/toast'
 import { importDroppedFilesInto } from './useExternalFileImport'
 import * as api from '../api/files'
 
@@ -159,8 +160,10 @@ export function useFileTreeDrag() {
       try {
         fileStore().expandPath(destDir)
         await fileStore().handleDrop(sourcePath, destDir)
+        useToastStore().push('success', '已移动', (sourcePath.split(/[\\/]/).pop() || sourcePath))
       } catch (err) {
         console.error('移动失败:', err)
+        useToastStore().push('error', '移动失败', err instanceof Error ? err.message : String(err), 4000)
       }
       return
     }

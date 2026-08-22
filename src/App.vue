@@ -1,13 +1,17 @@
 <template>
-  <!-- ===== 项目库视图 ===== -->
+  <div class="app-shell">
+    <TitleBar />
+    <div class="app-body">
+
+      <!-- ===== 项目库视图 ===== -->
   <ProjectLibrary v-if="view === 'library'" :projects="projects" @select="proj.openProject" @new-project="proj.handleNewProject"
     @open-project="proj.handleAddProject" @add-project="proj.handleAddProject"
     @remove="proj.handleRemoveProject" @locate="proj.handleLocate" @relocate="proj.handleRelocate" />
 
   <!-- ===== 编辑器视图 ===== -->
-  <div v-else-if="view === 'editor'" class="h-screen flex flex-col overflow-hidden bg-bg-page">
+  <div v-else-if="view === 'editor'" class="h-full flex flex-col overflow-hidden bg-bg-page">
     <!-- 顶栏 -->
-    <TopBar :project-name="currentProject?.name ?? ''" :file-name="activeFile?.name" :is-dirty="activeFile?.isDirty ?? false"
+    <TopBar :project-name="currentProject?.name ?? ''" :file-name="activeFile?.name"
       :prev-path="prevChapterPath" :next-path="nextChapterPath" :focus-mode="focusMode"
       :chapter-index="chapterIndex" :chapter-total="chapterTotal"
       @go-library="view = 'library'" @navigate="(p: string) => fileStore.handleFileSelect(p)"
@@ -20,9 +24,6 @@
       <div v-if="!focusMode" class="icon-bar icon-bar--left">
         <button class="icon-bar-btn" :class="{ active: showSidebar }" title="文件树" @click="showSidebar = !showSidebar">
           <FolderOpen :size="16" />
-        </button>
-        <button class="icon-bar-btn" title="搜索文件" @click="showSearch = true">
-          <Search :size="16" />
         </button>
         <button class="icon-bar-btn" title="角色卡片" @click="showCharacters = true">
           <Users :size="16" />
@@ -49,7 +50,7 @@
         <EditorTabs />
         <MdEditor v-if="activeFile" ref="editorRef" :content="activeFile.content" :path="activeFile.path" :name="activeFile.name"
           :prev-path="prevChapterPath" :next-path="nextChapterPath"
-          @update:content="handleContentChange" @dirty="handleEditorDirty" @save="fileStore.handleSave()"
+          @update:content="handleContentChange" @dirty="handleEditorDirty"
           @navigate="(p: string) => fileStore.handleFileSelect(p)" />
         <div v-else class="flex-1 flex flex-col items-center justify-center gap-3 text-text-muted">
           <div class="text-4xl mb-1">📖</div>
@@ -135,20 +136,53 @@
       </div>
     </BaseModal>
 
-    <!-- 全局右键菜单 -->
+    <!-- 退出确认（有未保存修改时）：保存并退出 / 不保存退出 / 取消 -->
+    <BaseModal :show="showCloseConfirm" width="420px" @close="resolveClose('cancel')">
+      <div class="dialog-box">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm font-medium text-text-primary">退出确认</span>
+        </div>
+        <div class="text-sm text-text-secondary mb-1">有未保存的修改，退出前要保存吗？</div>
+        <ul v-if="dirtyFiles.length" class="text-xs text-text-muted mb-4 max-h-32 overflow-y-auto space-y-0.5">
+          <li v-for="f in dirtyFiles" :key="f.path" class="truncate">· {{ f.name }}</li>
+        </ul>
+        <div class="flex justify-end gap-2">
+          <button class="btn-dialog-ghost" @click="resolveClose('cancel')">取消</button>
+          <button class="btn-dialog-ghost btn-dialog-danger" @click="resolveClose('discard')">不保存退出</button>
+          <button class="btn-dialog-accent" @click="resolveClose('save')">保存并退出</button>
+        </div>
+      </div>
+    </BaseModal>
+
     <!-- 全局右键菜单（文件树） -->
     <GlobalContextMenu />
+
   </div>
 
   <!-- ===== AI 全屏对话 ===== -->
   <AiChatView v-if="view === 'ai-chat'" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
     :apply-to-selection="handleApplySelection"
     @back="view = 'editor'" @insert="handleAiInsert" />
+
+      <!-- 全局历史版本（文件树右键直达） -->
+      <HistoryModal
+        v-if="historyTarget"
+        :show="true"
+        :file-path="historyTarget.path"
+        :file-name="historyTarget.name"
+        @close="fileStore.clearHistoryTarget()"
+        @restored="handleGlobalHistoryRestore"
+      />
+
+      <!-- ===== 全局轻提示 ===== -->
+      <ToastHost />
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
-import { FolderOpen, Search, Sparkles, X, Settings, Download, Users, Trash2 } from 'lucide-vue-next'
+import { FolderOpen, Sparkles, X, Settings, Download, Users, Trash2 } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useProjectOperations } from './composables/useProjectOperations'
 import { storeToRefs } from 'pinia'
@@ -166,7 +200,7 @@ import { pickCoverColor } from './types/project'
 import type { FileNode } from './types/file'
 import * as api from './api/files'
 import { isTauri } from '@tauri-apps/api/core'
-import { confirm } from '@tauri-apps/plugin-dialog'
+
 import { exportFiles } from './composables/useExport'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import TopBar from './components/TopBar.vue'
@@ -177,6 +211,9 @@ import GlobalContextMenu from './components/GlobalContextMenu.vue'
 import EditorTabs from './components/EditorTabs.vue'
 import SettingsNav from './components/SettingsNav.vue'
 import BaseModal from './components/BaseModal.vue'
+import ToastHost from './components/ToastHost.vue'
+import TitleBar from './components/TitleBar.vue'
+import HistoryModal from './components/HistoryModal.vue'
 // 弹层类组件按需加载（减小主包，项目库/编辑器首屏更快）
 const AiChatView = defineAsyncComponent(() => import('./components/AiChatView.vue'))
 const SearchModal = defineAsyncComponent(() => import('./components/SearchModal.vue'))
@@ -194,6 +231,15 @@ const showSearch = ref(false)
 const showCharacters = ref(false)
 const showTrash = ref(false)
 const focusMode = ref(false)
+
+// ── 退出确认（有未保存修改时）──
+const showCloseConfirm = ref(false)
+let closeResolver: ((c: 'save' | 'discard' | 'cancel') => void) | null = null
+const dirtyFiles = computed(() => fileStore.openFiles.filter((f) => f.isDirty))
+function resolveClose(choice: 'save' | 'discard' | 'cancel') {
+  closeResolver?.(choice)
+  closeResolver = null
+}
 
 // 章节顺序（按文件树展示顺序展平的 md/txt 文件）
 const orderedFiles = computed(() => {
@@ -258,7 +304,7 @@ const chatStore = useChatStore()
 const statsStore = useStatsStore()
 const settingsStore = useSettingsStore()
 const projectStore = useProjectStore()
-const { openFile: activeFile, tree: fileTree } = storeToRefs(fileStore)
+const { openFile: activeFile, tree: fileTree, historyTarget } = storeToRefs(fileStore)
 const { projects } = storeToRefs(projectStore)
 
 const currentProject = ref<ProjectEntry | null>(null)
@@ -326,6 +372,18 @@ async function onTrashRestored() {
   // 恢复后刷新文件树，恢复的章节重新出现在原位置
   await fileStore.loadTree()
 }
+
+// ── 全局历史版本（文件树右键直达）──
+
+/** 恢复已完成写盘；若目标文件正在打开，把内容同步进 store（编辑器 watcher 自动替换文档） */
+function handleGlobalHistoryRestore(content: string) {
+  const target = fileStore.historyTarget
+  const f = fileStore.openFile
+  if (target && f && f.path === target.path) {
+    fileStore.updateActiveFile({ content, isDirty: false })
+  }
+}
+
 
 // ── 全局拖放守卫 ──
 // 文件被拖到没有 drop 处理器的区域（如编辑器）时，阻止 WebView 默认行为（直接打开该文件）
@@ -403,14 +461,12 @@ onMounted(async () => {
       event.preventDefault()
 
       if (fileStore.openFiles.some((f) => f.isDirty)) {
-        const choice = await confirm('有未保存的修改，保存后退出吗？', {
-          title: '退出确认',
-          kind: 'warning',
-          okLabel: '保存并退出',
-          cancelLabel: '取消',
-        })
-        if (!choice) return
-        await fileStore.saveAllDirty()
+        // 应用内三键确认：保存并退出 / 不保存退出 / 取消
+        showCloseConfirm.value = true
+        const choice = await new Promise<'save' | 'discard' | 'cancel'>((r) => { closeResolver = r })
+        showCloseConfirm.value = false
+        if (choice === 'cancel') return
+        if (choice === 'save') await fileStore.saveAllDirty()
       }
 
       statsStore.pauseSession()
@@ -454,6 +510,22 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* ── 应用外壳：自定义标题栏 + 视图主体 ── */
+
+.app-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Icon Bars ── */
 
 .icon-bar {
@@ -604,6 +676,14 @@ onUnmounted(() => {
 
 .btn-dialog-ghost:hover {
   background: var(--color-bg-surface-hover);
+}
+/* 退出确认的「不保存退出」：危险弱按钮 */
+.btn-dialog-danger {
+  border-color: var(--color-danger-border);
+  color: var(--color-danger);
+}
+.btn-dialog-danger:hover {
+  background: var(--color-danger-bg);
 }
 
 .btn-dialog-accent {

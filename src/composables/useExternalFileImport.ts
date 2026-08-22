@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { useFileStore } from '../stores/file'
+import { useToastStore } from '../stores/toast'
 
 const MAX_FILE_BYTES = 100 * 1024 * 1024 // 单文件 100MB 上限，防止误拖大文件卡死
 const MAX_TOTAL_BYTES = 500 * 1024 * 1024 // 单次拖入总量 500MB 上限，防内存膨胀
@@ -106,10 +107,12 @@ export async function importDroppedFilesInto(dt: DataTransfer, destDir: string):
       const fileStore = useFileStore()
       fileStore.expandPath(destDir)
       await fileStore.loadTree(fileStore.projectRoot)
+      useToastStore().push('success', `已导入 ${count} 个文件`)
     }
     return count
   } catch (e) {
     console.error('导入文件失败:', e)
+    useToastStore().push('error', '导入失败', e instanceof Error ? e.message : String(e), 4000)
     return 0
   }
 }

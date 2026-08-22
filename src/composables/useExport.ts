@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import * as api from '../api/files'
+import { useToastStore } from '../stores/toast'
 import type { FileNode } from '../types/file'
 
 /** 展平文件树中所有可导出的章节文件（保持树顺序） */
@@ -38,7 +39,9 @@ export async function exportFiles(files: FileNode[], projectName: string): Promi
       const withTitles = destPath.toLowerCase().endsWith('.md')
       await invoke('export_project', { paths, destPath, withTitles })
     }
+    useToastStore().push('success', '导出完成', destPath.split(/[\\/]/).pop() || destPath)
   } catch (e) {
     console.error('导出失败:', e)
+    useToastStore().push('error', '导出失败', e instanceof Error ? e.message : String(e), 4000)
   }
 }

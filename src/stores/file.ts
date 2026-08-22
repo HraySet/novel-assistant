@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import * as api from '../api/files'
 import type { FileNode, OpenFile, ContextMenuState, DraftState } from '../types/file'
 import { useStatsStore } from './stats'
+import { useToastStore } from './toast'
 import { countWords } from '../utils/countWords'
 
 const EXPANDED_STORAGE_PREFIX = 'file-tree-expanded:'
@@ -84,6 +85,18 @@ export const useFileStore = defineStore('file', () => {
   const dragSource = ref<string | null>(null)
   // 收藏路径集合（以 projectRoot 为 key 持久化到 localStorage）
   const favoritePaths = ref<Set<string>>(new Set())
+  /** 历史版本弹窗请求（文件树右键直达；App 层消费后清空） */
+  const historyTarget = ref<{ path: string; name: string } | null>(null)
+
+  function requestHistory(path: string) {
+    const name = path.split(/[/\\]/).pop() || path
+    historyTarget.value = { path, name }
+  }
+  function clearHistoryTarget() {
+    historyTarget.value = null
+  }
+
+  // 收藏路径集合（以 projectRoot 为 key 持久化到 localStorage）
 
   // ── 编辑器内容提供者 ──
   // 编辑器挂载时注册一个按需读取的函数，保存 / 切换文件 / 构建 AI 上下文时
@@ -202,6 +215,21 @@ export const useFileStore = defineStore('file', () => {
     if (!expandedPaths.value.includes(path)) {
       expandedPaths.value = [...expandedPaths.value, path]
       persistExpandedState()
+    }
+  }
+
+  /** 展开某路径的全部祖先目录（搜索定位 / 外部跳转时让文件在树中可见） */
+  function revealPath(path: string) {
+    const sep = path.includes('\\') ? '\\' : '/'
+    const firstIdx = path.lastIndexOf(sep)
+    if (firstIdx <= 0) return
+    let p = path.slice(0, firstIdx)
+    while (true) {
+      expandPath(p)
+      if (findNode(p)) break // 已展开到树中真实存在的目录，不再向上
+      const idx = p.lastIndexOf(sep)
+      if (idx <= 0) break
+      p = p.slice(0, idx)
     }
   }
 
@@ -449,7 +477,12 @@ export const useFileStore = defineStore('file', () => {
     const trimmed = newName.trim()
     const node = findNode(path)
     if (node && trimmed !== node.name) {
-      await renamePath(path, trimmed)
+      try {
+        await renamePath(path, trimmed)
+      } catch (e) {
+        console.error('重命名失败:', e)
+        useToastStore().push('error', '重命名失败', e instanceof Error ? e.message : String(e), 4000)
+      }
     }
   }
 
@@ -476,6 +509,7 @@ export const useFileStore = defineStore('file', () => {
       }
     } catch (e) {
       console.error('创建失败:', e)
+      useToastStore().push('error', '创建失败', e instanceof Error ? e.message : String(e), 4000)
     } finally {
       draft.value = null
     }
@@ -507,6 +541,7 @@ export const useFileStore = defineStore('file', () => {
       if (seq !== selectSeq) return
       const name = path.split(/[/\\]/).pop() || path
       setOpenFile({ path, name, content, isDirty: false })
+      revealPath(path) // 展开祖先目录，让文件在树中可见
       stats.syncChapterSnapshot(path, countWords(content))
     } catch (e) {
       console.error('读取文件失败:', e)
@@ -547,6 +582,7 @@ export const useFileStore = defineStore('file', () => {
       return !stillDirty
     } catch (e) {
       console.error('保存失败:', e)
+      useToastStore().push('error', '保存失败', e instanceof Error ? e.message : String(e), 4000)
       return false
     }
   }
@@ -585,6 +621,7 @@ export const useFileStore = defineStore('file', () => {
       return !stillDirty
     } catch (e) {
       console.error('保存文件失败:', e)
+      useToastStore().push('error', '保存失败', e instanceof Error ? e.message : String(e), 4000)
       return false
     }
   }
@@ -679,6 +716,7 @@ export const useFileStore = defineStore('file', () => {
     renamingPath,
     draft,
     dragSource,
+    historyTarget,
     favoritePaths,
     // Tree management
     setTree,
@@ -699,6 +737,7 @@ export const useFileStore = defineStore('file', () => {
     movePath,
     toggleExpanded,
     expandPath,
+    revealPath,
     isExpanded,
     collapseAll,
     // Context menu
@@ -712,6 +751,8 @@ export const useFileStore = defineStore('file', () => {
     startDraft,
     confirmDraft,
     cancelDraft,
+    requestHistory,
+    clearHistoryTarget,
     // File select
     handleFileSelect,
     handleFileClick,

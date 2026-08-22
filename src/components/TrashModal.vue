@@ -74,6 +74,7 @@
 import { ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import * as api from '../api/files'
+import { useToastStore } from '../stores/toast'
 import ConfirmDialog from './ConfirmDialog.vue'
 import BaseModal from './BaseModal.vue'
 
@@ -112,9 +113,11 @@ async function restore(entry: api.TrashEntry) {
     const restoredTo = await api.restoreTrash(entry.trashPath, entry.originalPath)
     entries.value = entries.value.filter((e) => e.trashPath !== entry.trashPath)
     emit('restored', restoredTo)
+    useToastStore().push('success', '已恢复', (entry.originalPath.split(/[\\/]/).pop() || entry.originalPath))
   } catch (e) {
     console.error('恢复失败:', e)
     errorMsg.value = '恢复失败：' + (e as Error).message
+    useToastStore().push('error', '恢复失败', e instanceof Error ? e.message : String(e), 4000)
   } finally {
     restoring.value = null
   }
@@ -127,8 +130,10 @@ async function emptyAll() {
   try {
     await api.emptyTrash()
     entries.value = []
+    useToastStore().push('success', '回收站已清空')
   } catch (e) {
     console.error('清空回收站失败:', e)
+    useToastStore().push('error', '清空回收站失败', e instanceof Error ? e.message : String(e), 4000)
   } finally {
     busy.value = false
   }

@@ -1,5 +1,5 @@
 <template>
-  <div class="ai-chat-view h-screen flex bg-bg-page">
+  <div class="ai-chat-view h-full flex bg-bg-page">
     <!-- 对话列表侧栏 -->
     <aside class="chat-sidebar">
       <div class="chat-sidebar-header">
@@ -268,6 +268,55 @@ async function handleSend() {
   color: var(--color-text-muted); background: none; border: none; cursor: pointer; flex-shrink: 0;
 }
 .chat-collapse-btn:hover { background: var(--color-bg-surface-hover); color: var(--color-text-primary); }
+
+/* 输入区（此前 chat-input-area/row/input 均无样式，布局与外观全是默认值） */
+.chat-input-area {
+  flex-shrink: 0;
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-page);
+}
+.chat-input-row {
+  display: flex;
+}
+.chat-input {
+  flex: 1;
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  font-family: inherit;
+  color: var(--color-text-primary);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  resize: none;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.chat-input::placeholder { color: var(--color-text-muted); }
+.chat-input:focus {
+  border-color: var(--color-accent-border);
+  box-shadow: 0 0 0 2px var(--color-accent-bg);
+}
+.chat-input:disabled { opacity: 0.5; }
+
+/* 停止生成按钮（此前同样无样式） */
+.chat-stop-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.chat-stop-btn:hover { background: var(--color-danger); color: var(--color-text-on-accent); }
 
 .chat-messages { flex: 1; overflow-y: auto; padding: 24px 0; }
 .chat-messages-inner { max-width: 680px; margin: 0 auto; padding: 0 24px; }

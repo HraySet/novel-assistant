@@ -52,6 +52,7 @@ import { ref, onMounted } from 'vue'
 import { X, Clock, History } from 'lucide-vue-next'
 import DiffView from './DiffView.vue'
 import BaseModal from './BaseModal.vue'
+import { useToastStore } from '../stores/toast'
 import * as api from '../api/files'
 const props = defineProps<{
   show: boolean
@@ -96,8 +97,10 @@ async function restore() {
     await api.writeFile(props.filePath, preview.value)
     emit('restored', preview.value)
     emit('close')
+    useToastStore().push('success', '已恢复历史版本')
   } catch (e) {
     console.error('恢复失败:', e)
+    useToastStore().push('error', '恢复失败', e instanceof Error ? e.message : String(e), 4000)
   } finally {
     restoring.value = false
   }

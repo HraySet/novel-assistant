@@ -7,12 +7,13 @@
         :key="file.path"
         class="tab-item"
         :class="{ 'tab-item--active': openFile?.path === file.path }"
-        :title="file.path + '（中键点击关闭）'"
+        :title="file.path + '（中键点击关闭，右键更多操作）'"
         role="button"
         tabindex="0"
         @click="switchTab(file.path)"
         @auxclick.middle.prevent="closeTab(file.path)"
         @keydown.enter="switchTab(file.path)"
+        @contextmenu.prevent="openTabMenu($event, file.path)"
       >
         <StatusDot v-if="file.isDirty" level="low" size="sm" :glow="false" class="shrink-0" />
         <span class="tab-name">{{ file.name }}</span>
@@ -25,14 +26,34 @@
     </div>
   </div>
   </Transition>
+
+  <!-- tab 右键菜单 -->
+  <Teleport to="body">
+    <div
+      v-if="tabMenu"
+      ref="tabMenuRef"
+      class="tab-menu"
+      :style="{ left: tabMenu.x + 'px', top: tabMenu.y + 'px' }"
+      @click.stop
+    >
+      <button class="tab-menu-item" @click="tabAction('close')">关闭标签</button>
+      <button class="tab-menu-item" @click="tabAction('closeOthers')">关闭其他标签</button>
+      <button class="tab-menu-item" @click="tabAction('closeLeft')">关闭左侧标签</button>
+      <button class="tab-menu-item" @click="tabAction('closeRight')">关闭右侧标签</button>
+      <div class="tab-menu-divider" />
+      <button class="tab-menu-item" @click="tabAction('copyPath')">复制路径</button>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { watch, nextTick, ref } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
+import { onClickOutside } from '@vueuse/core'
 import { X } from 'lucide-vue-next'
 import { useFileStore } from '../stores/file'
 import StatusDot from './StatusDot.vue'
+
 const fileStore = useFileStore()
 const { openFiles, openFile } = storeToRefs(fileStore)
 const scrollRef = ref<HTMLElement>()
@@ -50,6 +71,46 @@ async function closeTab(path: string) {
     if (!saved) return
   }
   fileStore.closeFile(path)
+}
+
+// ── 右键菜单 ──
+const tabMenu = ref<{ x: number; y: number; path: string } | null>(null)
+const tabMenuRef = ref<HTMLElement>()
+
+function openTabMenu(e: MouseEvent, path: string) {
+  // 菜单宽度约 140px，避免超出右缘
+  tabMenu.value = {
+    x: Math.min(e.clientX, window.innerWidth - 150),
+    y: e.clientY,
+    path,
+  }
+}
+
+function closeTabMenu() { tabMenu.value = null }
+
+onClickOutside(tabMenuRef, closeTabMenu)
+
+type TabAction = 'close' | 'closeOthers' | 'closeLeft' | 'closeRight' | 'copyPath'
+
+async function tabAction(action: TabAction) {
+  const path = tabMenu.value?.path
+  const list = openFiles.value
+  const idx = path ? list.findIndex((f) => f.path === path) : -1
+  closeTabMenu()
+  if (idx < 0 || !path) return
+
+  if (action === 'copyPath') {
+    try { await navigator.clipboard.writeText(path) } catch { /* 忽略 */ }
+    return
+  }
+
+  const toClose: string[] = []
+  if (action === 'close') toClose.push(path)
+  else if (action === 'closeOthers') list.forEach((f, i) => { if (i !== idx) toClose.push(f.path) })
+  else if (action === 'closeLeft') list.forEach((f, i) => { if (i < idx) toClose.push(f.path) })
+  else if (action === 'closeRight') list.forEach((f, i) => { if (i > idx) toClose.push(f.path) })
+
+  for (const p of toClose) await closeTab(p)
 }
 
 // 切换标签时自动滚动到 active tab
@@ -111,7 +172,6 @@ watch(() => openFile.value?.path, () => {
   white-space: nowrap;
 }
 
-
 .tab-close {
   width: 16px; height: 16px;
   border-radius: var(--radius-sm);
@@ -129,6 +189,43 @@ watch(() => openFile.value?.path, () => {
   background: var(--color-bg-surface-hover);
   color: var(--color-danger);
 }
+
+/* ── 右键菜单 ── */
+.tab-menu {
+  position: fixed;
+  z-index: 400;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  animation: tab-menu-in 0.1s ease;
+}
+@keyframes tab-menu-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+.tab-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  border: none;
+  background: none;
+  color: var(--color-text-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.tab-menu-item:hover { background: var(--color-bg-surface-hover); }
+.tab-menu-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
+
 /* 标签栏整体淡入淡出，关闭最后一个标签时布局不“咯噔” */
 .fade-enter-active,
 .fade-leave-active {

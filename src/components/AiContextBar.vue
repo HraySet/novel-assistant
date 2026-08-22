@@ -96,7 +96,7 @@ function toggle(key: ToggleKey) {
   font-size: 11px;
   line-height: 1;
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: transparent;
   color: var(--color-text-secondary);
@@ -130,7 +130,7 @@ function toggle(key: ToggleKey) {
   background: transparent;
   color: var(--color-text-secondary);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 3px 20px 3px 5px;
   outline: none;
   font-family: inherit;

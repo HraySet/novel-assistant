@@ -50,7 +50,9 @@
         <div
           class="card-cover"
           :style="{ '--cover-color': project.color }"
-        />
+        >
+          <span class="card-cover-letter">{{ project.name.trim().charAt(0) || '书' }}</span>
+        </div>
         <div class="card-name">{{ project.name }}</div>
         <div class="card-meta">
           <span v-if="project.broken" class="card-broken"><AlertTriangle :size="11" /> 路径失效</span>
@@ -199,7 +201,7 @@ function handleRemove() {
 <style scoped>
 .project-library {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   background: var(--color-bg-page, #faf6ee);
   padding: 32px 40px;
   overflow-y: auto;
@@ -333,7 +335,7 @@ function handleRemove() {
 .card {
   background: var(--color-bg-elevated, #ffffff);
   border: 1px solid var(--color-border, #e3d9c8);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 16px;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -386,6 +388,21 @@ function handleRemove() {
   width: 5px;
   border-radius: 6px 0 0 2px;
   background: rgba(0, 0, 0, 0.12);
+}
+
+/* 封面首字：衬线大写字，让色块封面有内容 */
+.card-cover-letter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-voice);
+  font-size: 30px;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--cover-color) 35%, var(--color-text-primary));
+  opacity: 0.7;
+  user-select: none;
 }
 
 .card-name {

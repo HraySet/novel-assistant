@@ -1,9 +1,9 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "YanYan",
+  "productName": "QingBi",
   "version": "0.3.0",
-  "identifier": "com.yanyan.app",
-  "mainBinaryName": "yanyan",
+  "identifier": "com.qingbi.app",
+  "mainBinaryName": "qingbi",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -13,11 +13,12 @@
   "app": {
     "windows": [
       {
-        "title": "砚砚",
+        "title": "清笔",
         "width": 1200,
         "height": 800,
         "resizable": true,
         "fullscreen": false,
+        "decorations": false,
         "dragDropEnabled": false
       }
     ],

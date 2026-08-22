@@ -111,9 +111,21 @@ const emit = defineEmits<{
   font-size: 13px;
   line-height: 1.65;
 }
+/* 全屏档：AI 消息用表面色卡片，用户消息用强调色气泡，对话层级更清晰 */
 .chat-msg--roomy .chat-msg-content {
   font-size: 14px;
   line-height: 1.7;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+}
+.chat-msg--roomy.chat-msg--user .chat-msg-content {
+  display: inline-block;
+  max-width: 82%;
+  text-align: left;
+  background: var(--color-accent-bg);
+  border-color: var(--color-accent-border);
 }
 .chat-msg--user .chat-msg-content {
   color: var(--color-text-secondary);

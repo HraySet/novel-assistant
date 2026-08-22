@@ -70,6 +70,12 @@ export function useDesignTokens() {
     root.style.setProperty("--color-accent-border", hexToRgba(accent, 0.45));
     root.style.setProperty("--color-text-on-accent", readableTextColor(accent));
 
+    // 码字日历热力色阶：由强调色派生（深色主题下稍亮一档），保证 13 套主题下观感统一
+    const heatAlphas = dark ? [0.16, 0.32, 0.52, 0.72, 0.92] : [0.14, 0.28, 0.45, 0.65, 0.85];
+    (["--heat-1", "--heat-2", "--heat-3", "--heat-4", "--heat-5"] as const).forEach((name, i) => {
+      root.style.setProperty(name, hexToRgba(accent, heatAlphas[i]));
+    });
+
     // 语义色 / 字体 / 圆角 / 阴影等静态变量仍由 style.css 的
     // :root 与 html[data-theme="warm-paper-dark"] 规则提供，这里只同步 data-theme
     root.setAttribute("data-theme", dark ? "warm-paper-dark" : "warm-paper");

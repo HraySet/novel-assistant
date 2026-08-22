@@ -357,6 +357,16 @@ export const useSettingsStore = defineStore("settings", () => {
 
   function applyColorPreset(preset: typeof colorPresets[number]) { accentColor.value = preset.value; bgColor.value = preset.bg; themeDark.value = preset.dark; themeText.value = preset.text; }
 
+  /** 自定义主题：任意强调色/背景色，文字色回退中性灰阶（与预设文字色解耦） */
+  function applyCustomTheme(accent: string, bg: string) {
+    accentColor.value = accent
+    bgColor.value = bg
+    themeText.value = undefined
+  }
+  function setCustomDark(dark: boolean) { themeDark.value = dark }
+  /** 恢复默认主题（米纸） */
+  function resetTheme() { applyColorPreset(COLOR_PRESETS[0]) }
+
   watch([accentColor, bgColor, themeDark, themeText], () => { saveTheme(accentColor.value, bgColor.value, themeDark.value, themeText.value); });
 
   return {
@@ -367,7 +377,7 @@ export const useSettingsStore = defineStore("settings", () => {
     colorPresets,
     editorFontSize, editorLineHeight, typewriterMode, focusLineMode, editorWidth,
     setEditorFontSize, setEditorLineHeight, setEditorWidth, toggleTypewriter, toggleFocusLine,
-    applyPreset, applyColorPreset, toggleDark,
+    applyPreset, applyColorPreset, applyCustomTheme, setCustomDark, resetTheme, toggleDark,
     flushAiSaveNow,
   };
 });

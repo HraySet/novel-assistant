@@ -54,12 +54,6 @@
       <button class="nav-btn stat-btn--outline" title="章节内大纲" @click="toggleOutline">
         <ListTree :size="13" />
       </button>
-      <button class="nav-btn" title="上一章" :disabled="!prevPath" @click="prevPath && $emit('navigate', prevPath)">
-        <ChevronUp :size="13" />
-      </button>
-      <button class="nav-btn" title="下一章" :disabled="!nextPath" @click="nextPath && $emit('navigate', nextPath)">
-        <ChevronDown :size="13" />
-      </button>
       <span class="stat ml-2">本章 {{ chapterWords }} 字</span>
       <span class="mx-1">·</span>
       <span class="stat" :title="'阅读位置 ' + scrollPercent + '%'">{{ scrollPercent }}%</span>
@@ -77,14 +71,22 @@
       <span class="stat-progress" :title="`今日目标进度 ${todayGoalPercent}%`">
         <span class="stat-progress-fill" :class="{ met: todayGoalMet }" :style="{ width: todayGoalPercent + '%' }"></span>
       </span>
-      <span v-if="streakDays > 0" class="stat flex items-center gap-1" title="连续写作天数"><Flame :size="11" />{{ streakDays }}</span>
-      <span class="stat flex items-center gap-1" title="本次写作时长"><Timer :size="11" />{{ sessionFormatted }}</span>
-      <span v-if="settings.focusLineMode" class="stat flex items-center" title="聚焦行已开启"><Focus :size="11" /></span>
       <div class="stat-more-wrap">
         <button class="nav-btn stat-btn--more" title="更多" @click="showMore = !showMore">
           <MoreHorizontal :size="13" />
         </button>
         <div v-if="showMore" class="more-popover">
+          <div v-if="streakDays > 0" class="more-item more-item--info"><Flame :size="11" />连续写作 {{ streakDays }} 天</div>
+          <div class="more-item more-item--info"><Timer :size="11" />本次写作 {{ sessionFormatted }}</div>
+          <div v-if="settings.focusLineMode" class="more-item more-item--info"><Focus :size="11" />聚焦行已开启</div>
+          <div class="more-divider" />
+          <button class="more-item" :disabled="!prevPath" @click="prevPath && $emit('navigate', prevPath); showMore = false">
+            上一章
+          </button>
+          <button class="more-item" :disabled="!nextPath" @click="nextPath && $emit('navigate', nextPath); showMore = false">
+            下一章
+          </button>
+          <div class="more-divider" />
           <button class="more-item" @click="stats.toggleSession(); showMore = false">
             {{ session.isRunning ? '暂停计时' : '开始计时' }}
           </button>
@@ -127,7 +129,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:content': [content: string]
-  save: []
   dirty: []
   navigate: [path: string]
 }>()
@@ -300,22 +301,32 @@ function handleChange() {
   emit('dirty')
   updateChapterWords()
 
-  // 自动保存：1 秒无输入后保存
+  // 自动保存：1 秒无输入后保存；结果（成功/失败/写盘期间有新键入）如实反映到状态栏
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
-    emit('save')
-    isSaved.value = true
-    lastSavedTime.value = new Date()
+    saveTimer = null
+    void runSave()
   }, 1000)
 }
 
-function flushPendingSave() {
+/** 保存当前文件：直接驱动 store（含竞态重读），失败时 store 会弹 Toast */
+async function runSave(): Promise<boolean> {
+  const ok = await fileStore.handleSave()
+  if (ok) {
+    isSaved.value = true
+    lastSavedTime.value = new Date()
+  } else {
+    // 失败或写盘期间仍有新键入：保持“未保存”，由下一次输入触发的自动保存兜底
+    isSaved.value = false
+  }
+  return ok
+}
+
+async function flushPendingSave() {
   if (saveTimer) {
     clearTimeout(saveTimer)
     saveTimer = null
-    emit('save')
-    isSaved.value = true
-    lastSavedTime.value = new Date()
+    await runSave()
   }
 }
 
@@ -330,7 +341,7 @@ function handleRestored(content: string) {
   updateChapterWords()
   emit('update:content', content)
   // 历史版本已由 HistoryModal 写盘：补一次保存，把 store 的脏标记清掉
-  emit('save')
+  void runSave()
 }
 
 /**
@@ -562,6 +573,33 @@ const editorTheme = EditorView.theme({
   '.cm-line-dimmed': { opacity: 0.35 },
 })
 
+// ── Markdown 快捷格式：Ctrl+B 加粗 / Ctrl+I 斜体 ──
+// 有选区包上标记，无选区插入占位并选中；已包标记则移除
+function toggleMdMark(view: EditorView, mark: string): boolean {
+  const { from, to } = view.state.selection.main
+  const selected = view.state.doc.sliceString(from, to)
+  const m = mark.length
+  if (selected.length >= m * 2 && selected.startsWith(mark) && selected.endsWith(mark)) {
+    const inner = selected.slice(m, selected.length - m)
+    view.dispatch({
+      changes: { from, to, insert: inner },
+      selection: { anchor: from, head: from + inner.length },
+    })
+  } else {
+    const text = selected || '文字'
+    view.dispatch({
+      changes: { from, to, insert: mark + text + mark },
+      selection: { anchor: from + m, head: from + m + text.length },
+    })
+  }
+  return true
+}
+
+const mdFormatKeymap = [
+  { key: 'Mod-b', run: (view: EditorView) => toggleMdMark(view, '**') },
+  { key: 'Mod-i', run: (view: EditorView) => toggleMdMark(view, '*') },
+]
+
 // 编辑器基础扩展（不含 doc）：新建状态与从 JSON 恢复历史时共用
 const baseExtensions = [
   editorTheme,
@@ -577,6 +615,7 @@ const baseExtensions = [
   search({ top: true }),
   highlightSelectionMatches(),
   keymap.of([...searchKeymap]),
+  keymap.of(mdFormatKeymap),
   markdown({ base: markdownLanguage }),
   // 浏览器拼写检查（红波浪线，右键可用系统词典）
   EditorView.contentAttributes.of({ spellcheck: 'true' }),
@@ -600,9 +639,7 @@ const baseExtensions = [
       // Ctrl+S 保存
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault()
-        emit('save')
-        isSaved.value = true
-        lastSavedTime.value = new Date()
+        void runSave()
       }
       // Esc 收起划词右键菜单
       if (e.key === 'Escape' && selBar.value) {
@@ -619,6 +656,13 @@ const baseExtensions = [
       e.preventDefault()
       showSelMenu(e.clientX, e.clientY)
       return true
+    },
+    // Ctrl+滚轮：调字号（写作高频操作，与 Ctrl+=/- 一致）
+    wheel: (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return false
+      e.preventDefault()
+      const s = useSettingsStore()
+      s.setEditorFontSize(s.editorFontSize + (e.deltaY < 0 ? 1 : -1))
     },
   }),
 ]
@@ -985,6 +1029,25 @@ watch(() => props.content, (newContent) => {
   background: var(--color-accent-bg);
   color: var(--color-accent);
 }
+.more-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.more-item:disabled:hover { background: none; color: var(--color-text-secondary); }
+/* 只读信息行（连击/计时/聚焦行）与操作项区分 */
+.more-item--info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  cursor: default;
+}
+.more-item--info:hover { background: none; color: var(--color-text-muted); }
+.more-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 0;
+}
 
 .nav-btn {
   margin-left: 8px;
@@ -1064,7 +1127,7 @@ watch(() => props.content, (newContent) => {
   padding: 5px 6px;
   background: var(--color-bg-elevated, var(--color-bg-surface));
   border: 1px solid var(--color-border-strong, var(--color-border));
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-popover);
   font-size: 12px;
   color: var(--color-text-primary);

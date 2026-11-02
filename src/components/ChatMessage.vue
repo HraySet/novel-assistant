@@ -11,7 +11,7 @@
     <div class="chat-msg-role">{{ msg.role === 'user' ? '你' : 'AI' }}</div>
 
     <DiffView
-      v-if="msg.originalContent && msg.content"
+      v-if="msg.originalContent && msg.content && !streaming"
       :compact="density === 'compact'"
       :editable="true"
       :old-text="msg.originalContent"
@@ -60,6 +60,8 @@ defineProps<{
   saved?: boolean
   canSaveSummary?: boolean
   showExtras?: boolean
+  /** 该条消息正在流式接收：此时只显示文本，不渲染 DiffView */
+  streaming?: boolean
 }>()
 
 const emit = defineEmits<{

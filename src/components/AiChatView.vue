@@ -60,6 +60,7 @@
 
           <ChatMessage v-for="(msg, i) in activeConversation?.messages || []" :key="i"
             :msg="msg" :html="messageHtml(msg, i)" density="roomy"
+            :streaming="chatStore.streaming && i === (activeConversation?.messages.length ?? 0) - 1"
             :applied="appliedIndex === i" :inserted="insertedIndex === i" :saved="savedIndex === i"
             :can-save-summary="!!activeFile"
             :show-extras="i === (activeConversation?.messages.length ?? 0) - 1 && !chatStore.streaming"

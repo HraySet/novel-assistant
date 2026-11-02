@@ -66,6 +66,7 @@
       </div>
       <ChatMessage v-for="(msg, i) in (activeConversation?.messages || [])" :key="i"
         :msg="msg" :html="messageHtml(msg, i)" density="compact"
+        :streaming="chatStore.streaming && i === (activeConversation?.messages.length ?? 0) - 1"
         :applied="appliedIndex === i" :inserted="insertedIndex === i" :saved="savedIndex === i"
         :can-save-summary="!!activeFile"
         @apply-diff="(merged) => handleApplyDiff(merged, i)" @reject-diff="handleRejectDiff(i)"

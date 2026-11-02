@@ -39,7 +39,7 @@
 
       <div class="hist-footer">
         <button class="hist-btn hist-btn--ghost" @click="$emit('close')">取消</button>
-        <button class="hist-btn hist-btn--primary" :disabled="!selected || restoring" @click="restore">
+        <button class="hist-btn hist-btn--primary" :disabled="!selected || restoring || !previewReady" @click="restore">
           {{ restoring ? '恢复中…' : '恢复此版本' }}
         </button>
       </div>
@@ -68,6 +68,8 @@ const emit = defineEmits<{
 const backups = ref<api.BackupEntry[]>([])
 const selected = ref<api.BackupEntry | null>(null)
 const preview = ref('')
+/** 预览是否真的读到了内容：读失败时禁止恢复，否则会把空串（或上一个备份的内容）写进正文 */
+const previewReady = ref(false)
 const currentContent = ref('')
 const viewMode = ref<'diff' | 'full'>('diff')
 const restoring = ref(false)
@@ -87,11 +89,21 @@ async function load() {
 
 async function selectBackup(b: api.BackupEntry) {
   selected.value = b
-  preview.value = await api.readFile(b.path)
+  preview.value = ''
+  previewReady.value = false
+  try {
+    preview.value = await api.readFile(b.path)
+    previewReady.value = true
+  } catch (e) {
+    // 读取失败时 preview 必须清空：否则残留的是**上一个备份**的内容，
+    // 用户点「恢复此版本」会把别的版本写进当前章节
+    console.error('读取备份失败:', e)
+    useToastStore().push('error', '读取备份失败', '该备份可能已损坏或被其它程序占用', 4000)
+  }
 }
 
 async function restore() {
-  if (!selected.value) return
+  if (!selected.value || !previewReady.value) return
   restoring.value = true
   try {
     await api.writeFile(props.filePath, preview.value)
@@ -123,6 +135,7 @@ watch(
     if (!show) return
     selected.value = null
     preview.value = ''
+    previewReady.value = false
     backups.value = []
     void load()
   },

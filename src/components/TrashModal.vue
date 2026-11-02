@@ -114,7 +114,15 @@ async function restore(entry: api.TrashEntry) {
     const restoredTo = await api.restoreTrash(entry.trashPath, entry.originalPath)
     entries.value = entries.value.filter((e) => e.trashPath !== entry.trashPath)
     emit('restored', restoredTo)
-    useToastStore().push('success', '已恢复', (entry.originalPath.split(/[\\/]/).pop() || entry.originalPath))
+    // 原位置已有同名文件时 Rust 会自动改名，提示必须用**实际落点**，
+    // 否则用户按原名去原位置找，会以为恢复失败
+    const wanted = entry.originalPath.split(/[\\/]/).pop() || entry.originalPath
+    const actual = restoredTo.split(/[\\/]/).pop() || wanted
+    if (actual !== wanted) {
+      useToastStore().push('success', '已恢复（重名已自动改名）', actual, 5000)
+    } else {
+      useToastStore().push('success', '已恢复', actual)
+    }
   } catch (e) {
     console.error('恢复失败:', e)
     errorMsg.value = '恢复失败：' + (e as Error).message

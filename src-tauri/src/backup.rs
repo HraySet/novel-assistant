@@ -17,6 +17,22 @@ use std::sync::Mutex;
 /// 同名文件在备份目录里最多保留的备份份数
 const MAX_BACKUPS_PER_FILE: usize = 20;
 
+/// 备份文件名格式 `{ts}_{filename}`，解析出时间戳与原始文件名。
+///
+/// 为什么不用 `name.ends_with(&format!("_{}", filename))`：
+/// 文件名互为后缀时会串档——`章.md` 的备份后缀 `_章.md` 也匹配 `100_v2_章.md`，
+/// 于是两个文件的备份列表会互相混入，prune 还可能误删别人的备份。
+fn parse_backup_name(name: &str, filename: &str) -> Option<u64> {
+    let (ts, rest) = name.split_once('_')?;
+    if rest != filename {
+        return None;
+    }
+    if ts.is_empty() || !ts.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    ts.parse::<u64>().ok()
+}
+
 /// 上次备份内容的 FNV-1a 哈希（路径 → 哈希）。
 /// 新内容与上次备份一致时跳过备份，避免每次保存都整篇拷贝的写入放大
 static BACKUP_HASH_CACHE: std::sync::LazyLock<Mutex<HashMap<PathBuf, u64>>> =
@@ -77,12 +93,11 @@ pub fn backup_file(filepath: &Path, new_content: &[u8]) -> Result<(), String> {
 
 /// 清理旧备份：同名文件只保留最近 MAX_BACKUPS_PER_FILE 份，超出部分删除
 fn prune_backups(backup_dir: &Path, filename: &str) -> Result<(), String> {
-    let suffix = format!("_{}", filename);
     let mut backups: Vec<PathBuf> = Vec::new();
     for entry in fs::read_dir(backup_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.ends_with(&suffix) {
+        if parse_backup_name(&name, filename).is_some() {
             backups.push(entry.path());
         }
     }
@@ -92,7 +107,7 @@ fn prune_backups(backup_dir: &Path, filename: &str) -> Result<(), String> {
     // 文件名格式 {ts}_{filename}，按时间戳升序，最旧的在前面
     backups.sort_by_key(|p| {
         let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
-        name.split('_').next().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0)
+        parse_backup_name(&name, filename).unwrap_or(0)
     });
     let remove_count = backups.len() - MAX_BACKUPS_PER_FILE;
     for old in backups.iter().take(remove_count) {
@@ -115,12 +130,12 @@ pub fn migrate_backups_on_move(old_path: &Path, new_path: &Path) {
     let Ok(entries) = fs::read_dir(old_dir.join(".backups")) else {
         return;
     };
-    let suffix = format!("_{}", old_name.to_string_lossy());
+    let old_name_str = old_name.to_string_lossy();
     let new_backup_dir = new_dir.join(".backups");
     let mut created = false;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if !name.ends_with(&suffix) {
+        if parse_backup_name(&name, &old_name_str).is_none() {
             continue;
         }
         if !created {
@@ -145,13 +160,12 @@ pub fn migrate_backups_on_rename(old_path: &Path, new_path: &Path) {
     let Ok(entries) = fs::read_dir(old_dir.join(".backups")) else {
         return;
     };
-    let suffix_old = format!("_{}", old_name.to_string_lossy());
+    let old_suffix_check = old_name.to_string_lossy().to_string();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if !name.ends_with(&suffix_old) {
+        let Some(ts) = parse_backup_name(&name, &old_suffix_check) else {
             continue;
-        }
-        let ts = name.split('_').next().unwrap_or("");
+        };
         let new_backup = old_dir
             .join(".backups")
             .join(format!("{}_{}", ts, new_name.to_string_lossy()));
@@ -170,14 +184,12 @@ pub fn list_backups(app: tauri::AppHandle, file_path: String) -> Result<Vec<Back
     }
 
     let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
-    let suffix = format!("_{}", filename);
     let mut backups: Vec<BackupEntry> = Vec::new();
 
     for entry in fs::read_dir(&backup_dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.ends_with(&suffix) {
-            let timestamp = name.split('_').next().and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+        if let Some(timestamp) = parse_backup_name(&name, &filename) {
             backups.push(BackupEntry {
                 path: entry.path().to_string_lossy().to_string(),
                 timestamp,
@@ -187,4 +199,43 @@ pub fn list_backups(app: tauri::AppHandle, file_path: String) -> Result<Vec<Back
 
     backups.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
     Ok(backups)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_backup_name;
+
+    #[test]
+    fn parses_own_backup() {
+        assert_eq!(
+            parse_backup_name("1700000000_第1章.md", "第1章.md"),
+            Some(1_700_000_000)
+        );
+    }
+
+    #[test]
+    fn does_not_mix_up_similar_filenames() {
+        // 回归：旧实现用 ends_with("_章.md") 匹配，会把 v2_章.md 的备份算进 章.md
+        assert_eq!(parse_backup_name("1700000000_v2_章.md", "章.md"), None);
+        assert_eq!(
+            parse_backup_name("1700000000_v2_章.md", "v2_章.md"),
+            Some(1_700_000_000)
+        );
+    }
+
+    #[test]
+    fn handles_filename_containing_underscores() {
+        assert_eq!(
+            parse_backup_name("1700000000_我的_草稿.md", "我的_草稿.md"),
+            Some(1_700_000_000)
+        );
+    }
+
+    #[test]
+    fn rejects_malformed_names() {
+        assert_eq!(parse_backup_name("abc_第1章.md", "第1章.md"), None, "时间戳必须是数字");
+        assert_eq!(parse_backup_name("第1章.md", "第1章.md"), None, "缺时间戳前缀");
+        assert_eq!(parse_backup_name("_第1章.md", "第1章.md"), None, "空时间戳");
+        assert_eq!(parse_backup_name("1700000000_别的.md", "第1章.md"), None, "别人的备份");
+    }
 }

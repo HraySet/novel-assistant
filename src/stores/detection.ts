@@ -10,6 +10,7 @@ import {
   listDirDocs,
   readChapterSlices,
   readDirDocs,
+  resolveSettingDir,
 } from '../composables/projectDocs'
 import { replaceFirst } from '../core/text'
 
@@ -101,10 +102,15 @@ export const useDetectionStore = defineStore('detection', () => {
   // ── 数据采集（统一走 projectDocs，与 AI 上下文共用一套遍历与预算） ──
 
   async function collectCheckInput(root: string): Promise<CheckInput> {
+    // 设定目录名可能是别名（人物/设定/剧情…），统一解析到实际存在的目录
+    const [charDir, outlineDir] = await Promise.all([
+      resolveSettingDir(root, '角色'),
+      resolveSettingDir(root, '大纲'),
+    ])
     const [chapters, chars, outlines] = await Promise.all([
       listChapterFiles(root),
-      readDirDocs(root, '角色'),
-      readDirDocs(root, '大纲'),
+      readDirDocs(root, charDir),
+      readDirDocs(root, outlineDir),
     ])
     // 最近 N 章（取整章开头片段，供一致性比对）
     const recent = await readChapterSlices(root, chapters, {
@@ -213,7 +219,8 @@ export const useDetectionStore = defineStore('detection', () => {
     const c = characterChanges.value.find((x) => x.name === name)
     if (!c) return
     try {
-      const files = await listDirDocs(projectRoot.value, '角色')
+      const charDir = await resolveSettingDir(projectRoot.value, '角色')
+      const files = await listDirDocs(projectRoot.value, charDir)
       const target = files.find((f) => f.name === c.name)
       if (!target) return
       const content = await api.readFile(target.path)
@@ -248,7 +255,8 @@ export const useDetectionStore = defineStore('detection', () => {
     if (!s) return
     if (s.newTitle) {
       try {
-        const files = await listDirDocs(projectRoot.value, '大纲')
+        const outlineDir = await resolveSettingDir(projectRoot.value, '大纲')
+        const files = await listDirDocs(projectRoot.value, outlineDir)
         for (const f of files) {
           const content = await api.readFile(f.path)
           if (!content.includes(s.title)) continue

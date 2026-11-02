@@ -12,7 +12,7 @@
  */
 import * as api from '../api/files'
 import { joinPath } from '../core/paths'
-import { walkFiles, TREE_POLICIES } from '../core/tree'
+import { walkFiles, TREE_POLICIES, SETTING_DIR_ALIASES, type SettingDirKind } from '../core/tree'
 
 /** 上下文相关预算的唯一来源（字符数） */
 export const CONTEXT_BUDGETS = {
@@ -61,6 +61,24 @@ export interface ChapterSlice {
 /** 章节文件名去掉扩展名（摘要文件按此命名） */
 export function chapterStem(name: string): string {
   return name.replace(/\.(md|txt)$/i, '')
+}
+
+/**
+ * 解析设定目录的实际名称（规范名优先，别名回退）。
+ *
+ * 目录名是用户自己起的：可能叫「角色」也可能叫「人物」。这里按规范名先试，
+ * 不存在时遍历同义别名，返回第一个真实存在的目录名；都不存在返回规范名
+ * （后续 listDir 会得到空结果，语义上等于「还没建设定目录」）。
+ */
+export async function resolveSettingDir(root: string, kind: SettingDirKind): Promise<string> {
+  const canonical = kind
+  const candidates = Object.keys(SETTING_DIR_ALIASES).filter((k) => SETTING_DIR_ALIASES[k] === kind)
+  // 规范名排最前
+  const ordered = [canonical, ...candidates.filter((c) => c !== canonical)]
+  for (const name of ordered) {
+    if (await api.pathExists(joinPath(root, name))) return name
+  }
+  return canonical
 }
 
 /** 列出正文章节（走 chapters 策略：排除设定目录、`_` 前缀与隐藏项） */

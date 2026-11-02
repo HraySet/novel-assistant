@@ -24,6 +24,33 @@ export function useProjectOperations(opts: {
   const newProjectPath = ref('')
   const newProjectName = ref('')
 
+  /**
+   * 新建项目时生成骨架：角色/ 与 大纲/ 目录 + 一份 _project.md 项目概述。
+   *
+   * 新用户建完项目面对的是空目录，不知道角色卡、大纲该写到哪里——
+   * 骨架让「设定文件放哪」一眼可辨，也让前情提要的 _project.md 有个起点。
+   * 必须在 setProjectPath(root) 之后调用（写盘走项目沙箱，路径需落在当前项目内）。
+   */
+  async function ensureSkeleton(root: string) {
+    const roleDir = joinPath(root, '角色')
+    const outlineDir = joinPath(root, '大纲')
+    const overview = joinPath(root, '_project.md')
+    try {
+      await api.createDir(roleDir)
+      await api.createDir(outlineDir)
+    } catch (e) {
+      console.error('创建骨架目录失败:', e)
+    }
+    // 已存在 _project.md 就不覆盖（用户可能已经写过概述）
+    if (!(await api.pathExists(overview))) {
+      try {
+        await api.writeFile(overview, '# 项目概述\n\n> 全书的一句话简介、主线、主要冲突，写在这里。\n> 前情提要会优先引用这份概述。\n\n')
+      } catch (e) {
+        console.error('创建项目概述失败:', e)
+      }
+    }
+  }
+
   async function loadFileTree() {
     if (!opts.currentProject.value) return
     try {
@@ -33,7 +60,7 @@ export function useProjectOperations(opts: {
     }
   }
 
-  async function openProject(project: ProjectEntry) {
+  async function openProject(project: ProjectEntry, opts2?: { isNew?: boolean }) {
     // 切换前先落盘：此刻 Rust 端的项目根仍是旧项目，保存路径才有效。
     // 必须放在 setProjectPath 之前，否则旧项目的写盘会被沙箱拒绝；
     // 保存失败则取消切换，避免 resetForProject 把未落盘的内容直接丢掉。
@@ -50,6 +77,8 @@ export function useProjectOperations(opts: {
     opts.view.value = 'editor'
     try {
       await api.setProjectPath(project.path)
+      // 新建项目：此时项目根已切到新路径，生成 角色/ 大纲/ _project.md 骨架
+      if (opts2?.isNew) await ensureSkeleton(project.path)
       // 域状态统一重置（标签/活动文件/树/统计/检测/对话），避免上一个项目残留
       await session.enterProject(project.path)
       await loadFileTree()
@@ -152,7 +181,7 @@ export function useProjectOperations(opts: {
     }
     opts.projects.value = [...opts.projects.value, project]
     projectStore.addProject(project)
-    await openProject(project)
+    await openProject(project, { isNew: true })
   }
 
   async function handleAddProject() {

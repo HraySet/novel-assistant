@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { walkFiles, pathsOf, chapterPaths, totalWords, listFilesIn, TREE_POLICIES } from '../tree'
+import { walkFiles, pathsOf, chapterPaths, totalWords, listFilesIn, TREE_POLICIES, isCharacterDir, isOutlineDir } from '../tree'
+import type { FileNode } from '../../types/file'
 import { FIXTURE_ROOT, FIXTURE_TREE, CHAPTER_PATHS } from './fixtures/tree.fixture'
 
 /**
@@ -164,5 +165,56 @@ describe('边界', () => {
       TREE_POLICIES.chapters,
     )
     expect(entries).toHaveLength(1)
+  })
+})
+
+describe('设定目录别名（SETTING_DIR_ALIASES）', () => {
+  it('角色类别名：人物/角色卡/角色设定', () => {
+    expect(isCharacterDir('角色')).toBe(true)
+    expect(isCharacterDir('人物')).toBe(true)
+    expect(isCharacterDir('角色卡')).toBe(true)
+    expect(isCharacterDir('角色设定')).toBe(true)
+    expect(isCharacterDir('第1章')).toBe(false)
+  })
+
+  it('大纲类别名：设定/剧情/情节', () => {
+    expect(isOutlineDir('大纲')).toBe(true)
+    expect(isOutlineDir('设定')).toBe(true)
+    expect(isOutlineDir('剧情')).toBe(true)
+    expect(isOutlineDir('第2章')).toBe(false)
+  })
+
+  it('chapters 策略排除别名目录里的文件', () => {
+    const tree: FileNode[] = [
+      { name: '人物', path: `${FIXTURE_ROOT}/人物`, isDir: true, children: [
+        { name: '张三.md', path: `${FIXTURE_ROOT}/人物/张三.md`, isDir: false, wordCount: 100 },
+      ] },
+      { name: '设定', path: `${FIXTURE_ROOT}/设定`, isDir: true, children: [
+        { name: '大纲.md', path: `${FIXTURE_ROOT}/设定/大纲.md`, isDir: false, wordCount: 100 },
+      ] },
+      { name: '第1章.md', path: `${FIXTURE_ROOT}/第1章.md`, isDir: false, wordCount: 300 },
+    ]
+    const chapters = walkFiles(tree, TREE_POLICIES.chapters)
+    expect(chapters.map((e) => e.name)).toEqual(['第1章.md'])
+  })
+
+  it('导出策略同样排除别名目录（与 chapters 一致）', () => {
+    const tree: FileNode[] = [
+      { name: '人物', path: `${FIXTURE_ROOT}/人物`, isDir: true, children: [
+        { name: '张三.md', path: `${FIXTURE_ROOT}/人物/张三.md`, isDir: false },
+      ] },
+      { name: '第1章.md', path: `${FIXTURE_ROOT}/第1章.md`, isDir: false },
+    ]
+    expect(walkFiles(tree, TREE_POLICIES.exportable).map((e) => e.name)).toEqual(['第1章.md'])
+  })
+
+  it('allFiles 策略不排除别名目录（搜索/浏览要能看到它们）', () => {
+    const tree: FileNode[] = [
+      { name: '人物', path: `${FIXTURE_ROOT}/人物`, isDir: true, children: [] },
+      { name: '第1章.md', path: `${FIXTURE_ROOT}/第1章.md`, isDir: false },
+    ]
+    const names = walkFiles(tree, TREE_POLICIES.allFiles).map((e) => e.name)
+    expect(names).toContain('人物')
+    expect(names).toContain('第1章.md')
   })
 })

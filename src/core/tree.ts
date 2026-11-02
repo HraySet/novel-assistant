@@ -30,14 +30,54 @@ export interface TreePolicy {
 }
 
 /**
+ * 设定目录的别名集合。
+ *
+ * 角色卡、大纲是「设定」，不是正文。但目录名是用户自己起的：有人叫「人物」、
+ * 有人叫「设定」、有人叫「世界观」。只认「角色/大纲」两个字面值的话，用户一旦
+ * 用了别的名字，这些设定文件就会被当成正文，混进导出、章节数与前情提要。
+ *
+ * 这里维护一份常见别名 → 规范名 的映射，正文排除时命中任意别名即排除；
+ * 读取设定时按规范名优先、别名回退去定位目录。
+ */
+export const SETTING_DIR_ALIASES: Record<string, string> = {
+  角色: '角色',
+  人物: '角色',
+  角色卡: '角色',
+  角色设定: '角色',
+  大纲: '大纲',
+  设定: '大纲',
+  剧情: '大纲',
+  情节: '大纲',
+  剧情大纲: '大纲',
+}
+
+/** 规范目录名：角色 / 大纲 */
+export type SettingDirKind = '角色' | '大纲'
+
+/** 判断一个目录名是不是「角色」类的设定目录（含别名） */
+export function isCharacterDir(name: string): boolean {
+  return SETTING_DIR_ALIASES[name] === '角色'
+}
+
+/** 判断一个目录名是不是「大纲」类的设定目录（含别名） */
+export function isOutlineDir(name: string): boolean {
+  return SETTING_DIR_ALIASES[name] === '大纲'
+}
+
+/** 判断一个目录名是否属于任一设定目录（正文排除用） */
+export function isSettingDir(name: string): boolean {
+  return name in SETTING_DIR_ALIASES
+}
+
+/**
  * 预置策略。新增场景请优先复用；确需特例时用 walkFiles(nodes, { ...TREE_POLICIES.x, ...覆盖 })。
  */
 export const TREE_POLICIES: Record<TreePolicyName, TreePolicy> = {
-  /** 正文：md/txt，排除设定目录与 `_` 前缀（_project.md） */
+  /** 正文：md/txt，排除设定目录（含别名）与 `_` 前缀（_project.md） */
   chapters: {
     includeDirs: false,
     extensions: ['.md', '.txt'],
-    excludeDirs: ['角色', '大纲'],
+    excludeDirs: Object.keys(SETTING_DIR_ALIASES),
     excludePrefixes: ['_', '.'],
   },
   /**
@@ -47,7 +87,7 @@ export const TREE_POLICIES: Record<TreePolicyName, TreePolicy> = {
   exportable: {
     includeDirs: false,
     extensions: ['.md', '.txt'],
-    excludeDirs: ['角色', '大纲'],
+    excludeDirs: Object.keys(SETTING_DIR_ALIASES),
     excludePrefixes: ['_', '.'],
   },
   /** 设定文件（角色卡 / 大纲目录内部的 md/txt） */

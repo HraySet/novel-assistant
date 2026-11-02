@@ -94,7 +94,7 @@ import * as api from '../api/files'
 import { roleColor } from '../composables/useTheme'
 import { streamChat } from '../composables/useAiStream'
 import { useUsageStore } from '../stores/usage'
-import { readDirDocsFull } from '../composables/projectDocs'
+import { readDirDocsFull, resolveSettingDir } from '../composables/projectDocs'
 import { useSettingsStore } from '../stores/settings'
 import ConfirmDialog from './ConfirmDialog.vue'
 import BaseModal from './BaseModal.vue'
@@ -187,7 +187,9 @@ async function loadCharacters() {
   try {
     // 走 projectDocs：与 AI 上下文/检测共用同一套目录遍历与过滤规则，
     // 且用「读全文」版本（角色卡要编辑回写，截断版本会砍掉卡片内容）
-    const docs = await readDirDocsFull(props.projectRoot, '角色')
+    // 目录名可能是别名（人物/角色卡…），先解析到实际存在的目录
+    const dirName = await resolveSettingDir(props.projectRoot, '角色')
+    const docs = await readDirDocsFull(props.projectRoot, dirName)
     const list: CharEntry[] = docs.map((d) => ({ name: d.name, path: d.path, content: d.content }))
     characters.value = list
     void scanMentionsFor(list)
@@ -320,12 +322,16 @@ async function createCharFile(name: string): Promise<string | null> {
   while (n <= 50) {
     const exists = characters.value.some((c) => norm(c.path) === norm(path))
     if (!exists) {
+      // 一步写入模板，不再先 createFile 建空文件再 writeFile——
+      // 否则走备份管线时会为同一张新卡留下「空内容 + 模板」两份历史版本，
+      // 而且 createFile 成功、writeFile 失败时还会残留一个打不开的空 .md
+      const template = `# ${candidate}\n\n- 定位：主角 / 配角 / 反派 / 路人\n- 外貌：\n- 性格：\n- 背景：\n- 备注：\n`
       try {
-        await api.createFile(path)
-        const template = `# ${candidate}\n\n- 定位：主角 / 配角 / 反派 / 路人\n- 外貌：\n- 性格：\n- 背景：\n- 备注：\n`
-        try { await api.writeFile(path, template) } catch { /* 模板写失败不阻塞 */ }
+        await api.writeFile(path, template)
         return path
-      } catch { /* 磁盘上已存在 → 换编号 */ }
+      } catch {
+        // 磁盘上已存在（竞态）→ 换编号重试
+      }
     }
     n++
     candidate = `${safe} ${n}`

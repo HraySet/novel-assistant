@@ -13,6 +13,7 @@ import {
   readDirDocs,
   readOverview,
   readRecap,
+  resolveSettingDir,
 } from './projectDocs'
 
 export function useAiContext(
@@ -29,9 +30,14 @@ export function useAiContext(
   /** 轻量计数：只数文件，不读内容 */
   async function refreshCounts(root: string): Promise<void> {
     const recapChapters = settings.aiContextOptions.recapChapters
+    // 设定目录名可能是别名，先解析
+    const [charDir, outlineDir] = await Promise.all([
+      resolveSettingDir(root, '角色'),
+      resolveSettingDir(root, '大纲'),
+    ])
     const [roles, outlines, overview] = await Promise.all([
-      countDirDocs(root, '角色'),
-      countDirDocs(root, '大纲'),
+      countDirDocs(root, charDir),
+      countDirDocs(root, outlineDir),
       readOverview(root),
     ])
     let recap = 0
@@ -79,7 +85,8 @@ export function useAiContext(
     }
 
     if (opts.roles) {
-      const docs = await readDirDocs(root, '角色')
+      const charDir = await resolveSettingDir(root, '角色')
+      const docs = await readDirDocs(root, charDir)
       if (docs.length > 0) {
         items.push({
           label: `角色(${docs.length})`,
@@ -89,7 +96,8 @@ export function useAiContext(
     }
 
     if (opts.outlines) {
-      const docs = await readDirDocs(root, '大纲')
+      const outlineDir = await resolveSettingDir(root, '大纲')
+      const docs = await readDirDocs(root, outlineDir)
       if (docs.length > 0) {
         items.push({
           label: `大纲(${docs.length})`,

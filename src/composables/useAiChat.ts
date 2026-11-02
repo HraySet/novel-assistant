@@ -11,6 +11,7 @@ import { useStatsStore } from '../stores/stats'
 import { useFileStore } from '../stores/file'
 import { useToastStore } from '../stores/toast'
 import { countWords } from '../utils/countWords'
+import { trimHistory } from '../core/chat'
 import { streamChat, AiRequestError } from './useAiStream'
 import { renderMarkdown, escapeHtml } from './useMarkdown'
 import { useAiContext } from './useAiContext'
@@ -220,9 +221,12 @@ export function useAiChat(target: AiChatTarget) {
     // 懒加载会话补读 messages，避免“切过去立即发”丢历史
     if (!conv.loaded) await chatStore.ensureLoaded(conv.id)
 
-    const priorHistory = conv.messages
-      .filter((m) => m.content !== '')
-      .map((m) => ({ role: m.role, content: m.content }))
+    // 只带最近若干轮：长对话全量回发会让输入 token 线性膨胀（与"低消耗"定位冲突）
+    const priorHistory = trimHistory(
+      conv.messages
+        .filter((m) => m.content !== '')
+        .map((m) => ({ role: m.role, content: m.content })),
+    )
 
     let contextPrompt = ''
     try {

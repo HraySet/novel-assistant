@@ -304,3 +304,36 @@ describe('confirmDraft：同名冲突不能静默通过', () => {
     expect(api.createFile).toHaveBeenCalledWith(`${DIR}/第9章.md`)
   })
 })
+
+describe('章节排序：中文数字命名', () => {
+  it('「第一章…第十章」按数值排列（此前按拼音排成 第二十·二·三·十一·十·一）', () => {
+    const store = seed()
+    store.setTree(
+      [
+        { name: '第十章.md', path: `${ROOT}/第十章.md`, isDir: false, wordCount: 0 },
+        { name: '第二章.md', path: `${ROOT}/第二章.md`, isDir: false, wordCount: 0 },
+        { name: '第一章.md', path: `${ROOT}/第一章.md`, isDir: false, wordCount: 0 },
+        { name: '第二十章.md', path: `${ROOT}/第二十章.md`, isDir: false, wordCount: 0 },
+      ],
+      ROOT,
+    )
+
+    expect(store.tree.map((n) => n.name)).toEqual([
+      '第一章.md', '第二章.md', '第十章.md', '第二十章.md',
+    ])
+  })
+
+  it('目录仍排在文件前面，且目录名同样按数值排序', () => {
+    const store = seed()
+    store.setTree(
+      [
+        { name: '第十章.md', path: `${ROOT}/第十章.md`, isDir: false, wordCount: 0 },
+        { name: '第三卷', path: `${ROOT}/第三卷`, isDir: true, children: [] },
+        { name: '第一卷', path: `${ROOT}/第一卷`, isDir: true, children: [] },
+      ],
+      ROOT,
+    )
+
+    expect(store.tree.map((n) => n.name)).toEqual(['第一卷', '第三卷', '第十章.md'])
+  })
+})

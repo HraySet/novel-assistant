@@ -5,31 +5,20 @@ import type { FileNode, OpenFile, ContextMenuState, DraftState } from '../types/
 import { useStatsStore } from './stats'
 import { useToastStore } from './toast'
 import { countWords } from '../utils/countWords'
-import { sanitizeFileName } from '../core/text'
+import { sanitizeFileName, compareChapterNames } from '../core/text'
 import { basename, dirname, isInside, joinPath, remapPath, samePath } from '../core/paths'
 
 const EXPANDED_STORAGE_PREFIX = 'file-tree-expanded:'
 const FAVORITES_STORAGE_PREFIX = 'file-favorites:'
 
 // ── 自然排序（数字感知）：第1章 < 第2章 < 第10章，而非字典序 ──
-let _naturalCollator: Intl.Collator | null = null
-
-function getNaturalCollator(): Intl.Collator {
-  if (!_naturalCollator) {
-    _naturalCollator = new Intl.Collator(undefined, {
-      numeric: true,
-      sensitivity: 'base',
-    })
-  }
-  return _naturalCollator
-}
-
 function sortNodes(nodes: FileNode[]): FileNode[] {
-  const collator = getNaturalCollator()
   return nodes.sort((a, b) => {
     // 文件夹始终排在文件前面
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
-    return collator.compare(a.name, b.name)
+    // 用 core/text 的比较器：Intl.Collator 的 numeric 只认阿拉伯数字，
+    // 「第一章 / 第二章 / 第十章」会被按拼音排成 第二十·二·三·十一·十·一
+    return compareChapterNames(a.name, b.name)
   })
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { replaceFirst, truncateWithEllipsis, tailChars, cleanHeadingLine, sanitizeFileName } from '../text'
+import { replaceFirst, truncateWithEllipsis, tailChars, cleanHeadingLine, sanitizeFileName, compareChapterNames, parseChineseNumber } from '../text'
 
 describe('replaceFirst', () => {
   it('只替换第一处匹配', () => {
@@ -83,5 +83,67 @@ describe('sanitizeFileName', () => {
 
   it('全是非法字符时返回空串（调用方据此回退原名）', () => {
     expect(sanitizeFileName(':::')).toBe('')
+  })
+})
+
+describe('parseChineseNumber', () => {
+  it('个位数与十位', () => {
+    expect(parseChineseNumber('一')).toBe(1)
+    expect(parseChineseNumber('九')).toBe(9)
+    expect(parseChineseNumber('十')).toBe(10)
+    expect(parseChineseNumber('十一')).toBe(11)
+    expect(parseChineseNumber('二十')).toBe(20)
+    expect(parseChineseNumber('二十三')).toBe(23)
+  })
+
+  it('百位与千位', () => {
+    expect(parseChineseNumber('一百')).toBe(100)
+    expect(parseChineseNumber('一百零五')).toBe(105)
+    expect(parseChineseNumber('三百二十一')).toBe(321)
+    expect(parseChineseNumber('一千零一')).toBe(1001)
+  })
+
+  it('非中文数字返回 null', () => {
+    expect(parseChineseNumber('楔子')).toBeNull()
+    expect(parseChineseNumber('')).toBeNull()
+    expect(parseChineseNumber('abc')).toBeNull()
+  })
+})
+
+describe('compareChapterNames：章节排序', () => {
+  const sort = (names: string[]) => [...names].sort(compareChapterNames)
+
+  it('中文数字章节按数值排序（此前按拼音乱序）', () => {
+    expect(sort(['第一章', '第二章', '第十章', '第十一章', '第二十章'])).toEqual([
+      '第一章', '第二章', '第十章', '第十一章', '第二十章',
+    ])
+  })
+
+  it('阿拉伯数字章节保持正确（回归）', () => {
+    expect(sort(['第10章', '第2章', '第1章', '第20章'])).toEqual([
+      '第1章', '第2章', '第10章', '第20章',
+    ])
+  })
+
+  it('阿拉伯数字与中文数字可以混排', () => {
+    expect(sort(['第3章', '第二章', '第1章', '第一章'])).toEqual([
+      '第1章', '第一章', '第二章', '第3章',
+    ])
+  })
+
+  it('带扩展名同样正确', () => {
+    expect(sort(['第10章.md', '第2章.md', '第1章.md'])).toEqual([
+      '第1章.md', '第2章.md', '第10章.md',
+    ])
+  })
+
+  it('卷名与章名各自按数值排序', () => {
+    expect(sort(['第三卷', '第一卷', '第十卷'])).toEqual(['第一卷', '第三卷', '第十卷'])
+  })
+
+  it('无数字的名称不被打乱（楔子/番外）', () => {
+    const out = sort(['第1章', '楔子', '第2章'])
+    expect(out).toHaveLength(3)
+    expect(out.filter((n) => n.startsWith('第'))).toEqual(['第1章', '第2章'])
   })
 })

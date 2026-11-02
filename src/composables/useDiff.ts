@@ -242,3 +242,165 @@ export function mergeDiffLines(
     : opts.eol === 'crlf' ? '\r\n' : '\n'
   return parts.join(sep)
 }
+
+// ── 修改块分组：勾选的最小单位 ──────────────────────────────────────
+
+export interface DiffHunk {
+  /** 首个可切换片段在 lines 中的下标 */
+  start: number
+  /** 末个可切换片段的下标（含） */
+  end: number
+  removeIdx: number[]
+  addIdx: number[]
+}
+
+export interface GroupOptions {
+  /**
+   * 相邻修改块之间可容忍的未变更字符数，不超过该值时并入同一块。
+   *
+   * 词粒度下这是核心修正：LCS 会把一次整句润色切成十几个「删几字 / 加几字」，
+   * 中间夹着「长」「回鞘」「，」这类短 equal。若不合并，用户要逐片段勾选十几次，
+   * 而且取消其中一半会得到**病句**（删了字却没补上）。合并后一处修改 = 一个勾选框。
+   */
+  mergeGap?: number
+}
+
+/**
+ * 把 diff 片段归成「修改块」。
+ *
+ * 相邻的删除 / 新增序列视为同一处修改。这是勾选与拒绝的最小单位——
+ * 块内所有片段同进同退，因此「取消一半」这种会写出病句的状态在 UI 上不可能出现。
+ */
+export function groupHunks(lines: DiffLine[], opts: GroupOptions = {}): DiffHunk[] {
+  const mergeGap = opts.mergeGap ?? 0
+  const hunks: DiffHunk[] = []
+  let cur: DiffHunk | null = null
+  let gapChars = 0
+  let gapSegs = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line.type === 'equal') {
+      if (cur) {
+        gapChars += line.content.length
+        gapSegs++
+      }
+      continue
+    }
+    // 无间隔（gapSegs === 0）必然同块；有间隔则需在容忍范围内
+    const canMerge = cur !== null && (gapSegs === 0 || (mergeGap > 0 && gapChars <= mergeGap))
+    if (canMerge) {
+      cur!.end = i
+    } else {
+      cur = { start: i, end: i, removeIdx: [], addIdx: [] }
+      hunks.push(cur)
+    }
+    if (line.type === 'remove') cur!.removeIdx.push(i)
+    else cur!.addIdx.push(i)
+    gapChars = 0
+    gapSegs = 0
+  }
+  return hunks
+}
+
+// ── 显示行：把片段流整理成可阅读的行 ────────────────────────────────
+
+export interface DiffSeg {
+  /** 在 lines 数组中的下标，用于查询勾选状态 */
+  index: number
+  type: DiffLine['type']
+  content: string
+}
+
+export interface DiffRow {
+  segs: DiffSeg[]
+  /** 该行是否含变更片段 */
+  changed: boolean
+  /** 行级粒度下的原始行号 */
+  oldLine?: number
+  newLine?: number
+}
+
+/**
+ * 把片段流整理成「显示行」。
+ *
+ * - line 粒度：每个片段本身就是一行，直接映射；
+ * - word 粒度：片段是**文本片段**而非一行，按其内部的换行切分成多行，
+ *   行内保留多个片段。正文这才像散文一样连续可读——此前每片段独占一行，
+ *   一句话被拆成十几行，读起来是断的。
+ */
+export function toRows(lines: DiffLine[], granularity: DiffGranularity = 'word'): DiffRow[] {
+  if (granularity === 'line') {
+    return lines.map((l, i) => ({
+      segs: [{ index: i, type: l.type, content: l.content }],
+      changed: l.type !== 'equal',
+      oldLine: l.oldLine,
+      newLine: l.newLine,
+    }))
+  }
+
+  const rows: DiffRow[] = []
+  let cur: DiffRow = { segs: [], changed: false }
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i]
+    const parts = l.content.split('\n')
+    for (let k = 0; k < parts.length; k++) {
+      if (k > 0) {
+        rows.push(cur)
+        cur = { segs: [], changed: false }
+      }
+      const text = parts[k]
+      if (!text) continue
+      cur.segs.push({ index: i, type: l.type, content: text })
+      if (l.type !== 'equal') cur.changed = true
+    }
+  }
+  // 末行即使为空也要保留，否则文本以换行结尾时会少一行
+  if (cur.segs.length > 0 || rows.length === 0) rows.push(cur)
+  return rows
+}
+
+export type DiffDisplayItem =
+  | { kind: 'row'; rowIndex: number }
+  | { kind: 'fold'; from: number; count: number }
+
+/**
+ * 折叠长段未改动内容：变更行前后各保留 contextLines 行，中间收成一条「展开 N 行」。
+ *
+ * 与 Git 展示 hunk 的方式一致。整章对比时用户要看的是改动，
+ * 若把全文逐行铺开，几十处改动里找一处比直接读原文还慢。
+ */
+export function buildDisplayItems(rows: DiffRow[], contextLines = 2): DiffDisplayItem[] {
+  const ctx = Math.max(0, Math.floor(contextLines))
+  const items: DiffDisplayItem[] = []
+  let i = 0
+  while (i < rows.length) {
+    if (rows[i].changed) {
+      items.push({ kind: 'row', rowIndex: i })
+      i++
+      continue
+    }
+    let j = i
+    while (j < rows.length && !rows[j].changed) j++
+    const len = j - i
+    if (len <= ctx * 2 + 1) {
+      // 短段直接展开：折叠行本身也占一行，不如全显示
+      for (let k = i; k < j; k++) items.push({ kind: 'row', rowIndex: k })
+    } else if (i === 0) {
+      // 文首被裁掉的部分也要给折叠项，否则用户会以为文件从这里开始
+      const drop = len - Math.min(ctx, len)
+      if (drop > 0) items.push({ kind: 'fold', from: i, count: drop })
+      for (let k = j - ctx; k < j; k++) items.push({ kind: 'row', rowIndex: k })
+    } else if (j === rows.length) {
+      for (let k = i; k < i + ctx; k++) items.push({ kind: 'row', rowIndex: k })
+      const drop = len - ctx
+      if (drop > 0) items.push({ kind: 'fold', from: i + ctx, count: drop })
+    } else {
+      for (let k = i; k < i + ctx; k++) items.push({ kind: 'row', rowIndex: k })
+      items.push({ kind: 'fold', from: i + ctx, count: len - ctx * 2 })
+      for (let k = j - ctx; k < j; k++) items.push({ kind: 'row', rowIndex: k })
+    }
+    i = j
+  }
+  return items
+}

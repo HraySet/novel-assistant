@@ -32,6 +32,17 @@ export function useProjectOperations(opts: {
   }
 
   async function openProject(project: ProjectEntry) {
+    // 切换前先落盘：此刻 Rust 端的项目根仍是旧项目，保存路径才有效。
+    // 必须放在 setProjectPath 之前，否则旧项目的写盘会被沙箱拒绝；
+    // 保存失败则取消切换，避免 resetForProject 把未落盘的内容直接丢掉。
+    if (opts.currentProject.value && opts.currentProject.value.path !== project.path) {
+      const flushed = await fileStore.saveAllDirty()
+      if (!flushed) {
+        useToastStore().push('error', '已取消切换项目', '有文件保存失败，请处理后再切换', 5000)
+        return
+      }
+    }
+
     opts.currentProject.value = project
     projectStore.markOpened(project.path)
     opts.view.value = 'editor'

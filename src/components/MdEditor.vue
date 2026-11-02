@@ -216,6 +216,7 @@ const titleDraft = ref('')
 const titleInputRef = ref<HTMLInputElement>()
 const titleSyncError = ref('')
 let wordsTimer: ReturnType<typeof setTimeout> | null = null
+let titleErrorTimer: ReturnType<typeof setTimeout> | null = null
 let outlineCloseHandler: ((e: MouseEvent) => void) | null = null
 let moreCloseHandler: ((e: MouseEvent) => void) | null = null
 
@@ -260,7 +261,8 @@ async function commitTitle() {
   } catch (e) {
     console.error('重命名失败:', e)
     titleSyncError.value = e instanceof Error ? e.message : '重命名失败'
-    setTimeout(() => { titleSyncError.value = '' }, 3000)
+    if (titleErrorTimer) clearTimeout(titleErrorTimer)
+    titleErrorTimer = setTimeout(() => { titleSyncError.value = '' }, 3000)
   }
 }
 
@@ -833,7 +835,10 @@ onUnmounted(() => {
   // 使所有挂起的异步恢复作废
   switchSeq++
   if (saveTimer) clearTimeout(saveTimer)
+  if (wordsTimer) clearTimeout(wordsTimer)
+  if (scrollSaveTimer) clearTimeout(scrollSaveTimer)
   if (outlineTimer) { clearTimeout(outlineTimer); outlineTimer = null }
+  if (titleErrorTimer) clearTimeout(titleErrorTimer)
   if (outlineCloseHandler) document.removeEventListener('mousedown', outlineCloseHandler)
   if (moreCloseHandler) document.removeEventListener('mousedown', moreCloseHandler)
   if (props.path) fileStore.unregisterContentProvider(props.path)
@@ -900,6 +905,9 @@ watch(() => props.path, async (newPath, oldPath) => {
   fileStore.registerContentProvider(newPath, () => view?.state.doc.toString() ?? '')
   isSaved.value = true
   lastSavedTime.value = null
+  // 切换文件后重置「距上次保存」基准：否则上个文件保存后若已过 30 秒，
+  // 新文件第一次输入会被误判为「该强制保存了」，跳过了正常的 1 秒防抖窗口
+  lastSavedAt = Date.now()
   updateScrollPercent()
   updateChapterWords()
   requestAnimationFrame(() => restoreScrollPercent(newPath))

@@ -1,6 +1,7 @@
 import { defineStore, acceptHMRUpdate } from "pinia";
 import { ref, computed, watch } from "vue";
-import { invoke } from "@tauri-apps/api/core";
+import * as api from "../api/files";
+import { readJson, readLocal, writeJson, writeLocal } from "../core/storage";
 
 interface ProviderConfig {
   apiKey: string;
@@ -37,11 +38,8 @@ const DEFAULT_AI_CONTEXT_OPTIONS: AiContextOptions = {
 };
 
 function loadAiContextOptions(): AiContextOptions {
-  try {
-    const raw = localStorage.getItem("ai_context_options");
-    if (raw) return { ...DEFAULT_AI_CONTEXT_OPTIONS, ...JSON.parse(raw) };
-  } catch { /* 回退默认 */ }
-  return { ...DEFAULT_AI_CONTEXT_OPTIONS };
+  const saved = readJson<Partial<AiContextOptions> | null>("ai_context_options", null);
+  return saved ? { ...DEFAULT_AI_CONTEXT_OPTIONS, ...saved } : { ...DEFAULT_AI_CONTEXT_OPTIONS };
 }
 
 const DEFAULT_AI_CONFIGS: Record<string, ProviderConfig> = {
@@ -52,7 +50,7 @@ const DEFAULT_AI_CONFIGS: Record<string, ProviderConfig> = {
 
 async function loadAISettings(): Promise<AllAIConfig> {
   try {
-    const raw = await invoke<Record<string, unknown> | null>("get_ai_config");
+    const raw = await api.getAiConfig();
     let parsed: AllAIConfig | null = null;
     if (raw && typeof raw === "object") {
       const rawObj = raw as Record<string, unknown>;
@@ -81,18 +79,18 @@ async function loadAISettings(): Promise<AllAIConfig> {
     // 迁移：config.json 里残留的旧明文密钥搬进系统钥匙串
     for (const [name, cfg] of Object.entries(parsed.configs)) {
       if (cfg.apiKey) {
-        try { await invoke("set_api_key", { provider: name, apiKey: cfg.apiKey }); } catch { /* 忽略 */ }
+        try { await api.setApiKey(name, cfg.apiKey); } catch { /* 忽略 */ }
       }
     }
     // 从系统钥匙串读回密钥（此后 config.json 不再保存明文）
     for (const name of Object.keys(parsed.configs)) {
       try {
-        const key = await invoke<string | null>("get_api_key", { provider: name });
+        const key = await api.getApiKey(name);
         if (key) parsed.configs[name].apiKey = key;
       } catch { /* 忽略 */ }
     }
     // 落盘剥离版配置（把明文从 config.json 里清掉；Rust 端也会再次剥离）
-    try { await invoke("save_ai_config", { aiConfig: parsed }); } catch { /* 忽略 */ }
+    try { await api.saveAiConfig(parsed); } catch { /* 忽略 */ }
     return parsed;
   } catch { /* fall through to defaults */ }
   return { activeProvider: "openai", configs: { ...DEFAULT_AI_CONFIGS } };
@@ -105,9 +103,9 @@ async function persistAISettings(config: AllAIConfig) {
   try {
     // 密钥进系统钥匙串，非敏感配置进 config.json（Rust 端会再次剥离）
     for (const [name, cfg] of Object.entries(config.configs)) {
-      await invoke("set_api_key", { provider: name, apiKey: cfg.apiKey ?? "" });
+      await api.setApiKey(name, cfg.apiKey ?? "");
     }
-    await invoke("save_ai_config", { aiConfig: config });
+    await api.saveAiConfig(config);
   } catch (e) { console.error("Failed to save AI config:", e); }
 }
 
@@ -163,43 +161,41 @@ export const COLOR_PRESETS: ThemePreset[] = [
     text: { primary: "#e4e4e7", secondary: "#a1a1aa", muted: "#6d6d76" } },
 ]
 
+interface StoredTheme {
+  accentColor?: string
+  bgColor?: string
+  themeDark?: boolean
+  textPrimary?: string
+  textSecondary?: string
+  textMuted?: string
+}
+
 function loadTheme() {
-  try {
-    const raw = localStorage.getItem("theme-settings");
-    if (raw) {
-      const t = JSON.parse(raw);
-      const accent = t.accentColor ?? "#b5652f";
-      const bg = t.bgColor ?? "#faf6ee";
-      const dark = !!t.themeDark;
-      // 旧存档没有文字色：按 accent/bg/dark 匹配预设自动补全，找不到则留给运行时回退
-      const matched = COLOR_PRESETS.find((p) => p.value === accent && p.bg === bg && p.dark === dark);
-      const text = t.textPrimary
-        ? { primary: t.textPrimary, secondary: t.textSecondary, muted: t.textMuted }
-        : matched?.text;
-      return {
-        accentColor: accent,
-        bgColor: bg,
-        themeDark: dark,
-        text,
-      };
-    }
-  } catch { /* 回退默认 */ }
+  const t = readJson<StoredTheme | null>("theme-settings", null);
+  if (t) {
+    const accent = t.accentColor ?? "#b5652f";
+    const bg = t.bgColor ?? "#faf6ee";
+    const dark = !!t.themeDark;
+    // 旧存档没有文字色：按 accent/bg/dark 匹配预设自动补全，找不到则留给运行时回退
+    const matched = COLOR_PRESETS.find((p) => p.value === accent && p.bg === bg && p.dark === dark);
+    const text = t.textPrimary
+      ? { primary: t.textPrimary, secondary: t.textSecondary ?? matched?.text.secondary ?? "", muted: t.textMuted ?? matched?.text.muted ?? "" }
+      : matched?.text;
+    return { accentColor: accent, bgColor: bg, themeDark: dark, text };
+  }
   // 默认主题 = 米纸（暖米黄底 + 赭石棕强调 + 暖棕文字，与最早版本一致）
   return { accentColor: "#b5652f", bgColor: "#faf6ee", themeDark: false, text: COLOR_PRESETS[0].text };
 }
 
 function saveTheme(accent: string, bg: string, dark: boolean, text?: { primary: string; secondary: string; muted: string }) {
-  localStorage.setItem(
-    "theme-settings",
-    JSON.stringify({
-      accentColor: accent,
-      bgColor: bg,
-      themeDark: dark,
-      textPrimary: text?.primary,
-      textSecondary: text?.secondary,
-      textMuted: text?.muted,
-    }),
-  );
+  writeJson("theme-settings", {
+    accentColor: accent,
+    bgColor: bg,
+    themeDark: dark,
+    textPrimary: text?.primary,
+    textSecondary: text?.secondary,
+    textMuted: text?.muted,
+  });
 }
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -234,7 +230,7 @@ export const useSettingsStore = defineStore("settings", () => {
 
   function setAiContextOptions(patch: Partial<AiContextOptions>) {
     aiContextOptions.value = { ...aiContextOptions.value, ...patch };
-    localStorage.setItem("ai_context_options", JSON.stringify(aiContextOptions.value));
+    writeJson("ai_context_options", aiContextOptions.value);
   }
 
   // ── 编辑器字号（px，14-24 可调，兼容旧版 小/中/大 存储值） ──
@@ -245,7 +241,7 @@ export const useSettingsStore = defineStore("settings", () => {
     return Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(n)));
   }
   function loadEditorFontSize(): number {
-    const raw = localStorage.getItem("editor_font_size");
+    const raw = readLocal("editor_font_size");
     if (!raw) return 17;
     if (raw in FONT_SIZE_LEGACY) return FONT_SIZE_LEGACY[raw];
     const n = Number(raw);
@@ -257,7 +253,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const LINE_HEIGHT_MIN = 1.5;
   const LINE_HEIGHT_MAX = 2.2;
   function loadEditorLineHeight(): number {
-    const raw = localStorage.getItem("editor_line_height");
+    const raw = readLocal("editor_line_height");
     if (!raw) return 1.8; // 首次使用：无存储值时 Number(null)=0 会落到下限，需显式判空
     const n = Number(raw);
     if (!Number.isFinite(n)) return 1.8;
@@ -266,11 +262,16 @@ export const useSettingsStore = defineStore("settings", () => {
   const editorLineHeight = ref(loadEditorLineHeight());
 
   // 字号 / 行距 → 编辑器 CSS 变量（实时生效，编辑器主题读取）
+  /** 写 CSS 变量：无 DOM 环境（测试/SSR）直接跳过，不让 store 初始化崩掉 */
+  function setCssVar(name: string, value: string) {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty(name, value);
+  }
   function applyEditorFontSize(size: number) {
-    document.documentElement.style.setProperty("--font-size-editor", size + "px");
+    setCssVar("--font-size-editor", size + "px");
   }
   function applyEditorLineHeight(lh: number) {
-    document.documentElement.style.setProperty("--line-height-editor", String(lh));
+    setCssVar("--line-height-editor", String(lh));
   }
   applyEditorFontSize(editorFontSize.value);
   applyEditorLineHeight(editorLineHeight.value);
@@ -278,15 +279,15 @@ export const useSettingsStore = defineStore("settings", () => {
   watch(editorLineHeight, applyEditorLineHeight);
 
   // 正文宽度 → 编辑器 CSS 变量
-  const editorWidth = ref(localStorage.getItem("editor_width") || "中");
+  const editorWidth = ref(readLocal("editor_width") || "中");
   const EDITOR_WIDTH_MAP: Record<string, string> = { 窄: "640px", 中: "760px", 宽: "880px" };
   function applyEditorWidth(w: string) {
-    document.documentElement.style.setProperty("--editor-max-width", EDITOR_WIDTH_MAP[w] ?? EDITOR_WIDTH_MAP["中"]!);
+    setCssVar("--editor-max-width", EDITOR_WIDTH_MAP[w] ?? EDITOR_WIDTH_MAP["中"]!);
   }
   applyEditorWidth(editorWidth.value);
   watch(editorWidth, applyEditorWidth);
-  const typewriterMode = ref(localStorage.getItem("editor_typewriter") === "1");
-  const focusLineMode = ref(localStorage.getItem("editor_focusline") === "1");
+  const typewriterMode = ref(readLocal("editor_typewriter") === "1");
+  const focusLineMode = ref(readLocal("editor_focusline") === "1");
 
   // Async init for AI settings from secure backend storage
   let aiInitialized = false;
@@ -298,39 +299,34 @@ export const useSettingsStore = defineStore("settings", () => {
     aiProvider.value = (saved.activeProvider as "openai" | "claude" | "deepseek") || "openai";
     if (typeof saved.temperature === 'number') aiTemperature.value = saved.temperature;
   }
-  // ── 快捷操作提示词覆盖（用户自定义，存 localStorage，缺省用内置） ──
-  function loadAiQuickPrompts(): Record<string, string> {
-    try {
-      const raw = localStorage.getItem('ai_quick_prompts')
-      if (raw) return JSON.parse(raw)
-    } catch { /* 忽略 */ }
-    return {}
-  }
-  const aiQuickPrompts = ref<Record<string, string>>(loadAiQuickPrompts())
+  // ── 快捷操作提示词覆盖（用户自定义，持久化到 localStorage，缺省用内置） ──
+  const aiQuickPrompts = ref<Record<string, string>>(
+    readJson<Record<string, string>>('ai_quick_prompts', {}),
+  )
   function setAiQuickPrompt(label: string, text: string) {
     const next = { ...aiQuickPrompts.value, [label]: text }
     aiQuickPrompts.value = next
-    localStorage.setItem('ai_quick_prompts', JSON.stringify(next))
+    writeJson('ai_quick_prompts', next)
   }
   function resetAiQuickPrompt(label: string) {
     const next = { ...aiQuickPrompts.value }
     delete next[label]
     aiQuickPrompts.value = next
-    localStorage.setItem('ai_quick_prompts', JSON.stringify(next))
+    writeJson('ai_quick_prompts', next)
   }
   initAISettings();
 
   function setEditorFontSize(size: number) {
     editorFontSize.value = clampFontSize(size);
-    localStorage.setItem("editor_font_size", String(editorFontSize.value));
+    writeLocal("editor_font_size", String(editorFontSize.value));
   }
   function setEditorLineHeight(lh: number) {
     editorLineHeight.value = Math.min(LINE_HEIGHT_MAX, Math.max(LINE_HEIGHT_MIN, Math.round(lh * 10) / 10));
-    localStorage.setItem("editor_line_height", String(editorLineHeight.value));
+    writeLocal("editor_line_height", String(editorLineHeight.value));
   }
-  function setEditorWidth(w: string) { editorWidth.value = w; localStorage.setItem("editor_width", w); }
-  function toggleTypewriter() { typewriterMode.value = !typewriterMode.value; localStorage.setItem("editor_typewriter", typewriterMode.value ? "1" : "0"); }
-  function toggleFocusLine() { focusLineMode.value = !focusLineMode.value; localStorage.setItem("editor_focusline", focusLineMode.value ? "1" : "0"); }
+  function setEditorWidth(w: string) { editorWidth.value = w; writeLocal("editor_width", w); }
+  function toggleTypewriter() { typewriterMode.value = !typewriterMode.value; writeLocal("editor_typewriter", typewriterMode.value ? "1" : "0"); }
+  function toggleFocusLine() { focusLineMode.value = !focusLineMode.value; writeLocal("editor_focusline", focusLineMode.value ? "1" : "0"); }
 
   function applyPreset(preset: "openai" | "claude" | "deepseek") {
     aiProvider.value = preset;

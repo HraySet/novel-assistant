@@ -261,6 +261,7 @@ Step 1 做完会立刻产生两个副产品：
 | Step 3 拆 App.vue | ✅ 1 commit | script 330 → 262 行 |
 | 前端遗留项 | ✅ 1 commit | 请求头参数化 / 路径显示 / 单字搜索 / 超时 |
 | Step 4 Rust 拆分 | ✅ 2 commits | cargo check/test/build 通过，19 个 Rust 用例 |
+| 第二轮：设计债清理 | ✅ 4 commits | 157 前端用例 + 19 Rust 用例 |
 
 分支：`refactor/core-seam`，基线标签 `baseline-2026-11-02`。
 
@@ -319,4 +320,35 @@ Git Bash 下直接 `cmd //c` 会被 MSYS 参数转换破坏，改用纯 ASCII �
 @echo off
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
 cargo %*
+```
+
+## 11. 第二轮：设计债清理（超出原计划）
+
+原计划只覆盖「重复实现」与「模块拆分」，第二轮针对的是**派生状态与分层一致性**——
+不在 bug 清单里，但对长期可维护性影响更大。
+
+| # | 问题 | 类型 | 处理 |
+|---|---|---|---|
+| 1 | 6 处直接 `invoke()` 绕过 api 层 | 分层一致性 | 补齐 api 层 7 个函数，调用方全部改走 api |
+| 2 | settings 18 处裸 `localStorage` + 直接操作 `document` | 可测性 | 收敛到 `core/storage`；补 `setCssVar` 环境守卫后新增 8 个用例 |
+| 3 | 「从本章抽取」用 `openFile.content` 快照 | **真 bug** | 传 `getCurrentContent` getter，打开面板时读编辑器最新内容 |
+| 4 | AI 对话历史全量回发 | 成本/稳定性 | 新增 `core/chat.trimHistory`（12 条 / 12000 字预算），7 个用例 |
+| 5 | `project.wordCount` 只在打开时算 | 派生状态过期 | 回项目库前重算（`goLibrary`） |
+
+> 注：第 5 项的改动与第 3 项同在 `App.vue`，落在同一个提交里（`fix(character)`），
+> 提交信息未单列，此处补记。
+
+### 由此沉淀的设计判据（已写入 DESIGN.md §二 7-9）
+
+- **派生状态不缓存**，或必须回答「什么时候过期、过期时谁知道」
+- **跨组件传内容优先传 getter**，不传快照（接收方可能在快照之后才用）
+- **发给模型的东西必须有预算**，且预算集中定义（`CONTEXT_BUDGETS` / `trimHistory`）
+
+### 验证
+
+```
+前端  vitest   157 passed (12 files)
+前端  vue-tsc  0 错误
+前端  vite build 通过
+Rust  cargo check / test(19) / build 均通过
 ```

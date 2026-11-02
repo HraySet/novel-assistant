@@ -57,6 +57,7 @@ export const useStatsStore = defineStore('stats', () => {
   // ── 持久化 ──
   async function persist() {
     if (!projectRoot.value) return
+    rolloverIfNeeded()
     const data: StatsData = {
       records: dailyRecords.value,
       snapshots: chapterSnapshots.value,
@@ -196,12 +197,25 @@ export const useStatsStore = defineStore('stats', () => {
     if (!(chapterId in chapterSnapshots.value)) chapterSnapshots.value[chapterId] = wordCount
   }
 
+  /**
+   * 跨天滚动：应用长时间运行跨过午夜时，把「今日时长」归零并把日期推进到今天。
+   * 旧实现只在 load() 时校验日期，导致熬夜写作的时长全部累加到新的一天。
+   */
+  function rolloverIfNeeded(): boolean {
+    const today = todayString()
+    if (sessionDate.value === today) return false
+    sessionDate.value = today
+    todaySessionMs.value = 0
+    return true
+  }
+
   /** 保存文件时调用：对比快照，只把「新增」字数计入当日（删改不减计数） */
   function recordChapterEdit(chapterId: string, newWordCount: number) {
     if (!(chapterId in chapterSnapshots.value)) {
       chapterSnapshots.value[chapterId] = newWordCount
       return
     }
+    rolloverIfNeeded()
     const prev = chapterSnapshots.value[chapterId]
     const delta = newWordCount - prev
     chapterSnapshots.value[chapterId] = newWordCount

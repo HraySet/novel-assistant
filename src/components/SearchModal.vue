@@ -23,7 +23,7 @@
           <div class="search-results" ref="resultsEl">
             <!-- 近期文件（无搜索词时） -->
             <template v-if="!searchQuery && recentFiles.length">
-              <div class="results-label">最近打开</div>
+              <div class="results-label">{{ recentLabel }}</div>
               <div
                 v-for="(f, i) in recentFiles"
                 :key="f.path"
@@ -92,6 +92,9 @@ import { Search, SearchX, FileText, Folder, X } from 'lucide-vue-next'
 import type { FileNode } from '../types/file'
 import * as api from '../api/files'
 import BaseModal from './BaseModal.vue'
+import { walkFiles, TREE_POLICIES, type TreeEntry } from '../core/tree'
+import { normalize } from '../core/paths'
+import { useFileStore } from '../stores/file'
 
 interface SearchResult {
   name: string
@@ -111,6 +114,8 @@ const emit = defineEmits<{
   'select-file': [path: string]
 }>()
 
+const fileStore = useFileStore()
+
 const searchQuery = ref('')
 const searchIndex = ref(0)
 const searching = ref(false)
@@ -121,56 +126,61 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null
 // 查询序号：每次查询变化 +1，异步结果回来时序号不匹配则丢弃，防止旧结果覆盖新结果
 let searchSeq = 0
 
-// ── 收集所有文件路径（排除目录） ──
-function collectFiles(nodes: FileNode[], basePath = ''): { path: string; name: string; relPath: string }[] {
-  const result: { path: string; name: string; relPath: string }[] = []
-  for (const n of nodes) {
-    if (!n.isDir) {
-      result.push({ path: n.path, name: n.name, relPath: basePath || '/' })
-    }
-    if (n.children) {
-      const childBase = basePath ? `${basePath}/${n.name}` : n.name
-      result.push(...collectFiles(n.children, childBase))
-    }
+/** 一次遍历，供文件名/内容/最近三处复用（此前各走一遍树，共三次递归） */
+const allEntries = computed<TreeEntry[]>(() => walkFiles(props.files, TREE_POLICIES.allFiles))
+const textEntries = computed<TreeEntry[]>(() =>
+  allEntries.value.filter((e) => !e.isDir && /\.(md|txt)$/i.test(e.name)),
+)
+
+function toResult(entry: TreeEntry, snippet?: string): SearchResult {
+  return {
+    name: entry.name,
+    path: entry.path,
+    isDir: entry.isDir,
+    relPath: entry.parentRelPath || '/',
+    snippet,
   }
-  return result
 }
 
 // ── 文件名搜索（即时） ──
 const nameResults = computed(() => {
-  if (!searchQuery.value) return []
   const q = searchQuery.value.toLowerCase()
-  const results: SearchResult[] = []
-
-  function walk(nodes: FileNode[], parentPath: string) {
-    for (const node of nodes) {
-      if (node.name.toLowerCase().includes(q)) {
-        results.push({
-          name: node.name,
-          path: node.path,
-          isDir: node.isDir,
-          relPath: parentPath || '/',
-        })
-      }
-      if (node.children) {
-        const childPath = parentPath ? `${parentPath}/${node.name}` : node.name
-        walk(node.children, childPath)
-      }
-    }
-  }
-  walk(props.files, '')
-  return results.slice(0, 15)
+  if (!q) return []
+  return allEntries.value
+    .filter((e) => e.name.toLowerCase().includes(q))
+    .slice(0, 15)
+    .map((e) => toResult(e))
 })
 
 // ── 近期文件 ──
-const recentFiles = computed(() => {
+/**
+ * 来自真实的打开历史（file store.openHistory 倒序去重）。
+ * 此前实现是 `collectFiles(tree).slice(0, 8)`——文件树的前 8 个，
+ * 与「最近打开」语义无关，用户看到的永远是最前面的章节。
+ * 历史为空（首次启动）时退回按树顺序展示，并把标题如实改为「全部文件」。
+ */
+const recentFiles = computed<SearchResult[]>(() => {
   if (searchQuery.value) return []
-  const allFiles = collectFiles(props.files)
-  return allFiles.slice(0, 8).map(f => ({
-    ...f,
-    isDir: false as const,
-  }))
+  const byPath = new Map<string, TreeEntry>()
+  for (const e of allEntries.value) {
+    if (!e.isDir) byPath.set(normalize(e.path), e)
+  }
+  const out: SearchResult[] = []
+  const seen = new Set<string>()
+  for (let i = fileStore.openHistory.length - 1; i >= 0 && out.length < 8; i--) {
+    const key = normalize(fileStore.openHistory[i])
+    if (seen.has(key)) continue
+    seen.add(key)
+    const entry = byPath.get(key)
+    if (entry) out.push(toResult(entry))
+  }
+  if (out.length === 0) {
+    return allEntries.value.filter((e) => !e.isDir).slice(0, 8).map((e) => toResult(e))
+  }
+  return out
 })
+
+const recentLabel = computed(() => (fileStore.openHistory.length > 0 ? '最近打开' : '全部文件'))
 
 // ── 合并结果 + 索引起始偏移 ──
 const offsetForName = computed(() => recentFiles.value.length)
@@ -194,7 +204,8 @@ watch(searchQuery, (q) => {
 
   searchTimer = setTimeout(async () => {
     const term = q.toLowerCase()
-    const files = collectFiles(props.files)
+    // 只读可读文本（与导出支持的格式一致），图片等二进制已在 textEntries 过滤掉
+    const files = textEntries.value
 
     // 并发读取（限 6 路），结果按文件顺序收集；找到 15 条即停
     const out: (SearchResult | null)[] = new Array(files.length).fill(null)
@@ -206,8 +217,6 @@ watch(searchQuery, (q) => {
         const i = next++
         if (i >= files.length) return
         const f = files[i]
-        // 只搜可读文本（与导出支持的格式一致），跳过图片等二进制文件
-        if (!/\.(md|txt)$/i.test(f.name)) continue
         try {
           const content = await api.readFile(f.path)
           if (seq !== searchSeq || matchCount >= 15) return
@@ -222,14 +231,7 @@ watch(searchQuery, (q) => {
             // 高亮匹配词：先整体 HTML 转义（正文可能含 <script> 等片段），
             // 再对命中词包 <mark>，杜绝 v-html 注入
             snippet = highlightWithMark(snippet, term)
-
-            out[i] = {
-              name: f.name,
-              path: f.path,
-              isDir: false,
-              relPath: f.relPath,
-              snippet,
-            }
+            out[i] = toResult(f, snippet)
             matchCount++
           }
         } catch {

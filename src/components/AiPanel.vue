@@ -94,7 +94,7 @@
       :show="showSummaries"
       :project-root="projectRoot"
       @close="showSummaries = false"
-      @insert="(text) => emit('insert', text)"
+      @insert="insertOrWarn"
     />
     <ConsistencyPanel
       :show="showConsistency"
@@ -109,6 +109,7 @@ import { ref, watch, nextTick, onUnmounted } from 'vue'
 import { Expand, Square, NotebookText, Zap, ListChecks, FileText, AlertCircle, MoreHorizontal } from 'lucide-vue-next'
 import { useSettingsStore } from '../stores/settings'
 import { useAiChat } from '../composables/useAiChat'
+import { useToastStore } from '../stores/toast'
 import { storeToRefs } from 'pinia'
 import { useSelectionStore, type EditorSelection } from '../stores/selection'
 import { QUICK_ACTIONS, type QuickAction } from '../composables/aiQuickActions'
@@ -127,6 +128,13 @@ const props = defineProps<{
   applyToSelection?: (target: { path: string; from: number; to: number; original?: string }, text: string) => boolean | Promise<boolean>
 }>()
 const emit = defineEmits<{ expand: []; insert: [text: string] }>()
+
+/** 摘要库的「插入」：与对话消息的插入走同一条判定，失败要说明原因 */
+function insertOrWarn(text: string) {
+  if (!props.insertText?.(text)) {
+    useToastStore().push('info', '未插入', '光标前已有相同内容，未重复插入', 2500)
+  }
+}
 
 const settings = useSettingsStore()
 const detectionStore = useDetectionStore()
@@ -254,6 +262,8 @@ function quickDisabled(a: QuickAction): boolean {
 }
 
 function quickTitle(a: QuickAction): string {
+  // 生成中按钮会整体变灰，但不说原因的话用户只会以为坏了
+  if (chatStore.streaming) return '正在生成，完成后再用'
   if (SELECTION_REQUIRED.has(a.label) && !selection.value) return '先选中文字再使用'
   if (selection.value && SELECTION_AWARE.has(a.label)) return `针对选中内容（${selection.value.words} 字）`
   return a.hint

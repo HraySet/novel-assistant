@@ -104,7 +104,17 @@
     :show="showSummaries"
     :project-root="projectRoot"
     @close="showSummaries = false"
-    @insert="(text) => emit('insert', text)"
+    @insert="insertOrWarn"
+  />
+
+  <ConfirmDialog
+    :show="pendingDeleteConv !== null"
+    title="删除对话"
+    :message="`「${pendingDeleteConv?.title ?? ''}」将从磁盘删除，无法恢复。`"
+    ok-label="删除"
+    danger
+    @confirm="confirmDeleteConv"
+    @cancel="pendingDeleteConv = null"
   />
 </template>
 
@@ -115,7 +125,9 @@ import { Plus, X, Minimize2, Square, NotebookText, Sparkles } from 'lucide-vue-n
 import { useSettingsStore } from '../stores/settings'
 import { useChatStore } from '../stores/chat'
 import { useAiChat } from '../composables/useAiChat'
+import { useToastStore } from '../stores/toast'
 import ChatMessage from './ChatMessage.vue'
+import ConfirmDialog from './ConfirmDialog.vue'
 import AiContextBar from './AiContextBar.vue'
 import SummaryLibrary from './SummaryLibrary.vue'
 
@@ -198,7 +210,26 @@ function handleNewChat() {
   nextTick(() => inputEl.value?.focus())
 }
 
-function handleDelete(id: string) { chatStore.deleteConversation(id) }
+const pendingDeleteConv = ref<{ id: string; title: string } | null>(null)
+
+/** 删除对话：直接删 .chatlog 文件且不可恢复，必须先确认 */
+function handleDelete(id: string) {
+  const conv = conversations.value.find((c) => c.id === id)
+  pendingDeleteConv.value = { id, title: conv?.title || '该对话' }
+}
+
+function confirmDeleteConv() {
+  const target = pendingDeleteConv.value
+  pendingDeleteConv.value = null
+  if (target) void chatStore.deleteConversation(target.id)
+}
+
+/** 摘要库的「插入」：与对话消息的插入走同一条判定，失败要说明原因 */
+function insertOrWarn(text: string) {
+  if (!props.insertText?.(text)) {
+    useToastStore().push('info', '未插入', '光标前已有相同内容，未重复插入', 2500)
+  }
+}
 
 async function handleSend() {
   const text = inputText.value.trim()

@@ -149,6 +149,8 @@ export function useAiChat(target: AiChatTarget) {
       savedTimer = setTimeout(() => { savedIndex.value = null }, 2000)
     } catch (e) {
       console.error('保存摘要失败:', e)
+      // 此前只往控制台写一行：用户点了「存为摘要」看不到任何结果，也不知道要不要重试
+      useToastStore().push('error', '保存摘要失败', e instanceof Error ? e.message : String(e), 4000)
     }
   }
 
@@ -271,10 +273,20 @@ export function useAiChat(target: AiChatTarget) {
       })
       if (aborted) {
         chatStore.updateLastMessage(convId, result ? `${result}\n\n_（已停止生成）_` : '（已停止）')
+        // 一个字都没收到就中止：这条占位只剩「（已停止）」，不能留着原文对比，
+        // 否则它会被当成 AI 的修改，点「应用修改」就把选区替换成这行提示
+        if (!result) {
+          const idx = (chatStore.conversations.find((c) => c.id === convId)?.messages.length ?? 1) - 1
+          chatStore.patchMessage(convId, idx, { originalContent: undefined, targetRange: undefined })
+        }
       }
     } catch (e) {
       const message = e instanceof AiRequestError ? e.message : '网络请求失败'
       chatStore.updateLastMessage(convId, `⚠️ ${message}`)
+      // 同上且更危险：错误提示绝不能进入 DiffView，否则「应用修改」会用
+      // 「⚠️ 网络请求失败」覆盖整段正文
+      const idx = (chatStore.conversations.find((c) => c.id === convId)?.messages.length ?? 1) - 1
+      chatStore.patchMessage(convId, idx, { originalContent: undefined, targetRange: undefined })
     } finally {
       chatStore.finishStream(ctrl)
       loading.value = false

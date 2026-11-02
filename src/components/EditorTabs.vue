@@ -63,14 +63,10 @@ function switchTab(path: string) {
   fileStore.handleFileSelect(path)
 }
 
-async function closeTab(path: string) {
-  // 脏文件先保存再关；保存失败（含写盘期间仍有新键入）时中止关闭，避免丢内容
-  const target = openFiles.value.find(f => f.path === path)
-  if (target?.isDirty) {
-    const saved = await fileStore.saveFile(path)
-    if (!saved) return
-  }
-  fileStore.closeFile(path)
+function closeTab(path: string) {
+  // 保存与关闭统一由 closeFile 负责（脏文件先落盘、失败则不关），
+  // 这里再判一次 isDirty 会变成重复保存
+  void fileStore.closeFile(path)
 }
 
 // ── 右键菜单 ──

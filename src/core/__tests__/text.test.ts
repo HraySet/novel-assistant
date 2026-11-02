@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { replaceFirst, truncateWithEllipsis, tailChars, cleanHeadingLine } from '../text'
+import { replaceFirst, truncateWithEllipsis, tailChars, cleanHeadingLine, sanitizeFileName } from '../text'
 
 describe('replaceFirst', () => {
   it('只替换第一处匹配', () => {
@@ -59,5 +59,29 @@ describe('cleanHeadingLine', () => {
   })
   it('普通行只去空白', () => {
     expect(cleanHeadingLine('  正文  ')).toBe('正文')
+  })
+})
+
+describe('sanitizeFileName', () => {
+  it('去掉 Windows 非法字符', () => {
+    expect(sanitizeFileName('第1章:开端')).toBe('第1章开端')
+    expect(sanitizeFileName('a<b>c"d/e\\f|g?h*i')).toBe('abcdefghi')
+  })
+
+  it('压缩空白并去首尾空格', () => {
+    expect(sanitizeFileName('  第 一 章  ')).toBe('第 一 章')
+  })
+
+  it('去掉结尾的点与空格（Windows 不允许）', () => {
+    expect(sanitizeFileName('第一章...')).toBe('第一章')
+    expect(sanitizeFileName('第一章 。')).toBe('第一章 。')
+  })
+
+  it('限制长度', () => {
+    expect(sanitizeFileName('字'.repeat(200))).toHaveLength(80)
+  })
+
+  it('全是非法字符时返回空串（调用方据此回退原名）', () => {
+    expect(sanitizeFileName(':::')).toBe('')
   })
 })

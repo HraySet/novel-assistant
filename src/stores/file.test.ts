@@ -246,3 +246,61 @@ describe('handleFileSelect：打开失败要有反馈', () => {
     expect(store.openHistory).not.toContain(OUT)
   })
 })
+
+describe('confirmRename：改名走与标题栏相同的清洗规则', () => {
+  it('冒号等非法字符自动去掉，而不是报「重命名失败」', async () => {
+    const store = seed()
+    store.startRename(CH1)
+
+    await store.confirmRename('第1章:开端')
+
+    expect(api.renamePath).toHaveBeenCalledWith(CH1, `${DIR}/第1章开端.md`)
+  })
+
+  it('名字被改到丢掉扩展名时自动补回', async () => {
+    const store = seed()
+    store.startRename(CH1)
+
+    await store.confirmRename('第2章.')
+
+    expect(api.renamePath).toHaveBeenCalledWith(CH1, `${DIR}/第2章.md`)
+  })
+
+  it('清洗后与原名相同则不发起重命名', async () => {
+    const store = seed()
+    store.startRename(CH1)
+
+    await store.confirmRename('第1章.md')
+
+    expect(api.renamePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('confirmDraft：同名冲突不能静默通过', () => {
+  it('同名文件夹不发起创建（create_dir_all 对已存在目录不会报错）', async () => {
+    const store = seed()
+    store.startDraft('dir', ROOT)
+
+    await store.confirmDraft('卷1')
+
+    expect(api.createDir).not.toHaveBeenCalled()
+  })
+
+  it('同名文件也不发起创建', async () => {
+    const store = seed()
+    store.startDraft('file', DIR)
+
+    await store.confirmDraft('第1章.md')
+
+    expect(api.createFile).not.toHaveBeenCalled()
+  })
+
+  it('不重名时正常创建并打开', async () => {
+    const store = seed()
+    store.startDraft('file', DIR)
+
+    await store.confirmDraft('第9章.md')
+
+    expect(api.createFile).toHaveBeenCalledWith(`${DIR}/第9章.md`)
+  })
+})

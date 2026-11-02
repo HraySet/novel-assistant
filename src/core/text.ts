@@ -36,3 +36,19 @@ export function tailChars(text: string, n: number): string {
 export function cleanHeadingLine(line: string): string {
   return line.replace(/^#{1,6}\s*/, '').trim()
 }
+
+/**
+ * 清洗成合法文件名：去掉 Windows/macOS 都不允许的字符，压缩空白，限制长度。
+ *
+ * 两条改名入口（编辑器标题栏、文件树重命名）必须用同一份规则——
+ * 此前只有标题栏会清洗，文件树里输入 `第1章:开端` 会直接报「重命名失败」。
+ */
+export function sanitizeFileName(input: string): string {
+  return input
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    // Windows 上文件名不能以点或空格结尾
+    .replace(/[. ]+$/, '')
+    .slice(0, 80)
+}

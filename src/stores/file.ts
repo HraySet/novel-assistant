@@ -5,6 +5,7 @@ import type { FileNode, OpenFile, ContextMenuState, DraftState } from '../types/
 import { useStatsStore } from './stats'
 import { useToastStore } from './toast'
 import { countWords } from '../utils/countWords'
+import { sanitizeFileName } from '../core/text'
 import { basename, dirname, isInside, joinPath, remapPath, samePath } from '../core/paths'
 
 const EXPANDED_STORAGE_PREFIX = 'file-tree-expanded:'
@@ -498,7 +499,10 @@ export const useFileStore = defineStore('file', () => {
 
   async function confirmRename(newName: string) {
     const path = renamingPath.value
-    if (!path || !newName.trim()) {
+    // 清洗非法字符：与编辑器标题栏改名用同一份规则，
+    // 否则在树里输入 `第1章:开端` 会直接报「重命名失败」而不是自动纠正
+    const cleaned = sanitizeFileName(newName)
+    if (!path || !cleaned) {
       renamingPath.value = null
       return
     }
@@ -506,11 +510,17 @@ export const useFileStore = defineStore('file', () => {
     // Clear the editing state before the async filesystem operation so an
     // Enter key event followed by blur cannot submit the same rename twice.
     renamingPath.value = null
-    const trimmed = newName.trim()
     const node = findNode(path)
-    if (node && trimmed !== node.name) {
+    if (!node) return
+
+    // 文件必须保留原扩展名：用户可能把名字改成「第1章.」，清洗后丢掉 .md 会变成无扩展名文件
+    let finalName = cleaned
+    const ext = node.isDir ? '' : (node.name.match(/\.(md|txt)$/i)?.[0] ?? '')
+    if (ext && !finalName.toLowerCase().endsWith(ext.toLowerCase())) finalName += ext
+
+    if (finalName !== node.name) {
       try {
-        await renamePath(path, trimmed)
+        await renamePath(path, finalName)
       } catch (e) {
         console.error('重命名失败:', e)
         useToastStore().push('error', '重命名失败', e instanceof Error ? e.message : String(e), 4000)
@@ -531,7 +541,15 @@ export const useFileStore = defineStore('file', () => {
 
   async function confirmDraft(name: string) {
     if (!draft.value) return
-    const finalName = name.trim() || draft.value.defaultName
+    const finalName = sanitizeFileName(name) || draft.value.defaultName
+    const targetPath = joinPath(draft.value.parentPath, finalName)
+    // 同名冲突要提前拦：目录用 create_dir_all，已存在时静默成功，
+    // 用户点了确认却什么都没发生；文件则要等到 Rust 抛错才知道。
+    if (findNode(targetPath)) {
+      const label = draft.value.type === 'dir' ? '文件夹' : '文件'
+      useToastStore().push('info', `已存在同名${label}`, `「${finalName}」已存在，换个名字`, 2800)
+      return // 保留草稿，让用户直接改名
+    }
     try {
       if (draft.value.type === 'file') {
         const filePath = await createFile(draft.value.parentPath, finalName)

@@ -43,9 +43,10 @@
             class="fav-row"
             :class="{ 'fav-row--active': fileStore.selectedPath === f.path }"
             :title="f.path"
-            @click="fileStore.handleFileSelect(f.path)"
+            @click="openFavorite(f)"
           >
-            <FileText :size="12" class="shrink-0 text-text-muted" />
+            <Folder v-if="f.isDir" :size="12" class="shrink-0 text-text-muted" />
+            <FileText v-else :size="12" class="shrink-0 text-text-muted" />
             <span class="fav-name">{{ f.name }}</span>
           </button>
         </div>
@@ -89,38 +90,55 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { FilePlus, FolderPlus, FoldVertical, Star, FileText, ChevronRight } from 'lucide-vue-next'
+import { FilePlus, FolderPlus, FoldVertical, Star, FileText, Folder, ChevronRight } from 'lucide-vue-next'
 import type { FileNode } from '../types/file'
 import { useFileStore } from '../stores/file'
 import FileTreeNode from './FileTreeNode.vue'
 import DraftRow from './DraftRow.vue'
 import { importDroppedFilesInto } from '../composables/useExternalFileImport'
+import { dirname } from '../core/paths'
 
 const fileStore = useFileStore()
 const { tree: treeNodes, draft: draftState } = storeToRefs(fileStore)
 
-/** 展平文件树中所有被收藏的文件（保持树顺序） */
+/**
+ * 展平文件树中被收藏的条目（文件与目录都算，保持树顺序）。
+ *
+ * 此前只收集文件：目录上同样有星标按钮、点了也会变黄，但它永远不会出现在
+ * 收藏区——用户以为收藏没生效。
+ */
 const favoriteNodes = computed(() => {
   const out: FileNode[] = []
   const walk = (nodes: FileNode[]) => {
     for (const n of nodes) {
-      if (n.isDir) {
-        if (n.children) walk(n.children)
-      } else if (fileStore.isFavorite(n.path)) {
-        out.push(n)
-      }
+      if (fileStore.isFavorite(n.path)) out.push(n)
+      if (n.isDir && n.children) walk(n.children)
     }
   }
   walk(treeNodes.value)
   return out
 })
 
+/** 收藏区点击：文件直接打开；目录展开并选中（目录没有"打开"的概念） */
+function openFavorite(node: FileNode) {
+  if (node.isDir) {
+    fileStore.expandPath(node.path)
+    fileStore.setSelectedPath(node.path)
+  } else {
+    void fileStore.handleFileSelect(node.path)
+  }
+}
+
 // 收藏分组折叠状态（跨会话记忆）
 const showFavorites = ref(localStorage.getItem('file-fav-section-open') !== '0')
 watch(showFavorites, (v) => localStorage.setItem('file-fav-section-open', v ? '1' : '0'))
 function handleCreate(type: 'file' | 'dir') {
   const selectedNode = fileStore.selectedPath ? fileStore.findNode(fileStore.selectedPath) : null
-  const parentPath = selectedNode?.isDir ? selectedNode.path : fileStore.projectRoot
+  // 选中文件时应建在它**所在的目录**里——此前一律退到项目根，
+  // 用户选着「第一卷/第1章」点新建，结果新文件落到了项目最外层
+  const parentPath = selectedNode
+    ? (selectedNode.isDir ? selectedNode.path : dirname(selectedNode.path))
+    : fileStore.projectRoot
   fileStore.expandPath(parentPath)
   fileStore.startDraft(type, parentPath)
 }

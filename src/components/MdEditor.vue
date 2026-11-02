@@ -114,6 +114,7 @@ import { useFileStore } from '../stores/file'
 import { useSelectionStore } from '../stores/selection'
 import { QUICK_ACTIONS } from '../composables/aiQuickActions'
 import { countWords } from '../utils/countWords'
+import { sanitizeFileName } from '../core/text'
 import { ListTree, ChevronUp, ChevronDown, MoreHorizontal, Sparkles, ArrowLeftRight, CheckCircle2, CircleCheck, Flame, Timer, AlertCircle, Focus } from 'lucide-vue-next'
 import HistoryModal from './HistoryModal.vue'
 import StatusDot from './StatusDot.vue'
@@ -232,10 +233,6 @@ function formatTime(d: Date): string {
 function fileNameOf(name?: string): string {
   if (!name) return '未命名'
   return name.replace(/\.(md|txt)$/i, '')
-}
-
-function sanitizeFileName(s: string): string {
-  return s.replace(/[<>:"/\\|?*]/g, '').trim().slice(0, 80)
 }
 
 /** 标题即文件名：从文件名同步（去掉扩展名） */

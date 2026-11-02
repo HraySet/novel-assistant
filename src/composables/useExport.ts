@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core'
 import { save } from '@tauri-apps/plugin-dialog'
 import * as api from '../api/files'
 import { useToastStore } from '../stores/toast'
@@ -38,7 +37,7 @@ export async function exportFiles(files: FileNode[], projectName: string): Promi
       await api.exportEpub(paths, destPath, projectName)
     } else {
       const withTitles = destPath.toLowerCase().endsWith('.md')
-      await invoke('export_project', { paths, destPath, withTitles })
+      await api.exportProject(paths, destPath, withTitles)
     }
     useToastStore().push('success', '导出完成', destPath.split(/[\\/]/).pop() || destPath)
   } catch (e) {

@@ -58,6 +58,34 @@ export async function setProjectPath(path: string): Promise<void> {
   return invoke('set_project_path', { path })
 }
 
+// ── 项目索引 ──
+
+export async function getProjectIndex(): Promise<unknown[]> {
+  return invoke('get_project_index')
+}
+
+export async function saveProjectIndex(index: unknown[]): Promise<void> {
+  return invoke('save_project_index', { index })
+}
+
+// ── AI 配置与密钥 ──
+
+export async function getAiConfig(): Promise<Record<string, unknown> | null> {
+  return invoke('get_ai_config')
+}
+
+export async function saveAiConfig(aiConfig: unknown): Promise<void> {
+  return invoke('save_ai_config', { aiConfig })
+}
+
+export async function getApiKey(provider: string): Promise<string | null> {
+  return invoke('get_api_key', { provider })
+}
+
+export async function setApiKey(provider: string, apiKey: string): Promise<void> {
+  return invoke('set_api_key', { provider, apiKey })
+}
+
 export interface BackupEntry {
   path: string
   timestamp: number
@@ -105,6 +133,15 @@ export async function dragOutFiles(paths: string[]): Promise<number> {
 /** 导出合并 EPUB3（章节打包为电子书） */
 export async function exportEpub(paths: string[], destPath: string, title: string): Promise<void> {
   return invoke('export_epub', { paths, destPath, title })
+}
+
+/** 导出合并为纯文本 / Markdown（章节按顺序拼接） */
+export async function exportProject(
+  paths: string[],
+  destPath: string,
+  withTitles: boolean,
+): Promise<void> {
+  return invoke('export_project', { paths, destPath, withTitles })
 }
 
 /** 文件修改时间（秒），用于检测外部修改 */

@@ -22,7 +22,11 @@ export function collectFilePaths(nodes: FileNode[], acc: string[] = []): string[
  */
 export async function exportFiles(files: FileNode[], projectName: string): Promise<void> {
   const paths = collectFilePaths(files)
-  if (paths.length === 0) return
+  if (paths.length === 0) {
+    // 此前直接 return：项目里只有角色卡/大纲时点导出毫无反应
+    useToastStore().push('info', '没有可导出的章节', '角色、大纲等设定文件不计入正文', 4000)
+    return
+  }
   try {
     const destPath = await save({
       defaultPath: `${projectName}.epub`,

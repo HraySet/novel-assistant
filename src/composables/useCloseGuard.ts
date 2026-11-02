@@ -8,6 +8,7 @@
 import { computed, ref } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { isTauri } from '@tauri-apps/api/core'
+import { useToastStore } from '../stores/toast'
 
 export type CloseChoice = 'save' | 'discard' | 'cancel'
 
@@ -49,7 +50,20 @@ export function useCloseGuard(opts: {
           resolver = resolve
         })
         if (choice === 'cancel') return
-        if (choice === 'save') await opts.saveAllDirty()
+        if (choice === 'save') {
+          const saved = await opts.saveAllDirty()
+          // 保存失败**必须中止关闭**：否则「保存并退出」等于「不保存退出」，
+          // 用户以为存好了，实际上磁盘满/权限不足导致内容全丢
+          if (!saved) {
+            useToastStore().push(
+              'error',
+              '未能保存，已取消退出',
+              '请检查磁盘空间或文件权限后重试',
+              6000,
+            )
+            return
+          }
+        }
       }
 
       await opts.flushBeforeClose()

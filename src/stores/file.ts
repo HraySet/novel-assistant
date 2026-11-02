@@ -5,6 +5,7 @@ import type { FileNode, OpenFile, ContextMenuState, DraftState } from '../types/
 import { useStatsStore } from './stats'
 import { useToastStore } from './toast'
 import { countWords } from '../utils/countWords'
+import { basename, dirname, isInside, joinPath, remapPath, samePath } from '../core/paths'
 
 const EXPANDED_STORAGE_PREFIX = 'file-tree-expanded:'
 const FAVORITES_STORAGE_PREFIX = 'file-favorites:'
@@ -29,18 +30,6 @@ function sortNodes(nodes: FileNode[]): FileNode[] {
     if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
     return collator.compare(a.name, b.name)
   })
-}
-
-function joinPath(parentPath: string, name: string) {
-  const sep = parentPath.includes('\\') ? '\\' : '/'
-  if (!parentPath) return name
-  return parentPath.endsWith(sep) ? `${parentPath}${name}` : `${parentPath}${sep}${name}`
-}
-
-function dirname(path: string) {
-  const separator = path.includes('\\') ? '\\' : '/'
-  const idx = path.lastIndexOf(separator)
-  return idx > 0 ? path.slice(0, idx) : ''
 }
 
 function normalizeTree(nodes: FileNode[], parentPath = ''): FileNode[] {
@@ -186,6 +175,66 @@ export const useFileStore = defineStore('file', () => {
     stats.remapChapterSnapshots(mapper)
   }
 
+  /**
+   * 路径迁移的统一入口：打开的文件、后退历史、选区、历史版本目标、收藏、
+   * 展开状态、统计快照一次性迁移，并重新落盘标签。
+   *
+   * 为什么必须集中在同一处：旧实现里只有 movePath 写了完整的前缀映射，
+   * renamePath / deletePath 只做精确匹配——重命名一个目录后，目录内已打开的
+   * 章节标签全部指向旧路径，保存时直接报「路径超出项目目录」。
+   *
+   * @param activeContent 路径变化前从编辑器取到的最新内容；迁移时补回，
+   *                      避免用 store 里的旧快照重建编辑器而丢掉未保存的编辑
+   */
+  function applyPathRemap(
+    mapper: (p: string) => string,
+    activeContent?: string | null,
+  ) {
+    const remapFile = (f: OpenFile): OpenFile => {
+      const nextPath = mapper(f.path)
+      return nextPath === f.path ? f : { ...f, path: nextPath, name: basename(nextPath) }
+    }
+
+    const beforeActive = openFile.value?.path
+    openFiles.value = openFiles.value.map(remapFile)
+    if (openFile.value) {
+      const next = remapFile(openFile.value)
+      if (activeContent != null && next.path !== beforeActive) next.content = activeContent
+      openFile.value = next
+    }
+    if (selectedPath.value) selectedPath.value = mapper(selectedPath.value)
+    openHistory.value = openHistory.value.map(mapper)
+    if (historyTarget.value) {
+      const nextPath = mapper(historyTarget.value.path)
+      historyTarget.value = { path: nextPath, name: basename(nextPath) }
+    }
+
+    remapPersistedState(mapper)
+    persistOpenTabs()
+  }
+
+  /** 删除（文件或整棵目录）后的状态清理：把涉及的路径从所有列表中移除 */
+  function dropPathsUnder(target: string) {
+    const affected = (p: string) => samePath(p, target) || isInside(target, p)
+
+    openFiles.value = openFiles.value.filter((f) => !affected(f.path))
+    if (openFile.value && affected(openFile.value.path)) {
+      openFile.value = openFiles.value[0] ?? null
+    }
+    if (selectedPath.value && affected(selectedPath.value)) {
+      selectedPath.value = openFile.value?.path ?? null
+    }
+    openHistory.value = openHistory.value.filter((p) => !affected(p))
+    if (historyTarget.value && affected(historyTarget.value.path)) historyTarget.value = null
+
+    favoritePaths.value = new Set([...favoritePaths.value].filter((p) => !affected(p)))
+    persistFavorites()
+    expandedPaths.value = expandedPaths.value.filter((p) => !affected(p))
+    persistExpandedState()
+    stats.removeChapterSnapshots(affected)
+    persistOpenTabs()
+  }
+
   // ── Tree management ──
 
   function setTree(nodes: FileNode[], currentProjectPath = projectRoot.value) {
@@ -201,6 +250,31 @@ export const useFileStore = defineStore('file', () => {
     projectRoot.value = path
     loadExpandedState(path)
     loadFavorites(path)
+  }
+
+  /**
+   * 项目切换重置：清掉上一个项目遗留的标签、活动文件、树与临时 UI 状态。
+   *
+   * 不清 favorites / expandedPaths —— 它们按 projectRoot 分 key 存储，
+   * 由 setProjectRoot 按新项目重新加载。
+   *
+   * 旧实现切项目时什么都没清：编辑器仍显示上一个项目的章节，Ctrl+S 撞上
+   * 路径沙箱报「路径超出项目目录」；restoreOpenTabs 还会把旧路径写进
+   * 新项目的标签持久化 key，形成双向污染。
+   */
+  function resetForProject(path: string) {
+    openFile.value = null
+    openFiles.value = []
+    openHistory.value = []
+    selectedPath.value = null
+    tree.value = []
+    historyTarget.value = null
+    renamingPath.value = null
+    draft.value = null
+    dragSource.value = null
+    contextMenu.value = { visible: false, x: 0, y: 0, nodePath: '', nodeType: 'blank' }
+    contentProviders.clear()
+    setProjectRoot(path)
   }
 
   function toggleExpanded(path: string) {
@@ -372,79 +446,30 @@ export const useFileStore = defineStore('file', () => {
   async function deletePath(path: string) {
     await api.deletePath(path)
     await loadTree(projectRoot.value)
-    if (openFile.value?.path === path) {
-      openFile.value = null
-      selectedPath.value = null
-    }
-    openFiles.value = openFiles.value.filter((item) => item.path !== path)
-    persistOpenTabs() // 删除后同步标签持久化，避免重启后残留失效路径
+    dropPathsUnder(path)
   }
 
   async function renamePath(path: string, newName: string) {
     const parent = dirname(path)
     const newPath = joinPath(parent, newName)
-    // 先把编辑器最新内容刷进 store：路径切换会用 store 内容重建编辑器，
-    // 避免未保存的编辑在重命名后丢失
-    const latest = openFile.value?.path === path ? getLatestContent(path) : null
+    // 路径变化前把编辑器最新内容刷进 store：之后编辑器会用 store 内容重建
+    const latest = openFile.value ? getLatestContent(openFile.value.path) : null
     await api.renamePath(path, newPath)
     await loadTree(projectRoot.value)
-
-    if (openFile.value?.path === path) {
-      openFile.value = latest !== null
-        ? { ...openFile.value, path: newPath, name: newName, content: latest }
-        : { ...openFile.value, path: newPath, name: newName }
-      selectedPath.value = newPath
-    }
-
-    openFiles.value = openFiles.value.map((item) => item.path === path
-      ? (latest !== null ? { ...item, path: newPath, name: newName, content: latest } : { ...item, path: newPath, name: newName })
-      : item)
-    openHistory.value = openHistory.value.map((item) => item === path ? newPath : item)
-
-    // 迁移收藏/展开状态与统计快照，避免旧路径成为孤儿数据
-    const sep = path.includes('\\') ? '\\' : '/'
-    remapPersistedState((p) =>
-      p === path ? newPath : p.startsWith(path + sep) ? newPath + p.slice(path.length) : p,
-    )
-
+    // 目录重命名时这里会迁移整棵子树下所有已打开的标签
+    applyPathRemap((p) => remapPath(p, path, newPath), latest)
     return newPath
   }
 
   async function movePath(source: string, destDir: string) {
-    // 先刷新编辑器最新内容，避免移动后路径切换用旧内容重建编辑器
     const active = openFile.value
     const latest = active ? getLatestContent(active.path) : null
     await api.movePath(source, destDir)
 
-    const separator = source.includes('\\') ? '\\' : '/'
-    const name = source.split(/[/\\]/).pop() || source
-    const movedRoot = joinPath(destDir, name)
-    const sourcePrefix = `${source}${separator}`
-
-    const getMovedPath = (path: string) => {
-      if (path === source) return movedRoot
-      if (path.startsWith(sourcePrefix)) return `${movedRoot}${path.slice(source.length)}`
-      return path
-    }
-
-    if (active) {
-      const nextPath = getMovedPath(active.path)
-      if (nextPath !== active.path) {
-        openFile.value = { ...active, path: nextPath, content: latest ?? active.content }
-      }
-    }
-    openFiles.value = openFiles.value.map((file) => {
-      const next = { ...file, path: getMovedPath(file.path) }
-      if (active && file.path === active.path && latest !== null) next.content = latest
-      return next
-    })
-    openHistory.value = openHistory.value.map(getMovedPath)
-    if (selectedPath.value) selectedPath.value = getMovedPath(selectedPath.value)
-
-    // 迁移收藏/展开状态与统计快照
-    remapPersistedState(getMovedPath)
-
+    const movedRoot = joinPath(destDir, basename(source))
+    const mapper = (p: string) => remapPath(p, source, movedRoot)
     await loadTree(projectRoot.value)
+    applyPathRemap(mapper, latest)
   }
 
 
@@ -721,6 +746,7 @@ export const useFileStore = defineStore('file', () => {
     // Tree management
     setTree,
     setProjectRoot,
+    resetForProject,
     setSelectedPath,
     handleDirectoryClick,
     setOpenFile,

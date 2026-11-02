@@ -229,6 +229,23 @@ export const useStatsStore = defineStore('stats', () => {
     schedulePersist()
   }
 
+  /** 删除章节（或整棵目录）后清掉对应的字数快照，避免孤儿数据累积 */
+  function removeChapterSnapshots(predicate: (path: string) => boolean) {
+    const next: Record<string, number> = {}
+    let changed = false
+    for (const [k, v] of Object.entries(chapterSnapshots.value)) {
+      if (predicate(k)) {
+        changed = true
+        continue
+      }
+      next[k] = v
+    }
+    if (changed) {
+      chapterSnapshots.value = next
+      schedulePersist()
+    }
+  }
+
   function setDailyGoal(goal: number) { dailyGoal.value = goal }
 
   // ── 会话计时 ──
@@ -282,6 +299,7 @@ export const useStatsStore = defineStore('stats', () => {
     load,
     syncChapterSnapshot,
     remapChapterSnapshots,
+    removeChapterSnapshots,
     recordChapterEdit,
     setDailyGoal,
     startSession,

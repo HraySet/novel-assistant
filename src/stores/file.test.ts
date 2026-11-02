@@ -184,3 +184,65 @@ describe('项目切换重置', () => {
     expect(store.projectRoot).toBe('/other')
   })
 })
+
+describe('closeFile：与 Ctrl+W 走同一条保存路径', () => {
+  it('脏文件先落盘再关闭（此前点标签 × 直接移除，1 秒防抖内的内容会丢）', async () => {
+    const store = seed()
+    store.setOpenFile({ path: CH1, name: '第1章.md', content: '打开时的内容', isDirty: true })
+    // 零拷贝提供者返回编辑器里的最新文本
+    store.registerContentProvider(CH1, () => '刚打的一句话')
+
+    await store.closeFile(CH1)
+
+    expect(api.writeFile).toHaveBeenCalledWith(CH1, '刚打的一句话')
+    expect(store.openFiles.some((f) => f.path === CH1)).toBe(false)
+  })
+
+  it('保存失败时保持标签打开，不静默丢内容', async () => {
+    const store = seed()
+    store.setOpenFile({ path: CH1, name: '第1章.md', content: '旧内容', isDirty: true })
+    vi.mocked(api.writeFile).mockRejectedValueOnce(new Error('磁盘已满'))
+
+    await store.closeFile(CH1)
+
+    expect(store.openFiles.some((f) => f.path === CH1)).toBe(true)
+  })
+
+  it('干净文件直接关闭，不产生无谓写盘', async () => {
+    const store = seed()
+    store.setOpenFile({ path: CH1, name: '第1章.md', content: '已保存', isDirty: false })
+
+    await store.closeFile(CH1)
+
+    expect(api.writeFile).not.toHaveBeenCalled()
+    expect(store.openFiles.some((f) => f.path === CH1)).toBe(false)
+  })
+
+  it('关闭非活动标签时其余标签不受影响', async () => {
+    const store = seed()
+    store.setOpenFile({ path: CH1, name: '第1章.md', content: 'a', isDirty: false })
+    store.setOpenFile({ path: CH2, name: '第2章.md', content: 'b', isDirty: false })
+
+    await store.closeFile(CH1)
+
+    expect(store.openFiles.map((f) => f.path)).toEqual([CH2])
+    expect(store.openFile?.path).toBe(CH2)
+  })
+})
+
+describe('handleFileSelect：打开失败要有反馈', () => {
+  it('读取失败时保持当前文件，并把失效路径从最近记录里剔除', async () => {
+    const store = seed()
+    store.setOpenFile({ path: CH1, name: '第1章.md', content: 'a', isDirty: false })
+    store.setOpenFile({ path: OUT, name: '第3章.md', content: 'c', isDirty: false })
+    // 回到 CH1，让 OUT 留在最近记录里
+    await store.handleFileSelect(CH1)
+    expect(store.openHistory).toContain(OUT)
+
+    vi.mocked(api.readFile).mockRejectedValueOnce(new Error('No such file'))
+    await store.handleFileSelect(OUT)
+
+    expect(store.openFile?.path).toBe(CH1)
+    expect(store.openHistory).not.toContain(OUT)
+  })
+})

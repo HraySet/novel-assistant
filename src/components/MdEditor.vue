@@ -20,7 +20,7 @@
     <div ref="editorEl" class="flex-1 overflow-y-auto" />
 
     <!-- 划词菜单：选中文字后右键弹出，与侧栏快捷操作联动 -->
-    <div v-if="selBar" class="sel-toolbar" :style="{ left: selBar.left + 'px', top: selBar.top + 'px' }" @mousedown.prevent>
+    <div v-if="selBar" ref="selBarEl" class="sel-toolbar" :style="{ left: selBar.left + 'px', top: selBar.top + 'px' }" @mousedown.prevent>
       <span class="sel-count">已选中 {{ selection?.words ?? 0 }} 字</span>
       <span class="sel-divider" />
       <button class="sel-btn" title="润色选中内容" @click="runSelAction('润色')"><Sparkles :size="12" />润色</button>
@@ -101,7 +101,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed, nextTick } from 'vue'
 import { EditorView, keymap, lineNumbers, highlightActiveLine, ViewPlugin, Decoration, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { EditorState, Compartment, RangeSetBuilder } from '@codemirror/state'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
@@ -202,6 +202,7 @@ let currentPath: string | undefined = undefined
 const selectionStore = useSelectionStore()
 const { selection } = storeToRefs(selectionStore)
 const selBar = ref<{ left: number; top: number } | null>(null)
+const selBarEl = ref<HTMLElement>()
 const selMoreOpen = ref(false)
 const showHistory = ref(false)
 const showOutline = ref(false)
@@ -293,6 +294,10 @@ function updateChapterWords() {
 // 避免这类替换被 updateListener 误判为用户编辑（重新标记脏并触发自动保存）
 let syncingFromProp = false
 
+/** 距上次成功落盘的毫秒数超过它就强制保存（防抖无法覆盖「一直不停手」的情况） */
+const MAX_SAVE_INTERVAL = 30_000
+let lastSavedAt = Date.now()
+
 function handleChange() {
   if (!view || syncingFromProp) return
   isSaved.value = false
@@ -301,8 +306,15 @@ function handleChange() {
   emit('dirty')
   updateChapterWords()
 
-  // 自动保存：1 秒无输入后保存；结果（成功/失败/写盘期间有新键入）如实反映到状态栏
   if (saveTimer) clearTimeout(saveTimer)
+  // 纯防抖有个盲区：连续输入时定时器被不断重置，一直不停手就一次都不落盘
+  // （写 10 分钟突然崩溃 = 丢 10 分钟）。因此加一条「最长 30 秒必存」的兜底。
+  if (Date.now() - lastSavedAt >= MAX_SAVE_INTERVAL) {
+    saveTimer = null
+    void runSave()
+    return
+  }
+  // 自动保存：1 秒无输入后保存；结果（成功/失败/写盘期间有新键入）如实反映到状态栏
   saveTimer = setTimeout(() => {
     saveTimer = null
     void runSave()
@@ -315,6 +327,7 @@ async function runSave(): Promise<boolean> {
   if (ok) {
     isSaved.value = true
     lastSavedTime.value = new Date()
+    lastSavedAt = Date.now()
   } else {
     // 失败或写盘期间仍有新键入：保持“未保存”，由下一次输入触发的自动保存兜底
     isSaved.value = false
@@ -379,12 +392,19 @@ function trackSelection() {
 function showSelMenu(x: number, y: number) {
   const sel = selectionStore.selection
   if (!sel || !view) return
-  const menuW = 280
-  const menuH = 48
-  selBar.value = {
-    left: Math.max(8, Math.min(Math.round(x), window.innerWidth - menuW - 8)),
-    top: Math.max(8, Math.min(Math.round(y), window.innerHeight - menuH - 8)),
-  }
+  // 先放到鼠标处，挂载后按**实际尺寸**回推边界。
+  // 原先用硬编码 280×48 估算，菜单实际更宽，贴右边缘右键时会溢出窗口。
+  selBar.value = { left: Math.max(8, Math.round(x)), top: Math.max(8, Math.round(y)) }
+  void nextTick(() => {
+    const el = selBarEl.value
+    if (!el || !selBar.value) return
+    const rect = el.getBoundingClientRect()
+    let left = selBar.value.left
+    let top = selBar.value.top
+    if (left + rect.width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - rect.width - 8)
+    if (top + rect.height > window.innerHeight - 8) top = Math.max(8, window.innerHeight - rect.height - 8)
+    if (left !== selBar.value.left || top !== selBar.value.top) selBar.value = { left, top }
+  })
 }
 
 /** 收起右键菜单（选区变化/滚动/点击别处/Esc 时） */
@@ -435,12 +455,9 @@ function redoCommand(): boolean {
 }
 
 // ── 章节内大纲 ──
-function toggleOutline() {
-  if (!view) return
-  if (showOutline.value) {
-    showOutline.value = false
-    return
-  }
+
+function scanHeadings(): { level: number; text: string; pos: number }[] {
+  if (!view) return []
   const doc = view.state.doc
   const list: { level: number; text: string; pos: number }[] = []
   for (let i = 1; i <= doc.lines; i++) {
@@ -448,7 +465,32 @@ function toggleOutline() {
     const m = /^(#{1,3})\s+(.+)$/.exec(line.text)
     if (m) list.push({ level: m[1].length, text: m[2].trim(), pos: line.from })
   }
-  headings.value = list
+  return list
+}
+
+let outlineTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * 大纲打开期间文档发生变化时重建。
+ * 条目里存的是文档绝对位置，标题上方增删任何字符都会让后面的位置整体偏移——
+ * 不重建就会「点了大纲跳到别处」。文档没变时不重扫，避免每次按键全量遍历。
+ */
+function scheduleOutlineRefresh() {
+  if (!showOutline.value) return
+  if (outlineTimer) clearTimeout(outlineTimer)
+  outlineTimer = setTimeout(() => {
+    outlineTimer = null
+    if (showOutline.value) headings.value = scanHeadings()
+  }, 400)
+}
+
+function toggleOutline() {
+  if (!view) return
+  if (showOutline.value) {
+    showOutline.value = false
+    return
+  }
+  headings.value = scanHeadings()
   showOutline.value = true
 }
 
@@ -629,6 +671,7 @@ const baseExtensions = [
   EditorView.updateListener.of(update => {
     if (update.docChanged) {
       handleChange()
+      scheduleOutlineRefresh()
     }
     if (update.viewportChanged) {
       updateScrollPercent()
@@ -791,6 +834,7 @@ onUnmounted(() => {
   // 使所有挂起的异步恢复作废
   switchSeq++
   if (saveTimer) clearTimeout(saveTimer)
+  if (outlineTimer) { clearTimeout(outlineTimer); outlineTimer = null }
   if (outlineCloseHandler) document.removeEventListener('mousedown', outlineCloseHandler)
   if (moreCloseHandler) document.removeEventListener('mousedown', moreCloseHandler)
   if (props.path) fileStore.unregisterContentProvider(props.path)

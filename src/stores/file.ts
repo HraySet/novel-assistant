@@ -349,7 +349,19 @@ export const useFileStore = defineStore('file', () => {
     }
   }
 
-  function closeFile(path: string) {
+  /**
+   * 关闭标签。
+   *
+   * 与 Ctrl+W（closeActiveTab）保持同一条路径：关闭前先落盘，失败则不关。
+   * 此前点标签上的 × 是直接移除，而自动保存有 1 秒防抖——打完字立刻点 ×
+   * 会把刚落笔的内容丢掉（Ctrl+W 反而不会，两条关闭路径行为不一致）。
+   */
+  async function closeFile(path: string) {
+    const target = openFiles.value.find((item) => item.path === path)
+    if (target?.isDirty) {
+      const saved = await saveFile(path)
+      if (!saved) return
+    }
     openFiles.value = openFiles.value.filter((item) => item.path !== path)
     if (openFile.value?.path === path) {
       openFile.value = openFiles.value[0] ?? null
@@ -402,12 +414,7 @@ export const useFileStore = defineStore('file', () => {
   async function closeActiveTab() {
     const f = openFile.value
     if (!f) return
-    if (f.isDirty) {
-      // 保存失败（含写盘期间仍有新键入）时中止关闭，避免丢失未落盘内容
-      const saved = await saveFile(f.path)
-      if (!saved) return
-    }
-    closeFile(f.path)
+    await closeFile(f.path)
   }
 
   /** Ctrl+Tab / Ctrl+Shift+Tab：循环切换标签 */
@@ -570,6 +577,11 @@ export const useFileStore = defineStore('file', () => {
       stats.syncChapterSnapshot(path, countWords(content))
     } catch (e) {
       console.error('读取文件失败:', e)
+      // 文件可能已被删除或移出项目：从最近记录里剔除并提示。
+      // 此前只在控制台留一行，用户点「最近打开」里的失效条目会毫无反应。
+      openHistory.value = openHistory.value.filter((p) => p !== path)
+      const failedName = path.split(/[/\\]/).pop() || path
+      useToastStore().push('error', '打开失败', `「${failedName}」可能已被删除或移出项目`, 3500)
     }
   }
 

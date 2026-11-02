@@ -4,8 +4,9 @@
       <div class="flex items-center gap-2">
         <span class="text-[10px] uppercase tracking-wider font-medium text-text-secondary">码字日历</span>
         <span v-if="stats.streakDays > 0"
-          class="text-[10px] px-1.5 py-0.5 rounded-full leading-none text-[var(--color-accent)] bg-[var(--color-accent-bg)]">
-          连续 {{ stats.streakDays }} 天
+          class="text-[10px] px-1.5 py-0.5 rounded-full leading-none text-[var(--color-accent)] bg-[var(--color-accent-bg)]"
+          :title="stats.hasWrittenToday ? '今天已经写过了' : '今天还没写，保持住这个连续记录'">
+          {{ stats.hasWrittenToday ? '连续' : '已连续' }} {{ stats.streakDays }} 天
         </span>
       </div>
       <span class="text-[10px] text-text-muted">近 12 周</span>

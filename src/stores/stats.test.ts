@@ -94,3 +94,55 @@ describe('连续天数', () => {
     expect(store.streakDays).toBe(3)
   })
 })
+
+describe('连续天数：今天还没写时不清零', () => {
+  /** 造出「11-03、11-04 各写了 100 字」的历史 */
+  async function seedTwoDays() {
+    const store = useStatsStore()
+    await store.init(PROJECT)
+    store.recordChapterEdit(CH, 100) // 11-02 仅建立快照
+    vi.setSystemTime(new Date('2026-11-03T09:00:00'))
+    store.recordChapterEdit(CH, 200)
+    vi.setSystemTime(new Date('2026-11-04T09:00:00'))
+    store.recordChapterEdit(CH, 300)
+    return store
+  }
+
+  it('今天无产出时，连续数截至昨天（旧实现会返回 0）', async () => {
+    const store = await seedTwoDays()
+
+    vi.setSystemTime(new Date('2026-11-05T09:00:00'))
+
+    expect(store.hasWrittenToday).toBe(false)
+    expect(store.streakDays).toBe(2)
+  })
+
+  it('今天写了则把今天算进去', async () => {
+    const store = await seedTwoDays()
+
+    vi.setSystemTime(new Date('2026-11-05T09:00:00'))
+    store.recordChapterEdit(CH, 400)
+
+    expect(store.hasWrittenToday).toBe(true)
+    expect(store.streakDays).toBe(3)
+  })
+
+  it('中间断档只算到断点', async () => {
+    const store = await seedTwoDays()
+
+    // 11-05 写了，但 11-04 之后空了一天到 11-05？—— 这里改为验证断档：
+    vi.setSystemTime(new Date('2026-11-07T09:00:00'))
+    store.recordChapterEdit(CH, 400)
+
+    // 11-07 写了，11-06 没写 → 连续 1 天
+    expect(store.hasWrittenToday).toBe(true)
+    expect(store.streakDays).toBe(1)
+  })
+
+  it('完全没有产出时为 0', async () => {
+    const store = useStatsStore()
+    await store.init(PROJECT)
+    expect(store.hasWrittenToday).toBe(false)
+    expect(store.streakDays).toBe(0)
+  })
+})

@@ -141,16 +141,36 @@ export const useStatsStore = defineStore('stats', () => {
 
   const todayGoalMet = computed(() => todayWords.value >= dailyGoal.value)
 
+  /** 本地日期键 YYYY-MM-DD（与 dailyRecords 的 date 字段同一口径） */
+  function localDateKey(d: Date): string {
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${d.getFullYear()}-${m}-${day}`
+  }
+
+  /** 今天是否已有产出：决定连续天数是「进行中」还是「待续」 */
+  const hasWrittenToday = computed(() => todayWords.value > 0)
+
+  /**
+   * 连续写作天数。
+   *
+   * 今天还没写时**不清零**：改为显示截至昨天的连续数。
+   * 原先从今天往前数，今天一没产出就 break，早上打开软件看到「连续 0 天」——
+   * 但事实是「昨天还在写」，这个提示对持续写作的激励是负面的。
+   *
+   * 用 Map 按日期查，不再依赖 dailyRecords 的排列顺序：
+   * 原先按下标对应「第 i 天」，中间有几天完全没打开软件时记录会错位。
+   */
   const streakDays = computed(() => {
+    const byDate = new Map(dailyRecords.value.map((r) => [r.date, r.wordCount]))
+    const today = new Date()
+    const startOffset = hasWrittenToday.value ? 0 : 1
     let streak = 0
-    const sorted = [...dailyRecords.value].sort((a, b) => b.date.localeCompare(a.date))
-    for (let i = 0; i < sorted.length; i++) {
-      const d = new Date()
+    // 上限 10 年，防御脏数据造成死循环
+    for (let i = startOffset; i < startOffset + 3660; i++) {
+      const d = new Date(today)
       d.setDate(d.getDate() - i)
-      const m = String(d.getMonth() + 1).padStart(2, '0')
-      const day = String(d.getDate()).padStart(2, '0')
-      const es = `${d.getFullYear()}-${m}-${day}`
-      if (sorted[i].date === es && sorted[i].wordCount > 0) streak++
+      if ((byDate.get(localDateKey(d)) ?? 0) > 0) streak++
       else break
     }
     return streak
@@ -305,6 +325,7 @@ export const useStatsStore = defineStore('stats', () => {
     todayGoalPercent,
     todayGoalMet,
     streakDays,
+    hasWrittenToday,
     calendarData,
     session,
     sessionElapsed,

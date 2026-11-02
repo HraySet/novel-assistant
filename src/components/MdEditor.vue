@@ -76,7 +76,9 @@
           <MoreHorizontal :size="13" />
         </button>
         <div v-if="showMore" class="more-popover">
-          <div v-if="streakDays > 0" class="more-item more-item--info"><Flame :size="11" />连续写作 {{ streakDays }} 天</div>
+          <div v-if="streakDays > 0" class="more-item more-item--info">
+            <Flame :size="11" />{{ hasWrittenToday ? '连续写作' : '已连续' }} {{ streakDays }} 天{{ hasWrittenToday ? '' : '（今日待续）' }}
+          </div>
           <div class="more-item more-item--info"><Timer :size="11" />本次写作 {{ sessionFormatted }}</div>
           <div v-if="settings.focusLineMode" class="more-item more-item--info"><Focus :size="11" />聚焦行已开启</div>
           <div class="more-divider" />
@@ -191,7 +193,7 @@ const focusCompartment = new Compartment()
 const stats = useStatsStore()
 const settings = useSettingsStore()
 const fileStore = useFileStore()
-const { todayWords, dailyGoal, todayGoalPercent, todayGoalMet, streakDays, sessionFormatted, session } = storeToRefs(stats)
+const { todayWords, dailyGoal, todayGoalPercent, todayGoalMet, streakDays, hasWrittenToday, sessionFormatted, session } = storeToRefs(stats)
 
 const editorEl = ref<HTMLElement>()
 let view: EditorView | null = null

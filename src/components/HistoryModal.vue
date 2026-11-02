@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { X, Clock, History } from 'lucide-vue-next'
 import DiffView from './DiffView.vue'
 import BaseModal from './BaseModal.vue'
@@ -112,7 +112,22 @@ function formatTime(ts: number): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
-onMounted(load)
+/**
+ * 每次打开、以及目标文件变化时重新加载。
+ * 曾经只在 onMounted 加载一次：编辑器底栏的实例是常驻的（v-if="path"），
+ * 切换章节后弹窗仍显示上一章的备份，点「恢复」会把上一章内容写进当前章。
+ */
+watch(
+  () => [props.show, props.filePath] as const,
+  ([show]) => {
+    if (!show) return
+    selected.value = null
+    preview.value = ''
+    backups.value = []
+    void load()
+  },
+  { immediate: true },
+)
 </script>
 
 <style scoped>

@@ -13,6 +13,47 @@ use crate::paths::{
     path_mtime_secs, project_root_of, resolve_in_project, resolve_within, sanitize_component,
     should_skip, unique_path,
 };
+
+/// 摘掉正文文件的扩展名（.md/.txt，大小写不敏感），用于摘要文件名。
+/// 与前端 `chapterStem` 保持一致。
+fn chapter_stem(name: &str) -> &str {
+    // 用 strip_suffix 按 ASCII 后缀精确匹配并安全截断，
+    // 不能按 name.len()-3 手动切片——中文是 3 字节/字符，会切到字符中间
+    for suffix in [".md", ".MD", ".txt", ".TXT", ".Md", ".mD", ".Txt", ".tXT"] {
+        if let Some(stripped) = name.strip_suffix(suffix) {
+            return stripped;
+        }
+    }
+    name
+}
+
+/// 章节重命名后，把 `.summaries/<旧章名>.md` 改成 `<新章名>.md`（失败不阻塞）。
+///
+/// 摘要按「章名（去扩展名）」关联，存在项目根的 `.summaries/` 下。章节一改名，
+/// 旧摘要就失联，前情提要会静默降级成读章尾片段——用户察觉不到，只觉得
+/// 「AI 好像不记得前面的剧情了」。这里在重命名时同步迁移。
+fn migrate_summary_on_rename(app: &tauri::AppHandle, old_path: &std::path::Path, new_path: &std::path::Path) {
+    let (Some(old_name), Some(new_name)) = (old_path.file_name(), new_path.file_name()) else {
+        return;
+    };
+    let old_name = old_name.to_string_lossy();
+    let new_name = new_name.to_string_lossy();
+    let old_stem = chapter_stem(&old_name);
+    let new_stem = chapter_stem(&new_name);
+    // 去扩展名后相同（例如 第1章.md → 第1章.txt），摘要名不变，无需迁移
+    if old_stem == new_stem {
+        return;
+    }
+    let Some(root) = project_root_of(app) else {
+        return;
+    };
+    let summary_dir = root.join(".summaries");
+    let from = summary_dir.join(format!("{}.md", old_stem));
+    let to = summary_dir.join(format!("{}.md", new_stem));
+    if from.exists() && !to.exists() {
+        let _ = fs::rename(&from, &to);
+    }
+}
 use crate::types::{DirEntry, ImportFile};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use std::collections::HashMap;
@@ -379,6 +420,7 @@ pub fn rename_path(app: tauri::AppHandle, source: String, dest: String) -> Resul
     // 否则重命名后历史版本会因文件名不匹配而“失联”
     if was_file {
         migrate_backups_on_rename(&src, &dest_path);
+        migrate_summary_on_rename(&app, &src, &dest_path);
     }
     clear_backup_hash(&src);
     clear_backup_hash(&dest_path);
@@ -474,7 +516,21 @@ pub fn import_files(    app: tauri::AppHandle,
 
 #[cfg(test)]
 mod tests {
-    use super::count_words;
+    use super::{chapter_stem, count_words};
+
+    #[test]
+    fn strips_md_and_txt_extension_case_insensitive() {
+        assert_eq!(chapter_stem("第1章.md"), "第1章");
+        assert_eq!(chapter_stem("第1章.txt"), "第1章");
+        assert_eq!(chapter_stem("第1章.MD"), "第1章");
+        assert_eq!(chapter_stem("第1章.TXT"), "第1章");
+    }
+
+    #[test]
+    fn keeps_name_without_known_extension() {
+        assert_eq!(chapter_stem("楔子"), "楔子");
+        assert_eq!(chapter_stem("我的_草稿"), "我的_草稿");
+    }
 
     /// 与前端 `utils/countWords.ts` 必须给出一致结果：
     /// CJK 字符（含 CJK 标点/全角）逐字计 1，英文/数字按连续串计 1。

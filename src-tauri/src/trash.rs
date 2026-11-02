@@ -3,7 +3,7 @@
 //! 元数据写在 `.trash/.meta.json`，`list_trash` 会过滤掉磁盘上已不存在的条目
 //! （用户手动清理过回收站时自动愈合，不需要额外对账）。
 
-use crate::backup::clear_backup_hash;
+use crate::backup::{clear_backup_hash, purge_backups_for};
 use crate::paths::{project_root_of, resolve_within};
 use crate::types::TrashEntry;
 use std::fs;
@@ -111,6 +111,12 @@ pub fn empty_trash(app: tauri::AppHandle) -> Result<(), String> {
     let Some(root) = project_root_of(&app) else {
         return Ok(());
     };
+    // 永久删除前，先把回收站里这些文件残留的历史备份一并清掉：
+    // 文件删进回收站时其 `.backups/` 备份仍留在原目录，恢复时还要用；
+    // 现在彻底删除，备份已无主，留着只会占磁盘且永远无法从 UI 访问。
+    for entry in read_trash_meta(&root) {
+        purge_backups_for(Path::new(&entry.original_path));
+    }
     let dir = root.join(".trash");
     if dir.exists() {
         fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;

@@ -173,6 +173,30 @@ pub fn migrate_backups_on_rename(old_path: &Path, new_path: &Path) {
     }
 }
 
+/// 删除某文件在 `.backups/` 里的全部历史备份（永久删除时用，失败不阻塞）。
+///
+/// 场景：文件被删进回收站后，它的备份仍留在原目录的 `.backups/` 里；用户若
+/// 恢复，备份应该还在（能继续看历史），但「清空回收站」意味着永久删除——
+/// 此时这些备份已无主，留着只会占用磁盘且永远无法从 UI 访问到。
+pub fn purge_backups_for(path: &Path) {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+        return;
+    };
+    let backup_dir = dir.join(".backups");
+    let Ok(entries) = fs::read_dir(&backup_dir) else {
+        return;
+    };
+    let name_str = name.to_string_lossy();
+    for entry in entries.flatten() {
+        let fname = entry.file_name().to_string_lossy().to_string();
+        if parse_backup_name(&fname, &name_str).is_some() {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+    // 目录清空后顺手移除（.backups 是隐藏目录，空着无意义）
+    let _ = fs::remove_dir(&backup_dir);
+}
+
 /// 列出指定文件的备份历史（按时间倒序，最新在前）
 #[tauri::command]
 pub fn list_backups(app: tauri::AppHandle, file_path: String) -> Result<Vec<BackupEntry>, String> {
@@ -203,7 +227,9 @@ pub fn list_backups(app: tauri::AppHandle, file_path: String) -> Result<Vec<Back
 
 #[cfg(test)]
 mod tests {
-    use super::parse_backup_name;
+    use super::{parse_backup_name, purge_backups_for};
+    use std::fs;
+    use std::path::PathBuf;
 
     #[test]
     fn parses_own_backup() {
@@ -237,5 +263,41 @@ mod tests {
         assert_eq!(parse_backup_name("第1章.md", "第1章.md"), None, "缺时间戳前缀");
         assert_eq!(parse_backup_name("_第1章.md", "第1章.md"), None, "空时间戳");
         assert_eq!(parse_backup_name("1700000000_别的.md", "第1章.md"), None, "别人的备份");
+    }
+
+    #[test]
+    fn purge_removes_only_own_backups() {
+        let tmp = std::env::temp_dir().join(format!("qb-backup-test-{}", std::process::id()));
+        let dir = tmp.join("卷1");
+        let backup_dir = dir.join(".backups");
+        fs::create_dir_all(&backup_dir).unwrap();
+
+        let own1 = backup_dir.join("1700000000_第1章.md");
+        let own2 = backup_dir.join("1700000001_第1章.md");
+        let other = backup_dir.join("1700000002_第2章.md");
+        fs::write(&own1, "v1").unwrap();
+        fs::write(&own2, "v2").unwrap();
+        fs::write(&other, "别人的").unwrap();
+
+        let target = PathBuf::from(&dir).join("第1章.md");
+        purge_backups_for(&target);
+
+        assert!(!own1.exists(), "自己的备份应被清除");
+        assert!(!own2.exists(), "自己的备份应被清除");
+        assert!(other.exists(), "别人的备份不能误删");
+        // 目录里还留着别人的备份 → 目录保留（只有清空后才移除）
+        assert!(backup_dir.exists(), "目录里还有别人的备份，不应被移除");
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn purge_handles_missing_backup_dir() {
+        let tmp = std::env::temp_dir().join(format!("qb-backup-none-{}", std::process::id()));
+        let dir = tmp.join("卷1");
+        fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("第1章.md");
+        purge_backups_for(&target); // 不应 panic
+        let _ = fs::remove_dir_all(&tmp);
     }
 }

@@ -70,6 +70,7 @@ import { ref, watch } from 'vue'
 import { X, RefreshCw, BookOpen } from 'lucide-vue-next'
 import * as api from '../api/files'
 import ConfirmDialog from './ConfirmDialog.vue'
+import { useToastStore } from '../stores/toast'
 import BaseModal from './BaseModal.vue'
 
 const props = defineProps<{ show: boolean; projectRoot?: string }>()
@@ -116,11 +117,15 @@ function insertSelected() {
 async function doDelete() {
   confirmDelete.value = false
   if (!selected.value) return
+  const name = selected.value.name
   try {
     await api.deleteFile(selected.value.path)
     await load()
+    useToastStore().push('success', '已删除摘要', name)
   } catch (e) {
     console.error('删除摘要失败:', e)
+    // 此前只在控制台留一行，用户点了确认看不到任何结果
+    useToastStore().push('error', '删除摘要失败', e instanceof Error ? e.message : String(e), 4000)
   }
 }
 

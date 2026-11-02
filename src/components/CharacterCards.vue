@@ -1,10 +1,10 @@
 <template>
-  <BaseModal :show="show" :close-on-esc="false" width="780px" height="540px" @close="$emit('close')">
+  <BaseModal :show="show" :close-on-esc="false" width="780px" height="540px" @close="requestClose">
     <div class="char-modal">
           <div class="char-modal-header">
             <span class="char-modal-title">角色卡片</span>
             <span class="char-modal-hint">保存后自动进入 AI 上下文（角色设定）</span>
-            <button class="dialog-close" @click="$emit('close')">
+            <button class="dialog-close" @click="requestClose">
               <X :size="14" />
             </button>
           </div>
@@ -125,7 +125,14 @@ const editingContent = ref('')
 const dirty = ref(false)
 const saving = ref(false)
 const loading = ref(false)
-const pending = ref<{ kind: 'delete' } | { kind: 'switch'; target: CharEntry } | { kind: 'extract' } | null>(null)
+const pending = ref<
+  | { kind: 'delete' }
+  | { kind: 'switch'; target: CharEntry }
+  | { kind: 'extract' }
+  | { kind: 'close' }
+  | { kind: 'create' }
+  | null
+>(null)
 const mentions = ref<Record<string, api.MentionStat>>({})
 const extracting = ref(false)
 const extractCandidates = ref<string[]>([])
@@ -135,11 +142,15 @@ const confirmTitle = computed(() => {
   const p = pending.value
   if (p?.kind === 'delete') return '删除角色'
   if (p?.kind === 'extract') return '从本章抽取角色'
+  if (p?.kind === 'close') return '未保存的修改'
+  if (p?.kind === 'create') return '未保存的修改'
   return '放弃修改'
 })
 const confirmMessage = computed(() => {
   const p = pending.value
   if (!p) return ''
+  if (p.kind === 'close') return '有未保存的修改，关闭后这些改动会丢失。确定关闭吗？'
+  if (p.kind === 'create') return '有未保存的修改，新建角色会丢失这些改动。继续吗？'
   if (p.kind === 'delete') {
     return `确定删除角色「${selected.value?.name ?? ''}」吗？\n文件会移入项目回收站 .trash。`
   }
@@ -191,10 +202,19 @@ async function loadCharacters() {
   }
 }
 
+/** 关闭面板：有未保存修改先确认（此前按 Esc / 点 × 会直接丢弃编辑） */
+function requestClose() {
+  if (dirty.value) {
+    pending.value = { kind: 'close' }
+    return
+  }
+  emit('close')
+}
+
 function onKey(e: KeyboardEvent) {
   if (e.key !== 'Escape') return
   if (pending.value) cancelPending()
-  else emit('close')
+  else requestClose()
 }
 
 watch(
@@ -252,7 +272,8 @@ function mentionCount(name: string): number {
 function mentionText(name: string): string {
   const m = mentions.value[name]
   if (!m || m.count <= 0) return '正文中未出场'
-  const file = m.lastFile.split('/').pop() || m.lastFile
+  // Rust 返回的是 Windows 原生路径，只按 '/' 切会留下整条路径
+  const file = m.lastFile.split(/[/\\]/).pop() || m.lastFile
   return `出场 ${m.count} 次 · 最近 ${file}`
 }
 async function scanMentionsFor(list: CharEntry[]) {
@@ -269,6 +290,11 @@ async function scanMentionsFor(list: CharEntry[]) {
 }
 
 async function createCharacter() {
+  // 新建后选中会切到新卡片，当前未保存的编辑会丢——先确认
+  if (dirty.value) {
+    pending.value = { kind: 'create' }
+    return
+  }
   const created = await createCharFile('新角色')
   if (!created) return
   await loadCharacters()
@@ -321,7 +347,12 @@ async function extractCharacters() {
   extracting.value = true
   extractNote.value = ''
   try {
-    const content = liveContent.value.slice(0, 8000)
+    // 只截前 8000 字会漏掉"后半章才出场"的人物：首尾各取一段，
+    // 首段覆盖开场，尾段覆盖本章结尾引入的新角色
+    const full = liveContent.value.trim()
+    const content = full.length <= 8000
+      ? full
+      : `${full.slice(0, 5200)}\n……（中间省略）……\n${full.slice(-2600)}`
     const { text } = await streamChat({
       provider: settings.aiProvider,
       endpoint: settings.aiEndpoint,
@@ -398,6 +429,15 @@ async function confirmPending() {
   if (!p) return
   if (p.kind === 'switch') {
     applySelect(p.target)
+    return
+  }
+  if (p.kind === 'close') {
+    emit('close')
+    return
+  }
+  if (p.kind === 'create') {
+    dirty.value = false
+    await createCharacter()
     return
   }
   if (p.kind === 'delete') {

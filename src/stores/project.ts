@@ -2,6 +2,7 @@ import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref } from 'vue'
 import * as api from '../api/files'
 import { readLocal, removeLocal } from '../core/storage'
+import { samePath } from '../core/paths'
 import type { ProjectEntry } from '../types/project'
 
 // 旧版本用 localStorage 存的 key，仅用于一次性迁移
@@ -44,7 +45,7 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   function addProject(project: ProjectEntry) {
-    const existing = projects.value.find(p => p.path === project.path)
+    const existing = projects.value.find(p => samePath(p.path, project.path))
     if (existing) {
       existing.name = project.name
       existing.lastOpened = project.lastOpened
@@ -61,12 +62,12 @@ export const useProjectStore = defineStore('project', () => {
   }
 
   function removeProject(path: string) {
-    projects.value = projects.value.filter(p => p.path !== path)
+    projects.value = projects.value.filter(p => !samePath(p.path, path))
     saveIndex()
   }
 
   function markOpened(path: string) {
-    const p = projects.value.find(p => p.path === path)
+    const p = projects.value.find(p => samePath(p.path, path))
     if (p) {
       p.lastOpened = new Date().toISOString()
       saveIndex()
@@ -75,7 +76,7 @@ export const useProjectStore = defineStore('project', () => {
 
   /** 重新定位：把项目路径从 oldPath 更新到 newPath（并解除失效标记） */
   function updateProjectPath(oldPath: string, newPath: string) {
-    const p = projects.value.find(p => p.path === oldPath)
+    const p = projects.value.find(p => samePath(p.path, oldPath))
     if (!p) return
     p.path = newPath
     p.name = newPath.split(/[/\\]/).pop() || p.name

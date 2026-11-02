@@ -98,6 +98,17 @@
       </Transition>
     </Teleport>
 
+    <!-- 移出列表确认：误点会把正在写作的项目直接退回项目库，必须给一次确认 -->
+    <ConfirmDialog
+      :show="pendingRemove !== null"
+      title="移出项目库"
+      :message="`「${pendingRemove?.name ?? ''}」将从项目库移除。磁盘上的文件不会被删除，之后可以用「打开已有项目」重新添加。`"
+      ok-label="移出列表"
+      danger
+      @confirm="confirmRemove"
+      @cancel="pendingRemove = null"
+    />
+
     <!-- 点击空白关闭右键菜单 -->
     <div
       v-if="contextMenu.show"
@@ -112,6 +123,7 @@
 import { ref, reactive, computed } from 'vue'
 import { BookOpen, FolderOpen, Plus, AlertTriangle } from 'lucide-vue-next'
 import type { ProjectEntry } from '../types/project'
+import ConfirmDialog from './ConfirmDialog.vue'
 // ── Props & Emits ──
 
 const props = defineProps<{
@@ -192,9 +204,17 @@ function handleRelocate() {
   closeContextMenu()
 }
 
+const pendingRemove = ref<ProjectEntry | null>(null)
+
 function handleRemove() {
-  if (contextMenu.project) emit('remove', contextMenu.project)
+  if (contextMenu.project) pendingRemove.value = contextMenu.project
   closeContextMenu()
+}
+
+function confirmRemove() {
+  const target = pendingRemove.value
+  pendingRemove.value = null
+  if (target) emit('remove', target)
 }
 </script>
 

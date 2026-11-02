@@ -5,6 +5,7 @@ import { useToastStore } from '../stores/toast'
 import { useProjectSession } from './useProjectSession'
 import { totalWords } from '../core/tree'
 import { joinPath, samePath } from '../core/paths'
+import { sanitizeFileName } from '../core/text'
 import type { ProjectEntry } from '../types/project'
 import { pickCoverColor } from '../types/project'
 import * as api from '../api/files'
@@ -61,6 +62,13 @@ export function useProjectOperations(opts: {
       projectStore.addProject(updated)
     } catch (e) {
       console.error('打开项目失败:', e)
+      // 回滚：不这样做会停在「已进入项目」的空编辑器上（树是空的、也退不回项目库）
+      opts.currentProject.value = null
+      opts.view.value = 'library'
+      await session.leaveProject()
+      const broken = opts.projects.value.find((p) => samePath(p.path, project.path))
+      if (broken) broken.broken = true
+      void projectStore.saveIndex()
       useToastStore().push('error', '打开项目失败', e instanceof Error ? e.message : String(e), 4000)
     }
   }
@@ -110,13 +118,8 @@ export function useProjectOperations(opts: {
     }
   }
 
-  /** 项目名清洗：去掉 Windows 非法字符与首尾空白，限制长度 */
-  function sanitizeProjectName(raw: string): string {
-    return raw.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').trim().slice(0, 60)
-  }
-
   async function confirmNewProject() {
-    const name = sanitizeProjectName(newProjectName.value)
+    const name = sanitizeFileName(newProjectName.value)
     if (!name) {
       useToastStore().push('error', '项目名无效', '请勿使用 < > : " / \\ | ? * 等字符', 4000)
       return
@@ -126,6 +129,17 @@ export function useProjectOperations(opts: {
     const projectPath = joinPath(newProjectPath.value, name)
     if (opts.projects.value.some((p) => samePath(p.path, projectPath))) {
       useToastStore().push('error', '项目已存在', `「${name}」已在项目库中`, 4000)
+      return
+    }
+    // 磁盘上已有同名目录：直接接管会把它原有的文件一起当成这个项目的正文，
+    // 用户以为新建了一个空项目，实际上打开了别人的旧稿
+    if (await api.pathExists(projectPath)) {
+      useToastStore().push(
+        'error',
+        '目录已存在',
+        `「${name}」文件夹已存在，换个名字，或用「打开已有项目」直接打开它`,
+        6000,
+      )
       return
     }
     showNewProjectDialog.value = false
@@ -146,6 +160,13 @@ export function useProjectOperations(opts: {
       const folder = await openDialog({ directory: true, title: '选择已有项目文件夹' })
       if (!folder) return
       const path = typeof folder === 'string' ? folder : String(folder)
+      // 重复添加同一目录会在项目库留下两张相同卡片（addProject 只更新了第一张）
+      const dup = opts.projects.value.find((p) => samePath(p.path, path))
+      if (dup) {
+        useToastStore().push('info', '已在项目库中', `「${dup.name}」`, 3000)
+        await openProject(dup)
+        return
+      }
       const name = path.split(/[/\\]/).pop() || '未命名'
       const project: ProjectEntry = {
         path, name,
@@ -168,7 +189,7 @@ export function useProjectOperations(opts: {
    * 否则编辑器会继续显示一个已不在列表里的项目，还能往里写盘。
    */
   async function handleRemoveProject(project: ProjectEntry) {
-    opts.projects.value = opts.projects.value.filter((p) => p.path !== project.path)
+    opts.projects.value = opts.projects.value.filter((p) => !samePath(p.path, project.path))
     projectStore.removeProject(project.path)
 
     if (opts.currentProject.value && samePath(opts.currentProject.value.path, project.path)) {

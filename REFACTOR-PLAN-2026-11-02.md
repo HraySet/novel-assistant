@@ -260,39 +260,63 @@ Step 1 做完会立刻产生两个副产品：
 | Step 2 迁移 7 处 | ✅ 5 commits | 逐处迁移 + 顺带修复 5 个 P1/P0 |
 | Step 3 拆 App.vue | ✅ 1 commit | script 330 → 262 行 |
 | 前端遗留项 | ✅ 1 commit | 请求头参数化 / 路径显示 / 单字搜索 / 超时 |
-| Step 4 Rust 拆分 | ⛔ **阻塞** | 见 §10 |
+| Step 4 Rust 拆分 | ✅ 2 commits | cargo check/test/build 通过，19 个 Rust 用例 |
 
 分支：`refactor/core-seam`，基线标签 `baseline-2026-11-02`。
 
-## 10. Step 4 阻塞说明（Rust 不可编译）
+## 10. Step 4 执行记录（Rust）
 
-本机 `cargo check` 无法通过，**不是代码问题，是工具链缺失**：
+### 10.1 拆分结果
 
-```
-host: x86_64-pc-windows-msvc
-link: extra operand '...\build_script_build-*.o'   ← GNU coreutils 的 link 抢占了 PATH
-vswhere.exe / Visual Studio 2022 目录均不存在
-```
+`lib.rs` 1465 行 → **79 行**（只剩模块声明与命令注册），按领域切成 10 个模块：
 
-即：目标三元组是 MSVC，但机器上没有 MSVC 链接器。`src-tauri/target/debug/build/*`
-下的构建脚本全部链接失败，`serde` / `thiserror` / `parking_lot_core` 都编不过。
-
-**因此 Step 4 暂缓**——按本计划 §2.1「验证不了不动」的原则，不做无法验证的
-1465 行模块拆分。解除阻塞的方式（三选一）：
-
-1. 安装 **Visual Studio Build Tools 2022**（勾选「使用 C++ 的桌面开发」），
-   然后从「x64 Native Tools Command Prompt」执行 `cargo check`；
-2. 换一台已有 MSVC 的机器完成 Step 4；
-3. 若改用 GNU 工具链：`rustup target add x86_64-pc-windows-gnu` 并安装 MinGW-w64，
-   但 Tauri 在 Windows 上官方推荐 MSVC，不建意为难自己。
-
-解除后 Step 4 待办（代码位置已勘定，改完即可验证）：
-
-| 待办 | 位置 | 价值 |
+| 模块 | 行数 | 职责 |
 |---|---|---|
-| `scan_mentions` 改 async + spawn_blocking | lib.rs:1324 | 同步命令在主线程扫 32MB 正文，打开角色面板会卡 UI |
-| `last_file` 语义修正 | lib.rs:1342-1350 | 现为目录迭代顺序的最后一个命中文件，与 UI 的「最近」不符；改按 mtime 取最大 |
-| 逐文件流式扫描 | collect_body_files | 现在把全部正文读进内存再匹配，改为读一个算一个 |
-| 按领域拆模块 | lib.rs 全量 | fs / backup / trash / export / mention / ai / platform |
+| `types.rs` | 57 | 跨模块数据结构（全部 camelCase） |
+| `config.rs` | 64 | config.json 读写、项目路径与索引 |
+| `paths.rs` | 210 | **路径沙箱**（安全边界）+ 路径工具 |
+| `backup.rs` | 190 | 版本备份、去重哈希、备份迁移 |
+| `fs_ops.rs` | 510 | 文件读写/建删/移动 + 字数缓存 |
+| `trash.rs` | 119 | 回收站 |
+| `ai.rs` | 64 | AI 配置与系统钥匙串 |
+| `export.rs` | 231 | TXT/MD/EPUB3 导出 |
+| `mention.rs` | 184 | 角色出场统计 |
+| `platform.rs` | 116 | 定位文件、拖放、外部拖入 |
 
-前端侧已就绪：`api/files.ts` 的命令名与参数无需任何改动，拆分对前端透明。
+依赖单向（platform/export/mention/trash/fs_ops → backup/paths/config → types），命令名与参数完全不变，**前端零改动**。已逐一核对 31 个命令：前端调用的全部命中注册表。
+
+### 10.2 顺带修掉的 4 个缺陷
+
+| 缺陷 | 原因 | 影响 |
+|---|---|---|
+| `scan_mentions` 同步命令 | 未用 `spawn_blocking`（`list_dir` 用了） | 打开角色面板时主线程读最多 32MB 正文，UI 卡死 |
+| 全量读入内存再匹配 | 先收集所有正文再逐个匹配 | 峰值内存随全书增长 |
+| `last_file` 取值无意义 | 取目录迭代顺序里最后一个命中文件 | 「最近 第3章.md」是假的，与"最近"无关 |
+| `MentionStat` 字段名 | 漏了 `rename_all = "camelCase"` | 前端读 `m.lastFile` 得到 undefined，角色卡渲染「最近 XX」抛 TypeError |
+
+### 10.3 追加修正：备份串档
+
+`ends_with("_{filename}")` 在文件名互为后缀时会互相污染（`章.md` 的备份后缀也匹配 `v2_章.md` 的备份）。改为精确解析 `{ts}_{完整文件名}`，prune / list / 迁移三处共用。
+
+### 10.4 验证
+
+```
+cargo check   0 错误、0 警告
+cargo test    19 passed（字数口径 5 / 路径沙箱 8 / 备份命名 4 / 出场统计 3）
+cargo build   成功，target/debug/yanyan.exe 18.7 MB
+```
+
+> 遗留（未做）：删除文件后其 `.backups` 会变成孤儿，清空回收站也不会带走。
+> 影响仅是磁盘占用，且这些备份仍有"误删找回"的价值，暂按现状保留，已在 `REVIEW-2026-11-01.md` 记录。
+
+### 10.5 上一轮为什么卡住（保留记录）
+
+本机原先没有 MSVC 工具链，`link` 被 Git 自带的 GNU link 抢占，报 `link: extra operand`。
+装 VS Build Tools 2022（勾「使用 C++ 的桌面开发」）后，从 `vcvars64.bat` 加载环境即可。
+Git Bash 下直接 `cmd //c` 会被 MSYS 参数转换破坏，改用纯 ASCII 的批处理包装（见下）。
+
+```bat
+@echo off
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
+cargo %*
+```

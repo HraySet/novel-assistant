@@ -13,6 +13,14 @@
 ├─ stores/ ─────────────────────── 领域状态（Pinia setup store），一域一个
 ├─ core/ ───────────────────────── 纯函数：无 store、无 api、无 Vue 依赖
 └─ api/files.ts → Rust commands ── IO 边界，唯一跨进程出口
+
+Rust 侧（src-tauri/src/，依赖方向同上）：
+┌─ platform · export · mention · trash ── 具体能力
+├─ fs_ops ─────────────────────────────── 文件读写 + 字数缓存
+├─ backup ─────────────────────────────── 版本备份
+├─ paths ──────────────────────────────── 路径沙箱（安全边界）
+├─ config ─────────────────────────────── 配置读写
+└─ types ──────────────────────────────── 共享结构
 ```
 
 **规则：依赖只能向下。** `core/` 不许 import store 或 api——一旦允许，纯函数就变成了"需要初始化才能跑"的东西，测试成本陡增。
@@ -103,6 +111,9 @@ for (const n of nodes) { if (n.isDir) ... else if (/\.(md|txt)$/.test(n.name)) .
 | 用 `split().join()` 做定点替换 | 同一句出现两次会被全部改掉 | `replaceFirst` |
 | store 初始化直接读 `localStorage` | node 环境无法实例化，store 永不可测 | `core/storage` 的安全访问 |
 | 手工拼路径字符串 | 分隔符/`\\?\` 前缀不一致，字符串比较静默失效 | `core/paths` |
+| Rust 结构体漏写 `rename_all="camelCase"` | 前端拿到 undefined，渲染时抛 TypeError | 所有序列化结构显式声明；前端接口定义是契约 |
+| 用 `ends_with` 匹配结构化文件名 | `章.md` 会匹配到 `v2_章.md` 的备份，列表串档、prune 误删 | 解析出各字段后逐段比较 |
+| 同步命令做重 IO | 主线程阻塞（`scan_mentions` 曾读 32MB 正文） | `async fn` + `spawn_blocking` |
 
 ## 五、评审五问（改代码前自问）
 

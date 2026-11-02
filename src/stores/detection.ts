@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import * as api from '../api/files'
 import { useSettingsStore } from './settings'
 import { streamChat } from '../composables/useAiStream'
+import { readLocal, writeLocal } from '../core/storage'
 import {
   CONTEXT_BUDGETS,
   listChapterFiles,
@@ -46,8 +47,8 @@ interface CheckInput {
 }
 
 export const useDetectionStore = defineStore('detection', () => {
-  const autoEnabled = ref(localStorage.getItem('detect-auto') !== '0')
-  const threshold = ref(Number(localStorage.getItem('detect-threshold')) || 1500)
+  const autoEnabled = ref(readLocal('detect-auto') !== '0')
+  const threshold = ref(Number(readLocal('detect-threshold')) || 1500)
   const characterChanges = ref<CharacterChange[]>([])
   const outlineSuggestions = ref<OutlineSuggestion[]>([])
   const wordsSinceCheck = ref(0)
@@ -59,12 +60,12 @@ export const useDetectionStore = defineStore('detection', () => {
 
   function setAuto(on: boolean) {
     autoEnabled.value = on
-    localStorage.setItem('detect-auto', on ? '1' : '0')
+    writeLocal('detect-auto', on ? '1' : '0')
   }
 
   function setThreshold(v: number) {
     threshold.value = Math.min(2000, Math.max(300, Math.round(v)))
-    localStorage.setItem('detect-threshold', String(threshold.value))
+    writeLocal('detect-threshold', String(threshold.value))
   }
 
   // ── 自动触发：累计新增字数达到阈值后防抖检测 ──

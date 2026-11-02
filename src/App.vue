@@ -181,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, onMounted, defineAsyncComponent } from 'vue'
 import { FolderOpen, Sparkles, X, Settings, Download, Users, Trash2 } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useProjectOperations } from './composables/useProjectOperations'
@@ -192,7 +192,6 @@ import { useChatStore } from './stores/chat'
 import { useStatsStore } from './stores/stats'
 import { useSettingsStore } from './stores/settings'
 import { useDetectionStore } from './stores/detection'
-import { useSelectionStore } from './stores/selection'
 import { useDesignTokens } from './composables/useDesignTokens'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
@@ -202,7 +201,9 @@ import * as api from './api/files'
 import { isTauri } from '@tauri-apps/api/core'
 
 import { exportFiles } from './composables/useExport'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { useAiApply } from './composables/useAiApply'
+import { useCloseGuard } from './composables/useCloseGuard'
+import { useExternalFileWatch, usePreventFileDropNavigation } from './composables/useExternalFileWatch'
 import TopBar from './components/TopBar.vue'
 import MdEditor from './components/MdEditor.vue'
 import AiPanel from './components/AiPanel.vue'
@@ -231,15 +232,6 @@ const showSearch = ref(false)
 const showCharacters = ref(false)
 const showTrash = ref(false)
 const focusMode = ref(false)
-
-// ── 退出确认（有未保存修改时）──
-const showCloseConfirm = ref(false)
-let closeResolver: ((c: 'save' | 'discard' | 'cancel') => void) | null = null
-const dirtyFiles = computed(() => fileStore.openFiles.filter((f) => f.isDirty))
-function resolveClose(choice: 'save' | 'discard' | 'cancel') {
-  closeResolver?.(choice)
-  closeResolver = null
-}
 
 // 章节顺序（走 chapters 策略：排除 角色/大纲 与 _ 前缀文件）
 const orderedFiles = computed(() => chapterPaths(fileTree.value))
@@ -284,7 +276,6 @@ function fileNameOf(p: string) {
 const showSettings = ref(false)
 const settingsSection = ref('writing')
 const editorRef = ref<InstanceType<typeof MdEditor>>()
-let mtimeTimer: ReturnType<typeof setInterval> | null = null
 
 const fileStore = useFileStore()
 const chatStore = useChatStore()
@@ -298,6 +289,46 @@ const currentProject = ref<ProjectEntry | null>(null)
 
 const proj = useProjectOperations({ view, projects, currentProject })
 const { showNewProjectDialog, newProjectPath, newProjectName, confirmNewProject } = proj
+
+// ── 关窗守卫（未保存确认 + 统一落盘）──
+const {
+  showCloseConfirm,
+  dirtyFiles,
+  resolveClose,
+  install: installCloseGuard,
+} = useCloseGuard({
+  getDirtyFiles: () =>
+    fileStore.openFiles.filter((f) => f.isDirty).map((f) => ({ path: f.path, name: f.name })),
+  saveAllDirty: () => fileStore.saveAllDirty(),
+  flushBeforeClose: async () => {
+    statsStore.pauseSession()
+    statsStore.flushPersist()
+    await chatStore.flushSave()
+    editorRef.value?.flushUndo()
+    settingsStore.flushAiSaveNow()
+  },
+})
+
+// ── AI 结果落地（插入 / 替换选区 / 划词动作唤出面板）──
+const { insert: handleAiInsert, applyToSelection: handleApplySelection } = useAiApply({
+  getEditor: () => editorRef.value,
+  onNeedPanel: () => {
+    if (!showAiPanel.value) showAiPanel.value = true
+  },
+})
+
+// ── 外部修改感知 ──
+const externalWatch = useExternalFileWatch({
+  getPath: () => activeFile.value?.path,
+  isDirty: () => !!activeFile.value?.isDirty,
+  isActive: () => view.value === 'editor',
+  onExternalChange: (content) => {
+    fileStore.updateActiveFile({ content, isDirty: false })
+  },
+})
+
+// 拖到无处理器区域时阻止 WebView 直接打开文件
+usePreventFileDropNavigation()
 
 
 // ── File operations ──
@@ -326,27 +357,8 @@ async function handleExport() {
   await exportFiles(fileTree.value, currentProject.value?.name || '导出')
 }
 
-// ── AI ──
+// ── AI：插入 / 划词替换由 useAiApply 提供（handleAiInsert / handleApplySelection）──
 
-function handleAiInsert(text: string) {
-  editorRef.value?.insertIfNotDuplicate(text)
-}
-
-const selectionStore = useSelectionStore()
-
-/** 把 AI 结果替换进编辑器划词选区；范围已不是原文或文件已切换时拒绝 */
-function handleApplySelection(target: { path: string; from: number; to: number; original?: string }, text: string): boolean {
-  const el = editorRef.value
-  if (!el || fileStore.openFile?.path !== target.path) return false
-  const ok = el.replaceRange(target.from, target.to, text, target.original)
-  if (ok) void fileStore.handleSave()
-  return ok
-}
-
-// 编辑器划词工具条触发动作时自动打开 AI 面板（面板消费 pendingAction 后清空）
-watch(() => selectionStore.pendingAction, (action) => {
-  if (action && !showAiPanel.value) showAiPanel.value = true
-})
 const detectionStore = useDetectionStore()
 // 项目切换时载入该项目的一致性检测结果（含待确认的人物/大纲变化）
 watch(() => currentProject.value?.path, (p) => {
@@ -371,15 +383,6 @@ function handleGlobalHistoryRestore(content: string) {
   }
 }
 
-
-// ── 全局拖放守卫 ──
-// 文件被拖到没有 drop 处理器的区域（如编辑器）时，阻止 WebView 默认行为（直接打开该文件）
-function preventFileNavigation(e: DragEvent) {
-  if (e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files')) {
-    e.preventDefault()
-  }
-}
-
 // ── Theme ──
 // 主题变量注入（强调色/背景色/明暗 → CSS 变量），setup 顶层调用一次
 useDesignTokens()
@@ -394,38 +397,13 @@ useKeyboardShortcuts({
 })
 
 onMounted(async () => {
-  window.addEventListener('dragover', preventFileNavigation)
-  window.addEventListener('drop', preventFileNavigation)
-
   // 打开 WebView2 外部拖放开关：外部文件拖入与应用内拖拽落回都依赖它
   if (isTauri()) {
     api.enableExternalDrop().catch((e) => console.error('enable_external_drop 失败:', e))
   }
 
-  // 外部文件变化检测：每 3 秒比对当前文件的修改时间
-  // 有未保存修改时以本地为准，仅覆盖未修改的文件
-  let lastMtime: number | null = null
-  let mtimePath = ''
-  mtimeTimer = setInterval(async () => {
-    const file = activeFile.value
-    // 窗口隐藏/最小化时跳过轮询，回到前台后下次 tick 自动恢复
-    if (document.hidden) return
-    if (!file || view.value !== 'editor') return
-    try {
-      const mtime = await api.fileMtime(file.path)
-      if (mtime == null) return
-      if (mtimePath !== file.path) {
-        mtimePath = file.path
-        lastMtime = mtime
-        return
-      }
-      if (lastMtime != null && mtime > lastMtime && !file.isDirty) {
-        const content = await api.readFile(file.path)
-        fileStore.updateActiveFile({ content, isDirty: false })
-      }
-      lastMtime = mtime
-    } catch { /* 忽略瞬时读取失败 */ }
-  }, 3000)
+  // 外部文件变化检测（逻辑在 useExternalFileWatch）
+  externalWatch.start()
 
   await projectStore.loadIndex()
 
@@ -439,33 +417,8 @@ onMounted(async () => {
   }
   if (projects.value.some((p) => p.broken)) await projectStore.saveIndex()
 
-  // 关闭窗口前：保存未落盘文件、落盘统计与聊天记录
-  if (isTauri()) {
-    const win = getCurrentWindow()
-    let allowClose = false
-    await win.onCloseRequested(async (event) => {
-      if (allowClose) return
-      event.preventDefault()
-
-      if (fileStore.openFiles.some((f) => f.isDirty)) {
-        // 应用内三键确认：保存并退出 / 不保存退出 / 取消
-        showCloseConfirm.value = true
-        const choice = await new Promise<'save' | 'discard' | 'cancel'>((r) => { closeResolver = r })
-        showCloseConfirm.value = false
-        if (choice === 'cancel') return
-        if (choice === 'save') await fileStore.saveAllDirty()
-      }
-
-      statsStore.pauseSession()
-      statsStore.flushPersist()
-      await chatStore.flushSave()
-      editorRef.value?.flushUndo()
-      settingsStore.flushAiSaveNow()
-
-      allowClose = true
-      await win.destroy()
-    })
-  }
+  // 关窗守卫：有未保存修改时三键确认，确认后统一落盘再销毁窗口
+  await installCloseGuard()
 
   // 记住上次项目：直接打开，不必每次手动选文件夹
   try {
@@ -488,12 +441,7 @@ onMounted(async () => {
     console.error('自动打开上次项目失败:', e)
   }
 })
-
-onUnmounted(() => {
-  if (mtimeTimer) clearInterval(mtimeTimer)
-  window.removeEventListener('dragover', preventFileNavigation)
-  window.removeEventListener('drop', preventFileNavigation)
-})
+// 轮询定时器与拖放监听由 useExternalFileWatch / usePreventFileDropNavigation 自行清理
 </script>
 
 <style scoped>

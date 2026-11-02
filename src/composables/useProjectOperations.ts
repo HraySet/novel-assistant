@@ -1,8 +1,8 @@
 import { ref, type Ref } from 'vue'
 import { useProjectStore } from '../stores/project'
 import { useFileStore } from '../stores/file'
-import { useStatsStore } from '../stores/stats'
 import { useToastStore } from '../stores/toast'
+import { useProjectSession } from './useProjectSession'
 import type { ProjectEntry } from '../types/project'
 import type { FileNode } from '../types/file'
 import { pickCoverColor } from '../types/project'
@@ -16,7 +16,7 @@ export function useProjectOperations(opts: {
 }) {
   const projectStore = useProjectStore()
   const fileStore = useFileStore()
-  const statsStore = useStatsStore()
+  const session = useProjectSession()
 
   const showNewProjectDialog = ref(false)
   const newProjectPath = ref('')
@@ -37,8 +37,9 @@ export function useProjectOperations(opts: {
     opts.view.value = 'editor'
     try {
       await api.setProjectPath(project.path)
+      // 域状态统一重置（标签/活动文件/树/统计/检测/对话），避免上一个项目残留
+      await session.enterProject(project.path)
       await loadFileTree()
-      await statsStore.init(project.path)
       // 恢复上次会话的标签页与活动文件（后台逐个读盘，失败跳过）
       await fileStore.restoreOpenTabs()
       // 汇总全书字数并写回项目索引（项目库卡片显示用）

@@ -93,6 +93,7 @@ import { X, Plus, Users, RefreshCw, Sparkles } from 'lucide-vue-next'
 import * as api from '../api/files'
 import { roleColor } from '../composables/useTheme'
 import { streamChat } from '../composables/useAiStream'
+import { readDirDocsFull } from '../composables/projectDocs'
 import { useSettingsStore } from '../stores/settings'
 import ConfirmDialog from './ConfirmDialog.vue'
 import BaseModal from './BaseModal.vue'
@@ -153,15 +154,10 @@ function norm(p: string) {
 async function loadCharacters() {
   loading.value = true
   try {
-    const entries = await api.listDir(charDir())
-    const files = (entries || []).filter((e: any) => !e.isDir && /\.md$/i.test(e.name))
-    const list: CharEntry[] = []
-    for (const f of files) {
-      try {
-        const content = await api.readFile(f.path)
-        list.push({ name: f.name.replace(/\.md$/i, ''), path: f.path, content })
-      } catch { /* 读不了就跳过 */ }
-    }
+    // 走 projectDocs：与 AI 上下文/检测共用同一套目录遍历与过滤规则，
+    // 且用「读全文」版本（角色卡要编辑回写，截断版本会砍掉卡片内容）
+    const docs = await readDirDocsFull(props.projectRoot, '角色')
+    const list: CharEntry[] = docs.map((d) => ({ name: d.name, path: d.path, content: d.content }))
     characters.value = list
     void scanMentionsFor(list)
     if (!list.some((c) => norm(c.path) === norm(selectedPath.value ?? ''))) {

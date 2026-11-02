@@ -145,6 +145,44 @@ export async function countDirDocs(root: string, dirName: string): Promise<numbe
   }
 }
 
+/** 完整文档（含路径），供需要写回的场景使用 */
+export interface DirDocFile extends DirDoc {
+  path: string
+}
+
+/**
+ * 读取资料目录下的**完整**文档（不截断），用于需要写回的场景（角色卡编辑）。
+ *
+ * ⚠️ 与 `readDirDocs` 的区别必须分清：
+ * - `readDirDocs` 有预算上限，只喂给模型，**绝不能拿来写回**（会截断用户文件）；
+ * - 本函数读全文，内存占用随卡片数量线性增长，因此并发受限。
+ */
+export async function readDirDocsFull(
+  root: string,
+  dirName: string,
+  concurrency = 8,
+): Promise<DirDocFile[]> {
+  const files = await listDirDocs(root, dirName)
+  if (files.length === 0) return []
+
+  const results = new Array<DirDocFile | null>(files.length).fill(null)
+  let cursor = 0
+  const worker = async () => {
+    while (true) {
+      const i = cursor++
+      if (i >= files.length) return
+      const file = files[i]
+      try {
+        results[i] = { name: file.name, path: file.path, content: await api.readFile(file.path) }
+      } catch {
+        /* 单个读失败跳过 */
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker))
+  return results.filter((d): d is DirDocFile => d !== null)
+}
+
 /**
  * 按需读取若干章节的内容切片。
  *

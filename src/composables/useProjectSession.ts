@@ -43,5 +43,4 @@ export function useProjectSession() {
     detectionStore.setProjectRoot('')
   }
 
-  return { enterProject, leaveProject }
-}
+  return { enterProject, leaveProject }}

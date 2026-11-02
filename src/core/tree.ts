@@ -155,6 +155,19 @@ export function chapterPaths(nodes: FileNode[]): string[] {
   return pathsOf(walkFiles(nodes, TREE_POLICIES.chapters))
 }
 
+/**
+ * 按策略汇总字数（默认只统计正文）。
+ *
+ * 项目库卡片上的「全书字数」用它：此前手工遍历整棵树把 角色/ 大纲/ 与 _project.md
+ * 也算进去，导致「全书字数」比实际正文大一截，且与顶栏章节数口径不一致。
+ */
+export function totalWords(
+  nodes: FileNode[],
+  policy: TreePolicy = TREE_POLICIES.chapters,
+): number {
+  return walkFiles(nodes, policy).reduce((sum, e) => sum + (e.wordCount ?? 0), 0)
+}
+
 /** 便利投影：单个目录下的文件条目（角色卡、大纲目录读取） */
 export function listFilesIn(dirPath: string, names: string[]): TreeEntry[] {
   const nodes: FileNode[] = names.map((name) => ({

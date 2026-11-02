@@ -15,6 +15,7 @@ import {
   listDirDocs,
   readChapterSlices,
   readDirDocs,
+  readDirDocsFull,
   readOverview,
   readRecap,
 } from './projectDocs'
@@ -123,6 +124,35 @@ describe('readDirDocs（预算截断）', () => {
     })
     const docs = await readDirDocs(ROOT, '角色')
     expect(docs.map((d) => d.name)).toEqual(['b'])
+  })
+})
+
+describe('readDirDocsFull（角色卡编辑用，不截断）', () => {
+  it('返回全文，不受预算限制', async () => {
+    listDir.mockResolvedValue([entry('张三.md', `${ROOT}/角色`)])
+    readFile.mockResolvedValue('x'.repeat(20000))
+    const docs = await readDirDocsFull(ROOT, '角色')
+    expect(docs[0].content).toHaveLength(20000)
+    expect(docs[0].path).toBe(`${ROOT}/角色/张三.md`)
+  })
+
+  it('空卡片也保留（新建角色卡刚创建时没有内容）', async () => {
+    listDir.mockResolvedValue([entry('新角色.md', `${ROOT}/角色`)])
+    readFile.mockResolvedValue('')
+    const docs = await readDirDocsFull(ROOT, '角色')
+    expect(docs).toHaveLength(1)
+    expect(docs[0].content).toBe('')
+  })
+
+  it('保持顺序', async () => {
+    listDir.mockResolvedValue([
+      entry('1.md', `${ROOT}/角色`),
+      entry('2.md', `${ROOT}/角色`),
+      entry('3.md', `${ROOT}/角色`),
+    ])
+    readFile.mockImplementation(async (p: string) => `内容:${p.split('/').pop()}`)
+    const docs = await readDirDocsFull(ROOT, '角色', 3)
+    expect(docs.map((d) => d.name)).toEqual(['1', '2', '3'])
   })
 })
 

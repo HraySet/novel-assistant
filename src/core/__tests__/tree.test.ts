@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { walkFiles, pathsOf, chapterPaths, listFilesIn, TREE_POLICIES } from '../tree'
+import { walkFiles, pathsOf, chapterPaths, totalWords, listFilesIn, TREE_POLICIES } from '../tree'
 import { FIXTURE_ROOT, FIXTURE_TREE, CHAPTER_PATHS } from './fixtures/tree.fixture'
 
 /**
@@ -116,6 +116,32 @@ describe('策略可组合', () => {
     expect(names).toContain('张三.md')
     expect(names).toContain('主线.md')
     expect(names).toContain('第1章.md')
+  })
+})
+
+describe('totalWords（项目库「全书字数」）', () => {
+  it('只统计正文，不含角色卡/大纲/项目概述', () => {
+    // fixture：第1章100 + 第2章100 + 番外50 + 第3章100 = 350
+    expect(totalWords(FIXTURE_TREE)).toBe(350)
+  })
+
+  it('与 chapterPaths 的口径一致（同一批文件）', () => {
+    const byPaths = chapterPaths(FIXTURE_TREE)
+      .map((p) => FIXTURE_TREE.flatMap(function flat(n): any[] {
+        return n.isDir ? (n.children ?? []).flatMap(flat) : [n]
+      }).find((n) => n.path === p)?.wordCount ?? 0)
+      .reduce((a, b) => a + b, 0)
+    expect(totalWords(FIXTURE_TREE)).toBe(byPaths)
+  })
+
+  it('可指定其它策略（allFiles 会把设定文件与图片也算进来）', () => {
+    // 正文 350 + 角色 2×100 + 大纲 100 + _project 20 + 封面.png 100（allFiles 不筛类型）
+    // 正因为如此，「全书字数」必须用 chapters 口径
+    expect(totalWords(FIXTURE_TREE, TREE_POLICIES.allFiles)).toBe(770)
+  })
+
+  it('空树为 0', () => {
+    expect(totalWords([])).toBe(0)
   })
 })
 

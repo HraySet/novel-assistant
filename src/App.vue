@@ -197,7 +197,7 @@ import { useDesignTokens } from './composables/useDesignTokens'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
 import { pickCoverColor } from './types/project'
-import type { FileNode } from './types/file'
+import { chapterPaths } from './core/tree'
 import * as api from './api/files'
 import { isTauri } from '@tauri-apps/api/core'
 
@@ -241,21 +241,8 @@ function resolveClose(choice: 'save' | 'discard' | 'cancel') {
   closeResolver = null
 }
 
-// 章节顺序（按文件树展示顺序展平的 md/txt 文件）
-const orderedFiles = computed(() => {
-  const out: string[] = []
-  const walk = (nodes: FileNode[]) => {
-    for (const n of nodes) {
-      if (n.isDir) {
-        if (n.children) walk(n.children)
-      } else if (/\.(md|txt)$/i.test(n.name)) {
-        out.push(n.path)
-      }
-    }
-  }
-  walk(fileTree.value)
-  return out
-})
+// 章节顺序（走 chapters 策略：排除 角色/大纲 与 _ 前缀文件）
+const orderedFiles = computed(() => chapterPaths(fileTree.value))
 
 const prevChapterPath = computed(() => {
   const p = activeFile.value?.path

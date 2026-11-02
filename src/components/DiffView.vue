@@ -1,5 +1,5 @@
 <template>
-  <div class="diff-view" :class="{ 'diff-view--compact': compact, 'diff-view--line': granularity === 'line' }">
+  <div class="diff-view" :class="{ 'diff-view--compact': compact, 'diff-view--line': granularity === 'line', 'diff-view--readonly': !editable }">
     <!-- 头栏 -->
     <div class="diff-header">
       <span v-if="title" class="diff-title">{{ title }}</span>
@@ -79,8 +79,8 @@
       </template>
     </div>
 
-    <!-- 操作栏 -->
-    <div class="diff-footer">
+    <!-- 操作栏：只读场景（历史版本对比）不渲染，由宿主提供自己的按钮 -->
+    <div v-if="editable" class="diff-footer">
       <button class="diff-btn diff-btn--reject" @click="$emit('reject')">
         <X :size="14" /> 放弃
       </button>
@@ -405,6 +405,9 @@ function marker(type: DiffLine['type']): string {
   word-break: break-word;
   color: var(--color-text-primary);
 }
+
+/* 只读场景没有勾选槽，补回左内边距，否则文字贴着色条 */
+.diff-view--readonly .diff-line { padding-left: 12px; }
 
 /* ── 行内片段（词粒度）：只在变化处上色，正文连续可读 ── */
 .diff-seg--add {

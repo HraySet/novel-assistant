@@ -14,7 +14,7 @@
     <TopBar :project-name="currentProject?.name ?? ''" :file-name="activeFile?.name"
       :prev-path="prevChapterPath" :next-path="nextChapterPath" :focus-mode="focusMode"
       :chapter-index="chapterIndex" :chapter-total="chapterTotal"
-      @go-library="view = 'library'" @navigate="(p: string) => fileStore.handleFileSelect(p)"
+      @go-library="goLibrary" @navigate="(p: string) => fileStore.handleFileSelect(p)"
       @open-search="showSearch = true" @toggle-focus="focusMode = !focusMode" />
 
     <!-- 主体：编辑器 + 两条图标轨 + 可推挤面板 -->
@@ -110,6 +110,7 @@
     <!-- 角色卡片 -->
     <CharacterCards :show="showCharacters" :project-root="currentProject?.path ?? ''"
       :current-content="activeFile?.content ?? ''"
+      :get-current-content="() => (activeFile ? fileStore.getLatestContent(activeFile.path) : '')"
       @close="showCharacters = false" />
 
     <!-- 回收站 -->
@@ -196,7 +197,8 @@ import { useDesignTokens } from './composables/useDesignTokens'
 import ProjectLibrary from './components/ProjectLibrary.vue'
 import type { ProjectEntry } from './types/project'
 import { pickCoverColor } from './types/project'
-import { chapterPaths } from './core/tree'
+import { chapterPaths, totalWords } from './core/tree'
+import { samePath } from './core/paths'
 import * as api from './api/files'
 import { isTauri } from '@tauri-apps/api/core'
 
@@ -349,12 +351,30 @@ function handleEditorDirty() {
 }
 
 
-// ── 导出 ──
-
 // ── 导出（逻辑在 useExport：章节收集 + 格式分发） ──
 
 async function handleExport() {
   await exportFiles(fileTree.value, currentProject.value?.name || '导出')
+}
+
+// ── 回项目库 ──
+
+/**
+ * 回项目库前刷新当前项目的字数。
+ * `project.wordCount` 是派生数据，原先只在 openProject 时算一次，
+ * 写一天后回到项目库，卡片上还是打开时的旧数字。
+ */
+function goLibrary() {
+  const p = currentProject.value
+  if (p && projects.value.some((x) => samePath(x.path, p.path))) {
+    const total = totalWords(fileTree.value)
+    if (total !== p.wordCount) {
+      const updated = { ...p, wordCount: total }
+      currentProject.value = updated
+      projectStore.addProject(updated)
+    }
+  }
+  view.value = 'library'
 }
 
 // ── AI：插入 / 划词替换由 useAiApply 提供（handleAiInsert / handleApplySelection）──

@@ -105,7 +105,18 @@ interface CharEntry {
   content: string
 }
 
-const props = defineProps<{ show: boolean; projectRoot: string; currentContent: string }>()
+const props = defineProps<{
+  show: boolean
+  projectRoot: string
+  /** 章节内容快照（打开时可能已过期，仅作兜底） */
+  currentContent: string
+  /**
+   * 取当前章节的**最新**内容。
+   * store 里的 `content` 不会随输入更新（输入只标 dirty），
+   * 所以「从本章抽取」必须走这个 getter，否则抽的是打开文件时的旧文本。
+   */
+  getCurrentContent?: () => string
+}>()
 const emit = defineEmits<{ close: [] }>()
 
 const characters = ref<CharEntry[]>([])
@@ -142,7 +153,15 @@ const selected = computed(
   () => characters.value.find((c) => norm(c.path) === norm(selectedPath.value ?? '')) ?? null,
 )
 
-const canExtract = computed(() => (props.currentContent ?? '').trim().length >= 200)
+/** 打开弹窗时抓取的正文快照（弹窗会挡住编辑器，之后内容不会变） */
+const liveContent = ref('')
+
+function refreshLiveContent() {
+  const fromEditor = props.getCurrentContent?.()
+  liveContent.value = fromEditor && fromEditor.length > 0 ? fromEditor : (props.currentContent ?? '')
+}
+
+const canExtract = computed(() => liveContent.value.trim().length >= 200)
 
 const charDir = () => `${props.projectRoot.replace(/\\/g, '/')}/角色`
 
@@ -185,6 +204,7 @@ watch(
       selectedPath.value = null
       editingContent.value = ''
       dirty.value = false
+      refreshLiveContent()
       loadCharacters()
       window.addEventListener('keydown', onKey)
     } else {
@@ -301,7 +321,7 @@ async function extractCharacters() {
   extracting.value = true
   extractNote.value = ''
   try {
-    const content = props.currentContent.slice(0, 8000)
+    const content = liveContent.value.slice(0, 8000)
     const { text } = await streamChat({
       provider: settings.aiProvider,
       endpoint: settings.aiEndpoint,

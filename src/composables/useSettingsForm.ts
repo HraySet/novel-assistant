@@ -18,12 +18,16 @@ export function useSettingsForm() {
     testResult.value = "";
     try {
       const url = `${store.aiEndpoint}/models`;
-      const res = await fetch(url, { headers: buildAiHeaders() });
+      const res = await fetch(url, {
+        headers: buildAiHeaders(store.aiProvider, store.aiApiKey),
+        // 无超时会让按钮在坏网络下永久转圈
+        signal: AbortSignal.timeout(8000),
+      });
       testOk.value = res.ok;
       testResult.value = res.ok ? "连接成功" : `错误 ${res.status}`;
     } catch {
       testOk.value = false;
-      testResult.value = "连接失败";
+      testResult.value = "连接失败（检查网络、接口地址或密钥）";
     }
     testing.value = false;
   }
@@ -32,7 +36,11 @@ export function useSettingsForm() {
     fetching.value = true;
     try {
       const url = `${store.aiEndpoint}/models`;
-      const res = await fetch(url, { headers: buildAiHeaders() });
+      const res = await fetch(url, {
+        headers: buildAiHeaders(store.aiProvider, store.aiApiKey),
+        // 无超时会让按钮在坏网络下永久转圈
+        signal: AbortSignal.timeout(8000),
+      });
       if (res.ok) {
         const data = await res.json();
         modelList.value = (data.data || [])

@@ -42,7 +42,7 @@
                 </svg>
                 <div class="flex-1 min-w-0">
                   <div class="trash-item-name">{{ e.name }}</div>
-                  <div class="trash-item-path" :title="e.originalPath">{{ relPath(e.originalPath) }}</div>
+                  <div class="trash-item-path" :title="displayPath(e.originalPath)">{{ relPath(e.originalPath) }}</div>
                 </div>
                 <span class="trash-item-time">{{ formatTime(e.deletedAt) }}</span>
                 <button class="trash-btn" :disabled="restoring === e.trashPath" @click="restore(e)">
@@ -74,6 +74,7 @@
 import { ref, watch } from 'vue'
 import { X } from 'lucide-vue-next'
 import * as api from '../api/files'
+import { normalize } from '../core/paths'
 import { useToastStore } from '../stores/toast'
 import ConfirmDialog from './ConfirmDialog.vue'
 import BaseModal from './BaseModal.vue'
@@ -140,13 +141,18 @@ async function emptyAll() {
 }
 
 function relPath(p: string): string {
-  const root = props.projectRoot
-  if (root && p.startsWith(root)) {
-    const sep = root.includes('\\') ? '\\' : '/'
-    const rel = p.slice(root.length).replace(/^[\\/]+/, '')
-    return rel || p
-  }
-  return p
+  // Rust 侧 canonicalize 返回的路径带 \\?\ 前缀，直接与项目根比较会失败，
+  // 结果回收站里显示一长串 UNC 路径。normalize 统一去前缀并转正斜杠。
+  const root = normalize(props.projectRoot ?? '')
+  const np = normalize(p)
+  if (!root) return np
+  if (np === root) return np
+  return np.startsWith(root + '/') ? np.slice(root.length + 1) : np
+}
+
+/** 悬浮提示用的完整路径（同样去掉 \\?\ 前缀，便于阅读与复制） */
+function displayPath(p: string): string {
+  return normalize(p)
 }
 
 function formatTime(ts: number): string {

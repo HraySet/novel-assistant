@@ -197,7 +197,9 @@ watch(searchQuery, (q) => {
   contentMatches.value = []
   const seq = ++searchSeq
 
-  if (!q || q.length < 2) { searching.value = false; return }
+  // 中文单字有意义（"雪"、"刀"），不像拉丁字母那样噪声大，门槛单独放宽
+  const minLen = /[\u3400-\u4dbf\u4e00-\u9fff]/.test(q) ? 1 : 2
+  if (!q || q.length < minLen) { searching.value = false; return }
 
   if (searchTimer) clearTimeout(searchTimer)
   searching.value = true

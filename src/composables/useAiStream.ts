@@ -146,7 +146,7 @@ export async function streamChat(req: AiStreamRequest): Promise<AiStreamResult> 
     try {
       res = await fetch(url, {
         method: 'POST',
-        headers: buildAiHeaders(),
+        headers: buildAiHeaders(req.provider, req.apiKey),
         body: JSON.stringify(body),
         signal: internal.signal,
       })

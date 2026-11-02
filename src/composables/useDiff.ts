@@ -197,3 +197,48 @@ function mergeRuns(lines: DiffLine[]): DiffLine[] {
   }
   return out
 }
+
+// ── 合并（把 diff 结果 + 勾选状态还原成最终文本）──────────────────────
+
+export interface MergeOptions {
+  granularity?: DiffGranularity
+  /** 原文行尾风格：crlf 时行级合并用 \r\n，避免应用后整章换行被改写 */
+  eol?: 'lf' | 'crlf'
+}
+
+/** 判断原文行尾风格（出现任意 \r\n 即视为 CRLF 文档） */
+export function detectEol(text: string): 'lf' | 'crlf' {
+  return text.includes('\r\n') ? 'crlf' : 'lf'
+}
+
+/**
+ * 按勾选状态合并出最终文本。
+ *
+ * ⚠️ 连接符必须跟随粒度：word 模式下每条 DiffLine 是一个**文本片段**而非一行，
+ * 用 '\n' 拼接会把正文粉碎成逐片段换行（曾导致应用 AI 修改后正文每字一行）。
+ *
+ * @param lines      computeDiff 的结果
+ * @param isOff      该行/片段是否被用户取消勾选
+ */
+export function mergeDiffLines(
+  lines: DiffLine[],
+  isOff: (index: number) => boolean,
+  opts: MergeOptions = {},
+): string {
+  const parts: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line.type === 'equal') {
+      parts.push(line.content)
+    } else if (line.type === 'add') {
+      if (!isOff(i)) parts.push(line.content)
+    } else {
+      // remove：勾选（未取消）= 真的删除；取消勾选 = 保留原行
+      if (isOff(i)) parts.push(line.content)
+    }
+  }
+  const sep = opts.granularity === 'word'
+    ? ''
+    : opts.eol === 'crlf' ? '\r\n' : '\n'
+  return parts.join(sep)
+}

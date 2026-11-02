@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { X, Check, CircleCheck } from 'lucide-vue-next'
-import { computeDiff, type DiffLine } from '../composables/useDiff'
+import { computeDiff, mergeDiffLines, detectEol, type DiffLine } from '../composables/useDiff'
 
 const props = defineProps<{
   oldText: string
@@ -134,29 +134,20 @@ function toggle(i: number) {
 
 function isOn(i: number) { return !toggledOff.value.has(i) }
 
-// 根据 toggle 状态合并最终文本
+// 根据 toggle 状态合并最终文本（连接符跟随粒度，见 mergeDiffLines 注释）
 function computeMerged(): string {
-  const lines: string[] = []
-  const state = diffLines.value
-  for (let i = 0; i < state.length; i++) {
-    const line = state[i]
-    if (line.type === 'equal') {
-      lines.push(line.content)
-    } else if (line.type === 'add') {
-      if (isOn(i)) lines.push(line.content)
-    } else if (line.type === 'remove') {
-      if (isOn(i)) {
-        // 真的删了：不推入
-      } else {
-        // 撤销删除：保留原行
-        lines.push(line.content)
-      }
-    }
-  }
-  return lines.join('\n')
+  return mergeDiffLines(diffLines.value, (i) => toggledOff.value.has(i), {
+    granularity: props.granularity ?? 'word',
+    eol: detectEol(props.oldText),
+  })
 }
 
 function handleAccept() {
+  // 全部取消勾选 = 与原文一致：直接收起，不写盘、不记统计
+  if (allToggledOff.value) {
+    emit('reject')
+    return
+  }
   emit('accept', computeMerged())
 }
 

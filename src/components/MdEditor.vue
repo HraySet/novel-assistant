@@ -411,6 +411,13 @@ function replaceRange(from: number, to: number, text: string, expectedOriginal?:
   const doc = view.state.doc
   if (from < 0 || to < from || to > doc.length) return false
   if (expectedOriginal !== undefined && doc.sliceString(from, to) !== expectedOriginal) return false
+  // 真正落笔：此前只做校验就返回 true，导致「应用」后正文纹丝不动却提示已应用
+  view.dispatch({
+    changes: { from, to, insert: text },
+    selection: { anchor: from + text.length },
+    scrollIntoView: true,
+  })
+  view.focus()
   return true
 }
 

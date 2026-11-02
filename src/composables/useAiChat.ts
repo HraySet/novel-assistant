@@ -9,6 +9,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useChatStore, type ChatMessage } from '../stores/chat'
 import { useStatsStore } from '../stores/stats'
 import { useFileStore } from '../stores/file'
+import { useToastStore } from '../stores/toast'
 import { countWords } from '../utils/countWords'
 import { streamChat, AiRequestError } from './useAiStream'
 import { renderMarkdown, escapeHtml } from './useMarkdown'
@@ -89,13 +90,19 @@ export function useAiChat(target: AiChatTarget) {
           { path: msg.targetRange.path, from: msg.targetRange.from, to: msg.targetRange.to, original: msg.originalContent },
           merged,
         )
-        if (!ok) return
+        if (!ok) {
+          // 文件已切换或原文已被改动：明确告知，并把这条 diff 收起
+          useToastStore().push('error', '无法应用修改', '原文已变化或文件已切换', 4000)
+          if (convId) chatStore.patchMessage(convId, index, { originalContent: undefined, targetRange: undefined })
+          return
+        }
+        // 选区路径下 merged 只是选区文本，统计必须用替换后的整章字数
+        statsStore.recordChapterEdit(path, countWords(fileStore.getLatestContent(path)))
       } else {
         await api.writeFile(path, merged)
         fileStore.updateActiveFile({ content: merged, isDirty: false })
+        statsStore.recordChapterEdit(path, countWords(merged))
       }
-      // 应用修改后累计今日字数（与手动保存同一口径）
-      statsStore.recordChapterEdit(path, countWords(merged))
       // 收起 diff：消息变为纯文本（应用后的最终内容），并短暂提示已应用
       if (convId) chatStore.patchMessage(convId, index, { content: merged, originalContent: undefined, targetRange: undefined })
       appliedIndex.value = index
@@ -103,6 +110,7 @@ export function useAiChat(target: AiChatTarget) {
       appliedTimer = setTimeout(() => { appliedIndex.value = null }, 1800)
     } catch (e) {
       console.error('应用修改失败:', e)
+      useToastStore().push('error', '应用修改失败', e instanceof Error ? e.message : String(e), 4000)
     }
   }
 
@@ -230,7 +238,8 @@ export function useAiChat(target: AiChatTarget) {
         : opts.withOriginal && file ? fileStore.getLatestContent(file.path) : undefined
 
     chatStore.addMessage(convId, { role: 'user', content: opts.display, requestText: opts.text, diffable: opts.withOriginal })
-    chatStore.addMessage(convId, { role: 'assistant', content: '', originalContent })
+    // 单条 assistant 占位：流式内容由 updateLastMessage 填充。
+    // 此前误写了两条，前一条永远空着，每次润色都留下一个空气泡并落盘到 .chatlog
     chatStore.addMessage(convId, {
       role: 'assistant',
       content: '',

@@ -3,16 +3,17 @@ import { save } from '@tauri-apps/plugin-dialog'
 import * as api from '../api/files'
 import { useToastStore } from '../stores/toast'
 import type { FileNode } from '../types/file'
+import { walkFiles, pathsOf, TREE_POLICIES } from '../core/tree'
 
-/** 展平文件树中所有可导出的章节文件（保持树顺序） */
+/**
+ * 展平文件树中所有可导出的章节文件（保持树顺序）。
+ *
+ * 走 `exportable` 策略：排除 角色/ 大纲/ 等设定目录、`_` 前缀文件与隐藏项。
+ * 此前这里自己写了一遍遍历且**没有任何排除**，导致合并导出（EPUB/TXT/MD）
+ * 把角色卡与大纲当成章节打进交付物——打开电子书第一章是「角色卡：张三」。
+ */
 export function collectFilePaths(nodes: FileNode[], acc: string[] = []): string[] {
-  for (const n of nodes) {
-    if (n.isDir) {
-      if (n.children) collectFilePaths(n.children, acc)
-    } else if (/\.(md|txt)$/i.test(n.name)) {
-      acc.push(n.path)
-    }
-  }
+  acc.push(...pathsOf(walkFiles(nodes, TREE_POLICIES.exportable)))
   return acc
 }
 

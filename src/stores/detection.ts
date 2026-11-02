@@ -3,6 +3,14 @@ import { computed, ref } from 'vue'
 import * as api from '../api/files'
 import { useSettingsStore } from './settings'
 import { streamChat } from '../composables/useAiStream'
+import {
+  CONTEXT_BUDGETS,
+  listChapterFiles,
+  listDirDocs,
+  readChapterSlices,
+  readDirDocs,
+} from '../composables/projectDocs'
+import { replaceFirst } from '../core/text'
 
 /** AI 推断的角色性格变化（待用户确认） */
 export interface CharacterChange {
@@ -22,10 +30,6 @@ export interface OutlineSuggestion {
 }
 
 const PERSIST_FILE = '.stats/consistency.json'
-const RECENT_CHAPTERS = 5
-const CHAPTER_MAX_CHARS = 4000
-const DIR_FILE_MAX_CHARS = 4000
-const DIR_TOTAL_MAX_CHARS = 30000
 
 const SYSTEM_PROMPT = `你是小说一致性检查器。根据提供的【角色设定】【大纲】与【最近章节】，检测两类问题：
 1. 角色变化：最新章节中角色表现出与既有设定不一致的新性格特质或关系变化；
@@ -107,53 +111,25 @@ export const useDetectionStore = defineStore('detection', () => {
       .catch(() => { /* 保存失败不阻塞 */ })
   }
 
-  // ── 数据采集 ──
+  // ── 数据采集（统一走 projectDocs，与 AI 上下文共用一套遍历与预算） ──
 
-  async function collectRecentChapters(root: string): Promise<CheckInput['recentRaw']> {
-    const entries = await api.listDir(root)
-    const flat: { path: string; name: string }[] = []
-    const walk = (nodes: api.DirEntry[]) => {
-      for (const n of nodes) {
-        if (!n.isDir) flat.push({ path: n.path, name: n.name })
-        if (n.children) walk(n.children)
-      }
+  async function collectCheckInput(root: string): Promise<CheckInput> {
+    const [chapters, chars, outlines] = await Promise.all([
+      listChapterFiles(root),
+      readDirDocs(root, '角色'),
+      readDirDocs(root, '大纲'),
+    ])
+    // 最近 N 章（取整章开头片段，供一致性比对）
+    const recent = await readChapterSlices(root, chapters, {
+      count: CONTEXT_BUDGETS.detectionChapters,
+      perChapterMax: CONTEXT_BUDGETS.detectionChapterChars,
+      fromEnd: true,
+    })
+    return {
+      chars,
+      outlines,
+      recentRaw: recent.map((s) => `## ${s.name}\n${s.content}`).join('\n\n'),
     }
-    walk(entries)
-    const chapters = flat.filter((n) => /\.(md|txt)$/i.test(n.name) && !n.name.startsWith('_'))
-    const recent = chapters.slice(-RECENT_CHAPTERS)
-    const parts: string[] = []
-    for (const ch of recent) {
-      try {
-        const content = await api.readFile(ch.path)
-        parts.push(`## ${ch.name}\n${content.slice(0, CHAPTER_MAX_CHARS)}`)
-      } catch { /* skip */ }
-    }
-    return parts.join('\n\n')
-  }
-
-  async function collectDirFiles(root: string, dirName: string): Promise<{ name: string; content: string }[]> {
-    const dirPath = `${root.replace(/\\/g, '/')}/${dirName}`
-    let entries: api.DirEntry[]
-    try {
-      entries = await api.listDir(dirPath)
-    } catch {
-      return []
-    }
-    const files = entries.filter((e) => !e.isDir)
-    const out: { name: string; content: string }[] = []
-    // 目录总量上限（与上下文注入同预算）：角色卡/大纲文件多了之后，
-    // 避免每次检测调用把整个设定目录灌进输入
-    let budget = DIR_TOTAL_MAX_CHARS
-    for (const f of files) {
-      if (budget <= 0) break
-      try {
-        const content = await api.readFile(f.path)
-        const part = content.slice(0, Math.min(DIR_FILE_MAX_CHARS, budget))
-        budget -= part.length
-        out.push({ name: f.name.replace(/\.(md|txt)$/i, ''), content: part })
-      } catch { /* skip */ }
-    }
-    return out
   }
 
   function parseJson(text: string): { characters: any[]; outlines: any[] } {
@@ -182,11 +158,7 @@ export const useDetectionStore = defineStore('detection', () => {
     checking.value = true
     lastError.value = ''
     try {
-      const [recentRaw, chars, outlines] = await Promise.all([
-        collectRecentChapters(root),
-        collectDirFiles(root, '角色'),
-        collectDirFiles(root, '大纲'),
-      ])
+      const { recentRaw, chars, outlines } = await collectCheckInput(root)
 
       // 本地第一道闸：内容太少，或最近章节没提到任何角色且没有大纲 → 不必调用 AI
       if (recentRaw.trim().length < 200) return
@@ -241,19 +213,28 @@ export const useDetectionStore = defineStore('detection', () => {
 
   // ── 确认 / 忽略 ──
 
+  /**
+   * 确认角色变化：把旧设定替换为新设定。
+   *
+   * 两个安全要点（旧实现都踩了）：
+   * 1. 只替换**第一处**匹配——同一句设定常在卡片里出现两次，全量替换会改掉用户没确认的地方；
+   * 2. 通过真实文件引用定位，不拼接 `${name}.md`（否则 .txt 卡片会被写成新建 .md）。
+   */
   async function acceptCharacter(name: string) {
     const c = characterChanges.value.find((x) => x.name === name)
     if (!c) return
-    const path = `${projectRoot.value.replace(/\\/g, '/')}/角色/${c.name}.md`
     try {
-      const content = await api.readFile(path)
+      const files = await listDirDocs(projectRoot.value, '角色')
+      const target = files.find((f) => f.name === c.name)
+      if (!target) return
+      const content = await api.readFile(target.path)
       let next = content
       if (c.oldTrait && content.includes(c.oldTrait)) {
-        next = content.split(c.oldTrait).join(c.newTrait)
+        next = replaceFirst(content, c.oldTrait, c.newTrait)
       } else if (c.newTrait) {
         next = content.trimEnd() + `\n\n- 更新：${c.newTrait}\n`
       }
-      await api.writeFile(path, next)
+      if (next !== content) await api.writeFile(target.path, next)
     } catch { /* 写回失败不阻塞确认状态 */ }
     c.pending = false
     persist()
@@ -267,18 +248,22 @@ export const useDetectionStore = defineStore('detection', () => {
     }
   }
 
+  /**
+   * 确认大纲调整：在大纲文件里把原标题换成新标题。
+   *
+   * ⚠️ 旧实现用 `readDirDocs` 的**截断内容**写回全文——超过 4000 字的大纲会被
+   * 砍掉后半段。这里改为读全文、只替换第一处、写回真实路径（保留原扩展名）。
+   */
   async function acceptOutline(title: string) {
     const s = outlineSuggestions.value.find((x) => x.title === title)
     if (!s) return
     if (s.newTitle) {
-      // 在大纲文件里把原标题替换为新标题（标题可能是 # 或 ## 行）
       try {
-        const files = await collectDirFiles(projectRoot.value, '大纲')
+        const files = await listDirDocs(projectRoot.value, '大纲')
         for (const f of files) {
-          if (!f.content.includes(s.title)) continue
-          const next = f.content.split(s.title).join(s.newTitle)
-          const path = `${projectRoot.value.replace(/\\/g, '/')}/大纲/${f.name}.md`
-          await api.writeFile(path, next)
+          const content = await api.readFile(f.path)
+          if (!content.includes(s.title)) continue
+          await api.writeFile(f.path, replaceFirst(content, s.title, s.newTitle))
           break
         }
       } catch { /* 写回失败不阻塞 */ }

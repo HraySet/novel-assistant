@@ -65,15 +65,16 @@ describe('policy: exportable（导出交付物）', () => {
 })
 
 describe('policy: settings（设定目录内部）', () => {
-  it('只取 md，允许任意文件名', () => {
+  it('取 md/txt，排除图片等非文本', () => {
     const entries = walkFiles(
       [{ name: '角色', path: `${FIXTURE_ROOT}\\角色`, isDir: true, children: [
         { name: '张三.md', path: `${FIXTURE_ROOT}\\角色\\张三.md`, isDir: false },
         { name: '说明.txt', path: `${FIXTURE_ROOT}\\角色\\说明.txt`, isDir: false },
+        { name: 'logo.png', path: `${FIXTURE_ROOT}\\角色\\logo.png`, isDir: false },
       ] }],
       TREE_POLICIES.settings,
     )
-    expect(entries.map((e) => e.name)).toEqual(['张三.md'])
+    expect(entries.map((e) => e.name)).toEqual(['张三.md', '说明.txt'])
   })
 
   it('listFilesIn 用于单目录内文件名列表', () => {

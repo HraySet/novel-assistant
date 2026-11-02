@@ -50,10 +50,10 @@ export const TREE_POLICIES: Record<TreePolicyName, TreePolicy> = {
     excludeDirs: ['角色', '大纲'],
     excludePrefixes: ['_', '.'],
   },
-  /** 设定文件（角色卡 / 大纲目录内部的 md） */
+  /** 设定文件（角色卡 / 大纲目录内部的 md/txt） */
   settings: {
     includeDirs: false,
-    extensions: ['.md'],
+    extensions: ['.md', '.txt'],
     excludeDirs: [],
     excludePrefixes: ['.'],
   },

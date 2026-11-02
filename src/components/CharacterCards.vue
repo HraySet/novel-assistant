@@ -93,6 +93,7 @@ import { X, Plus, Users, RefreshCw, Sparkles } from 'lucide-vue-next'
 import * as api from '../api/files'
 import { roleColor } from '../composables/useTheme'
 import { streamChat } from '../composables/useAiStream'
+import { useUsageStore } from '../stores/usage'
 import { readDirDocsFull } from '../composables/projectDocs'
 import { useSettingsStore } from '../stores/settings'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -353,7 +354,7 @@ async function extractCharacters() {
     const content = full.length <= 8000
       ? full
       : `${full.slice(0, 5200)}\n……（中间省略）……\n${full.slice(-2600)}`
-    const { text } = await streamChat({
+    const { text, usage } = await streamChat({
       provider: settings.aiProvider,
       endpoint: settings.aiEndpoint,
       apiKey: settings.aiApiKey,
@@ -364,6 +365,7 @@ async function extractCharacters() {
       signal: new AbortController().signal,
       onToken: () => {},
     })
+    useUsageStore().record(usage)
     const fresh = parseNameList(text).filter(
       (n) => !characters.value.some((c) => c.name === n),
     )

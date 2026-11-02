@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import * as api from '../api/files'
 import { useSettingsStore } from './settings'
+import { useUsageStore } from './usage'
 import { streamChat } from '../composables/useAiStream'
 import {
   CONTEXT_BUDGETS,
@@ -139,6 +140,7 @@ export const useDetectionStore = defineStore('detection', () => {
     const root = projectRoot.value
     if (!root || checking.value) return
     const settings = useSettingsStore()
+  const usageStore = useUsageStore()
     if (!settings.aiApiKey) return // 未配置 API Key 时静默跳过
 
     checking.value = true
@@ -157,7 +159,7 @@ export const useDetectionStore = defineStore('detection', () => {
       contextParts.push(`最近章节:\n${recentRaw}`)
 
       const ctrl = new AbortController()
-      const { text } = await streamChat({
+      const { text, usage } = await streamChat({
         provider: settings.aiProvider,
         endpoint: settings.aiEndpoint,
         apiKey: settings.aiApiKey,
@@ -168,6 +170,7 @@ export const useDetectionStore = defineStore('detection', () => {
         signal: ctrl.signal,
         onToken: () => {},
       })
+      usageStore.record(usage)
 
       const parsed = parseJson(text)
       const validNames = new Set(chars.map((c) => c.name))

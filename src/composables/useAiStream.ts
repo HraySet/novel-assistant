@@ -1,4 +1,5 @@
 import { buildAiHeaders } from './useAiApi'
+import type { AiUsage } from '../core/usage'
 
 export type AiErrorKind =
   | 'unauthorized'
@@ -41,6 +42,11 @@ export interface AiStreamResult {
   text: string
   /** 是否被用户/外部中止（此时 text 为已生成的部分） */
   aborted: boolean
+  /**
+   * 服务商返回的用量；网关吞掉 usage 字段时为 null。
+   * **不要估算**：拿不到就如实显示「未返回用量」，编一个数字比不显示更糟。
+   */
+  usage: AiUsage | null
 }
 
 function friendlyMessage(kind: AiErrorKind, status?: number, detail?: string): string {
@@ -68,6 +74,36 @@ function parseSseChunk(data: unknown, isClaude: boolean): string {
   return d.choices?.[0]?.delta?.content ?? ''
 }
 
+/**
+ * 从 SSE 分片里累计 usage。
+ *
+ * - Claude：`message_start` 给出 `message.usage.input_tokens`，
+ *   `message_delta` 给出**累计**的 `usage.output_tokens`（不是增量，直接覆盖）
+ * - OpenAI 兼容：最后一个分片带 `usage.prompt_tokens / completion_tokens`，
+ *   需要请求体里的 `stream_options.include_usage`
+ */
+function accumulateUsage(data: unknown, isClaude: boolean, acc: { input: number; output: number }): void {
+  if (isClaude) {
+    const d = data as {
+      type?: string
+      message?: { usage?: { input_tokens?: number; output_tokens?: number } }
+      usage?: { output_tokens?: number }
+    }
+    if (d.type === 'message_start' && d.message?.usage) {
+      acc.input = d.message.usage.input_tokens ?? acc.input
+      acc.output = d.message.usage.output_tokens ?? acc.output
+    } else if (d.type === 'message_delta' && d.usage) {
+      acc.output = d.usage.output_tokens ?? acc.output
+    }
+    return
+  }
+  const d = data as { usage?: { prompt_tokens?: number; completion_tokens?: number } }
+  if (d.usage) {
+    acc.input = d.usage.prompt_tokens ?? acc.input
+    acc.output = d.usage.completion_tokens ?? acc.output
+  }
+}
+
 /** 读取错误响应体里的详情（截断） */
 async function readErrorDetail(res: Response): Promise<string | undefined> {
   try {
@@ -93,7 +129,7 @@ async function readErrorDetail(res: Response): Promise<string | undefined> {
  * - 外部 abort（停止按钮/切换文件）返回已生成的部分文本
  */
 export async function streamChat(req: AiStreamRequest): Promise<AiStreamResult> {
-  if (req.signal?.aborted) return { text: '', aborted: true }
+  if (req.signal?.aborted) return { text: '', aborted: true, usage: null }
 
   const isClaude = req.provider === 'claude'
   const endpoint = req.endpoint.replace(/\/+$/, '')
@@ -117,7 +153,14 @@ export async function streamChat(req: AiStreamRequest): Promise<AiStreamResult> 
           ...req.messages,
         ],
         stream: true,
+        // 要求最后一个分片附带 usage；OpenAI 与 DeepSeek 均支持该字段
+        stream_options: { include_usage: true },
       }
+
+  // 放在重试循环外：429 重试的那次请求同样消耗配额，不能只记最后一次
+  const usageAcc = { input: 0, output: 0 }
+  const finalUsage = (): AiUsage | null =>
+    usageAcc.input > 0 || usageAcc.output > 0 ? { ...usageAcc } : null
 
   const maxAttempts = 2
   let attempt = 0
@@ -153,7 +196,7 @@ export async function streamChat(req: AiStreamRequest): Promise<AiStreamResult> 
     } catch (e: any) {
       clearTimers()
       req.signal?.removeEventListener('abort', onExternalAbort)
-      if (req.signal?.aborted) return { text: '', aborted: true }
+      if (req.signal?.aborted) return { text: '', aborted: true, usage: null }
       const timedOut = e?.name === 'AbortError'
       throw new AiRequestError(timedOut ? 'timeout' : 'network', friendlyMessage(timedOut ? 'timeout' : 'network'))
     }
@@ -174,7 +217,7 @@ export async function streamChat(req: AiStreamRequest): Promise<AiStreamResult> 
       // 429 且还没生成任何内容 → 等待 2s 重试一次
       if (kind === 'rate_limited' && attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, 2000))
-        if (req.signal?.aborted) return { text: '', aborted: true }
+        if (req.signal?.aborted) return { text: '', aborted: true, usage: null }
         continue
       }
       throw new AiRequestError(kind, friendlyMessage(kind, res.status, detail), res.status)
@@ -198,7 +241,9 @@ export async function streamChat(req: AiStreamRequest): Promise<AiStreamResult> 
       const payload = line.slice(5).trim()
       if (payload === '[DONE]') return
       try {
-        const chunk = parseSseChunk(JSON.parse(payload), isClaude)
+        const data = JSON.parse(payload)
+        accumulateUsage(data, isClaude, usageAcc)
+        const chunk = parseSseChunk(data, isClaude)
         if (chunk) {
           result += chunk
           req.onToken(result)
@@ -222,16 +267,16 @@ export async function streamChat(req: AiStreamRequest): Promise<AiStreamResult> 
     } catch (e: any) {
       clearTimers()
       req.signal?.removeEventListener('abort', onExternalAbort)
-      if (req.signal?.aborted) return { text: result, aborted: true }
+      if (req.signal?.aborted) return { text: result, aborted: true, usage: finalUsage() }
       if (e?.name === 'AbortError') {
         throw new AiRequestError('timeout', friendlyMessage('timeout'))
       }
       // 其它流读取异常：保留已生成内容
-      return { text: result, aborted: false }
+      return { text: result, aborted: false, usage: finalUsage() }
     }
 
     clearTimers()
     req.signal?.removeEventListener('abort', onExternalAbort)
-    if (finished) return { text: result, aborted: false }
+    if (finished) return { text: result, aborted: false, usage: finalUsage() }
   }
 }

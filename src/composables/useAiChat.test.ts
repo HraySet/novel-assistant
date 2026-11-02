@@ -93,7 +93,7 @@ describe('send：失败与中止不能留下可「应用」的 Diff', () => {
   })
 
   it('一个字都没收到就中止：同样不保留对比', async () => {
-    vi.mocked(streamChat).mockResolvedValueOnce({ text: '', aborted: true })
+    vi.mocked(streamChat).mockResolvedValueOnce({ text: '', aborted: true, usage: null })
     const { chat, ai } = setup()
 
     await ai.send({ text: '润色一下', display: '[润色]', withOriginal: true })
@@ -104,7 +104,7 @@ describe('send：失败与中止不能留下可「应用」的 Diff', () => {
   })
 
   it('中途停止但已有内容：保留对比（部分结果仍可采纳）', async () => {
-    vi.mocked(streamChat).mockResolvedValueOnce({ text: '他缓缓将长剑收入鞘中。', aborted: true })
+    vi.mocked(streamChat).mockResolvedValueOnce({ text: '他缓缓将长剑收入鞘中。', aborted: true, usage: null })
     const { chat, ai } = setup()
 
     await ai.send({ text: '润色一下', display: '[润色]', withOriginal: true })

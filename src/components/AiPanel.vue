@@ -84,6 +84,13 @@
       <p v-if="showKeyHint && !settings.aiApiKey" class="text-[10px] text-warning mt-1.5">
         请先在设置中配置 API Key（Ctrl+,）
       </p>
+      <!-- 今日 AI 用量：只看一眼今天用了多少（跨天自动归零），完整明细放 title -->
+      <p v-if="usageStore.daily.calls > 0"
+        class="text-[10px] text-text-muted mt-1.5 flex items-center gap-1 truncate"
+        :title="usageStore.summary">
+        <Zap :size="10" class="shrink-0" />
+        今日 AI：{{ usageStore.daily.calls }} 次调用 · {{ fmtTokens(usageStore.daily.input + usageStore.daily.output) }} tokens<template v-if="usageStore.daily.missing > 0">（{{ usageStore.daily.missing }} 次未返回用量）</template>
+      </p>
       <button v-if="chatStore.streaming" class="chat-stop-btn mt-2" @click="chatStore.abortStreaming()">
         <Square :size="12" /> 停止生成
       </button>
@@ -118,6 +125,8 @@ import AiContextBar from './AiContextBar.vue'
 import SummaryLibrary from './SummaryLibrary.vue'
 import ConsistencyPanel from './ConsistencyPanel.vue'
 import { useDetectionStore } from '../stores/detection'
+import { useUsageStore } from '../stores/usage'
+import { formatTokens } from '../core/usage'
 
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
@@ -137,6 +146,8 @@ function insertOrWarn(text: string) {
 }
 
 const settings = useSettingsStore()
+const usageStore = useUsageStore()
+const fmtTokens = formatTokens
 const detectionStore = useDetectionStore()
 const selectionStore = useSelectionStore()
 const { selection } = storeToRefs(selectionStore)

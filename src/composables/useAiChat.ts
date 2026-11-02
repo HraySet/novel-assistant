@@ -7,6 +7,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { useSettingsStore } from '../stores/settings'
 import { useChatStore, type ChatMessage } from '../stores/chat'
+import { useUsageStore } from '../stores/usage'
 import { useStatsStore } from '../stores/stats'
 import { useFileStore } from '../stores/file'
 import { useToastStore } from '../stores/toast'
@@ -32,6 +33,7 @@ export interface AiChatTarget {
 
 export function useAiChat(target: AiChatTarget) {
   const settings = useSettingsStore()
+  const usageStore = useUsageStore()
   const chatStore = useChatStore()
   const fileStore = useFileStore()
   const statsStore = useStatsStore()
@@ -260,7 +262,7 @@ export function useAiChat(target: AiChatTarget) {
     })
     const ctrl = chatStore.createAbortController()
     try {
-      const { text: result, aborted } = await streamChat({
+      const { text: result, aborted, usage } = await streamChat({
         provider: settings.aiProvider,
         endpoint: settings.aiEndpoint,
         apiKey: settings.aiApiKey,
@@ -271,6 +273,8 @@ export function useAiChat(target: AiChatTarget) {
         signal: ctrl.signal,
         onToken: (full) => chatStore.updateLastMessage(convId, full),
       })
+      // 用量记账：正常返回或用户中止都算一次调用；请求抛错时不会走到这里
+      usageStore.record(usage)
       if (aborted) {
         chatStore.updateLastMessage(convId, result ? `${result}\n\n_（已停止生成）_` : '（已停止）')
         // 一个字都没收到就中止：这条占位只剩「（已停止）」，不能留着原文对比，

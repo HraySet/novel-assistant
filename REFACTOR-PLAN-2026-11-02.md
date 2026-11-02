@@ -171,6 +171,12 @@ export type TreePolicy =
 
 **验收**：App.vue ≤ 400 行；关窗保存、外部修改感知、AI 插入三项手动验过。
 
+> **执行偏差（v1.2）**：实际把 script 段从 330 行降到 262 行，文件总行数 756 → 692。
+> 未达 400 行的原因是剩余体积是**弹窗模板与 232 行样式**，继续拆只是把 markup
+> 搬走并增加 props/emit 转发，不改善任何逻辑接缝。判断：收益低于风险，暂不拆。
+> 若确实要压到 400 行，正确做法是把「新建项目 / 退出确认 / 设置」三个弹窗拆成
+> 独立组件（各约 30-60 行模板），而不是继续动逻辑。
+
 ### Step 4 —— Rust 拆分（独立分支）
 
 - `lib.rs` → `commands/fs.rs｜trash.rs｜backup.rs｜export.rs｜ai_config.rs｜mention.rs`，`generate_handler!` 保持原样平铺引用
@@ -249,10 +255,44 @@ Step 1 做完会立刻产生两个副产品：
 | 阶段 | 状态 | 验证 |
 |---|---|---|
 | 基线恢复（`npm ci`） | ✅ | 198 包，lockfile 未变 |
-| Step 0 止血 | ✅ 2 commits | 79 用例全绿；`vue-tsc` 0 错误 |
+| Step 0 止血 | ✅ 2 commits | 135 用例全绿；`vue-tsc` 0 错误 |
 | Step 1 core 模块 | ✅ 1 commit | 新增 46 用例；build 通过 |
-| Step 2 迁移 7 处 | ⬜ 待开始 | — |
-| Step 3 拆 App.vue | ⬜ | — |
-| Step 4 Rust 拆分 | ⬜ | — |
+| Step 2 迁移 7 处 | ✅ 5 commits | 逐处迁移 + 顺带修复 5 个 P1/P0 |
+| Step 3 拆 App.vue | ✅ 1 commit | script 330 → 262 行 |
+| 前端遗留项 | ✅ 1 commit | 请求头参数化 / 路径显示 / 单字搜索 / 超时 |
+| Step 4 Rust 拆分 | ⛔ **阻塞** | 见 §10 |
 
 分支：`refactor/core-seam`，基线标签 `baseline-2026-11-02`。
+
+## 10. Step 4 阻塞说明（Rust 不可编译）
+
+本机 `cargo check` 无法通过，**不是代码问题，是工具链缺失**：
+
+```
+host: x86_64-pc-windows-msvc
+link: extra operand '...\build_script_build-*.o'   ← GNU coreutils 的 link 抢占了 PATH
+vswhere.exe / Visual Studio 2022 目录均不存在
+```
+
+即：目标三元组是 MSVC，但机器上没有 MSVC 链接器。`src-tauri/target/debug/build/*`
+下的构建脚本全部链接失败，`serde` / `thiserror` / `parking_lot_core` 都编不过。
+
+**因此 Step 4 暂缓**——按本计划 §2.1「验证不了不动」的原则，不做无法验证的
+1465 行模块拆分。解除阻塞的方式（三选一）：
+
+1. 安装 **Visual Studio Build Tools 2022**（勾选「使用 C++ 的桌面开发」），
+   然后从「x64 Native Tools Command Prompt」执行 `cargo check`；
+2. 换一台已有 MSVC 的机器完成 Step 4；
+3. 若改用 GNU 工具链：`rustup target add x86_64-pc-windows-gnu` 并安装 MinGW-w64，
+   但 Tauri 在 Windows 上官方推荐 MSVC，不建意为难自己。
+
+解除后 Step 4 待办（代码位置已勘定，改完即可验证）：
+
+| 待办 | 位置 | 价值 |
+|---|---|---|
+| `scan_mentions` 改 async + spawn_blocking | lib.rs:1324 | 同步命令在主线程扫 32MB 正文，打开角色面板会卡 UI |
+| `last_file` 语义修正 | lib.rs:1342-1350 | 现为目录迭代顺序的最后一个命中文件，与 UI 的「最近」不符；改按 mtime 取最大 |
+| 逐文件流式扫描 | collect_body_files | 现在把全部正文读进内存再匹配，改为读一个算一个 |
+| 按领域拆模块 | lib.rs 全量 | fs / backup / trash / export / mention / ai / platform |
+
+前端侧已就绪：`api/files.ts` 的命令名与参数无需任何改动，拆分对前端透明。

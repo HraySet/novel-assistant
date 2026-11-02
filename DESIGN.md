@@ -82,6 +82,8 @@ for (const n of nodes) { if (n.isDir) ... else if (/\.(md|txt)$/.test(n.name)) .
 |---|---|---|
 | `paths.ts` | 路径规范化、风格感知拼接、边界判断、子树重映射 | 不读文件、不碰 store |
 | `tree.ts` | 唯一遍历实现 + 具名策略 + 统一 `TreeEntry` | 不排序（树已排好）、不读文件内容 |
+| `text.ts` | 文本纯函数（`replaceFirst` / 截断 / 章尾） | 不做 IO；写回文件的关键算法必须有测试 |
+| `storage.ts` | localStorage 的安全访问（环境守卫 + try/catch） | 不存业务状态，只做存取 |
 
 **关于路径的两条硬约束**（踩过坑，写进注释了）：
 1. `normalize()` 只用于比较与展示，**不要拿它的结果去调 IPC**；
@@ -97,6 +99,10 @@ for (const n of nodes) { if (n.isDir) ... else if (/\.(md|txt)$/.test(n.name)) .
 | 同步命令做重 IO（`scan_mentions`） | 主线程阻塞、UI 卡顿 | `async fn` + `spawn_blocking`（`list_dir` 是对的） |
 | 遍历时"顺手"改了一份过滤规则 | 导出混入设定文件 | 遍历只走 `walkFiles` |
 | 全部失败路径都 `catch {}` | 用户不知道发生了什么 | 关键动作失败必须有 toast |
+| 拿**截断过**的内容写回全文 | 超长文件被砍掉后半段 | 读全文再改；截断只用于提示词 |
+| 用 `split().join()` 做定点替换 | 同一句出现两次会被全部改掉 | `replaceFirst` |
+| store 初始化直接读 `localStorage` | node 环境无法实例化，store 永不可测 | `core/storage` 的安全访问 |
+| 手工拼路径字符串 | 分隔符/`\\?\` 前缀不一致，字符串比较静默失效 | `core/paths` |
 
 ## 五、评审五问（改代码前自问）
 

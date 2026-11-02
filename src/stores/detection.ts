@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import * as api from '../api/files'
 import { useSettingsStore } from './settings'
 import { streamChat } from '../composables/useAiStream'
-import { readLocal, writeLocal } from '../core/storage'
 import {
   CONTEXT_BUDGETS,
   listChapterFiles,
@@ -47,10 +46,9 @@ interface CheckInput {
 }
 
 export const useDetectionStore = defineStore('detection', () => {
-  const autoEnabled = ref(readLocal('detect-auto') !== '0')
-  const threshold = ref(Number(readLocal('detect-threshold')) || 1500)
   const characterChanges = ref<CharacterChange[]>([])
   const outlineSuggestions = ref<OutlineSuggestion[]>([])
+  /** 上次检查之后新增的字数。**纯计数**，只用于提示「该检查了」，不触发任何请求 */
   const wordsSinceCheck = ref(0)
   const checking = ref(false)
   const lastError = ref('')
@@ -58,29 +56,16 @@ export const useDetectionStore = defineStore('detection', () => {
 
   const pendingCount = computed(() => characterChanges.value.filter((c) => c.pending).length)
 
-  function setAuto(on: boolean) {
-    autoEnabled.value = on
-    writeLocal('detect-auto', on ? '1' : '0')
-  }
-
-  function setThreshold(v: number) {
-    threshold.value = Math.min(2000, Math.max(300, Math.round(v)))
-    writeLocal('detect-threshold', String(threshold.value))
-  }
-
-  // ── 自动触发：累计新增字数达到阈值后防抖检测 ──
-
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-  function onWordsAdded(n: number) {
-    if (n <= 0 || !autoEnabled.value || !projectRoot.value) return
+  /**
+   * 记录新增字数（绝不发请求）。
+   *
+   * 一致性检测改为**手动触发**：旧的实现按字数阈值自动调用 AI，
+   * 用户以为自己在本地写作，后台却在出网——与「日常写作零 token」的定位直接矛盾。
+   * 这里只累加计数，面板显示「上次检查后已新增 N 字」，由用户决定何时点检查。
+   */
+  function noteWordsAdded(n: number) {
+    if (n <= 0 || !projectRoot.value) return
     wordsSinceCheck.value += n
-    if (wordsSinceCheck.value < threshold.value) return
-    if (debounceTimer) clearTimeout(debounceTimer)
-    debounceTimer = setTimeout(() => {
-      debounceTimer = null
-      void runCheck()
-    }, 1500)
   }
 
   // ── 项目切换：载入该项目的检测结果 ──
@@ -282,18 +267,14 @@ export const useDetectionStore = defineStore('detection', () => {
   }
 
   return {
-    autoEnabled,
-    threshold,
     characterChanges,
     outlineSuggestions,
     wordsSinceCheck,
     checking,
     lastError,
     pendingCount,
-    setAuto,
-    setThreshold,
     setProjectRoot,
-    onWordsAdded,
+    noteWordsAdded,
     runCheck,
     acceptCharacter,
     rejectCharacter,

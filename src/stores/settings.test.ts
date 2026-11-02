@@ -89,3 +89,18 @@ describe('settings store（无 DOM / 无 localStorage 环境）', () => {
     expect(s.bgColor).toBe(dark.bg)
   })
 })
+
+describe('默认 AI 配置的隔离性', () => {
+  it('修改一个实例的 Key 不会泄漏到新建实例', () => {
+    setActivePinia(createPinia())
+    const first = useSettingsStore()
+    first.aiApiKey = 'sk-should-not-leak'
+
+    setActivePinia(createPinia())
+    const second = useSettingsStore()
+
+    // 根因：`{ ...DEFAULT_AI_CONFIGS }` 是浅拷贝，内层 provider 对象被共享，
+    // 修改 key 等于改模块级默认值，之后每个新实例都会带着它
+    expect(second.aiApiKey).toBe('')
+  })
+})

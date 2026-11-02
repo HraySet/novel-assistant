@@ -229,7 +229,8 @@ export const useStatsStore = defineStore('stats', () => {
         dailyRecords.value.push({ date: today, wordCount: delta, chaptersEdited: [chapterId] })
       }
       // 一致性检测钩子：累计新增字数，达到阈值后自动触发一次 AI 检测
-      useDetectionStore().onWordsAdded(delta)
+      // 只计数、不发请求：一致性检测已改为手动触发（对齐「日常写作零 token」）
+      useDetectionStore().noteWordsAdded(delta)
     }
   }
 

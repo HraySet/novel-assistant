@@ -90,44 +90,25 @@
             </div>
           </div>
 
-          <!-- 自动检测设置 -->
+          <!-- 检查入口：手动触发，不点就不会调用 AI -->
           <div class="cp-settings">
-            <div class="cp-settings-row">
-              <span class="cp-settings-label">自动检测角色与大纲变化</span>
-              <label class="cp-toggle" :class="{ on: store.autoEnabled }">
-                <input type="checkbox" :checked="store.autoEnabled"
-                  @change="store.setAuto(($event.target as HTMLInputElement).checked)" />
-                <span class="cp-toggle-knob" />
-              </label>
-            </div>
-            <p class="cp-settings-hint">本地先判断，真正需要时才调用一次 AI，不逐句分析全文</p>
-
-            <div class="cp-settings-block" :class="{ disabled: !store.autoEnabled }">
-              <div class="cp-settings-row">
-                <span class="cp-settings-sub">每新增多少字触发一次检测</span>
-                <span class="cp-settings-val">{{ store.threshold }} 字</span>
-              </div>
-              <input type="range" min="300" max="2000" step="100" :value="store.threshold"
-                :disabled="!store.autoEnabled"
-                @input="store.setThreshold(Number(($event.target as HTMLInputElement).value))" class="cp-slider" />
-              <div class="cp-slider-labels">
-                <span>更省 token</span>
-                <span>{{ progressText }}</span>
-                <span>更及时</span>
-              </div>
-            </div>
-
             <div class="cp-settings-row cp-settings-foot">
-              <div>
-                <p class="cp-settings-sub cp-settings-sub--strong">立即检测</p>
-                <p class="cp-settings-hint">不等阈值，现在就分析未检测的新内容</p>
+              <div class="cp-settings-lead">
+                <p class="cp-settings-sub cp-settings-sub--strong">检查一致性与大纲冲突</p>
+                <p class="cp-settings-hint">
+                  本地先过滤角色名与大纲，只有点下面这个按钮才会调用一次 AI。
+                  写作过程中不会自动出网。
+                </p>
+                <p v-if="store.wordsSinceCheck > 0" class="cp-settings-count">
+                  上次检查后已新增 {{ store.wordsSinceCheck }} 字
+                </p>
               </div>
               <button class="cp-btn cp-btn--primary" :disabled="store.checking" @click="runNow">
                 <RefreshCw :size="13" :class="{ spinning: store.checking }" />
-                {{ store.checking ? '检测中…' : '检测一次' }}
+                {{ store.checking ? '检查中…' : '开始检查' }}
               </button>
             </div>
-            <p v-if="store.lastError" class="cp-error">检测失败：{{ store.lastError }}</p>
+            <p v-if="store.lastError" class="cp-error">检查失败：{{ store.lastError }}</p>
           </div>
     </div>
   </BaseModal>
@@ -169,9 +150,6 @@ const pendingChars = computed(() => characterChanges.value.filter((c) => c.pendi
 const pendingOutlines = computed(() => outlineSuggestions.value.filter((o) => o.status === 'suggest'))
 const selectedChange = computed<CharacterChange | undefined>(() =>
   selectedChar.value ? characterChanges.value.find((c) => c.name === selectedChar.value && c.pending) : undefined,
-)
-const progressText = computed(() =>
-  store.autoEnabled && store.wordsSinceCheck > 0 ? `已新增 ${store.wordsSinceCheck} 字` : ' ',
 )
 
 function isPending(name: string): boolean {
@@ -401,8 +379,10 @@ function runNow() {
   display: flex; justify-content: space-between;
   font-size: 11px; color: var(--color-text-muted); margin-top: 2px;
 }
-.cp-settings-foot { border-top: 1px solid var(--color-border); margin-top: 14px; padding-top: 12px; }
-.cp-settings-foot .cp-settings-hint { margin: 2px 0 0; }
+.cp-settings-foot { gap: 16px; align-items: flex-start; }
+.cp-settings-lead { flex: 1; min-width: 0; }
+.cp-settings-lead .cp-settings-hint { margin: 4px 0 0; line-height: 1.55; }
+.cp-settings-count { font-size: 11px; color: var(--color-accent); margin: 6px 0 0; }
 .cp-error { font-size: 11px; color: var(--color-danger); margin: 8px 0 0; }
 
 /* 开关 */

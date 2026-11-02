@@ -42,6 +42,18 @@ function loadAiContextOptions(): AiContextOptions {
   return saved ? { ...DEFAULT_AI_CONTEXT_OPTIONS, ...saved } : { ...DEFAULT_AI_CONTEXT_OPTIONS };
 }
 
+/**
+ * 深拷贝一层 provider 配置。
+ *
+ * `{ ...DEFAULT_AI_CONFIGS }` 只复制第一层，内层 ProviderConfig 仍是同一个对象——
+ * 而 `aiApiKey` 的 setter 会直接改 `aiConfigs.value[provider].apiKey`，
+ * 等于**修改了模块级默认值**：之后新建的 store 实例（测试、HMR、重置设置）
+ * 都会带着上一次的 Key。测试之间互相污染就是由此暴露的。
+ */
+function cloneAiConfigs(src: Record<string, ProviderConfig>): Record<string, ProviderConfig> {
+  return Object.fromEntries(Object.entries(src).map(([k, v]) => [k, { ...v }]))
+}
+
 const DEFAULT_AI_CONFIGS: Record<string, ProviderConfig> = {
   openai: { apiKey: "", model: "gpt-4o", endpoint: "https://api.openai.com/v1" },
   claude: { apiKey: "", model: "claude-sonnet-4-20250514", endpoint: "https://api.anthropic.com/v1" },
@@ -58,13 +70,13 @@ async function loadAISettings(): Promise<AllAIConfig> {
         parsed = {
           activeProvider: (rawObj.activeProvider as string) || "openai",
           temperature: typeof rawObj.temperature === 'number' ? rawObj.temperature : undefined,
-          configs: { ...DEFAULT_AI_CONFIGS, ...(rawObj.configs as Record<string, ProviderConfig>) },
+          configs: { ...cloneAiConfigs(DEFAULT_AI_CONFIGS), ...(rawObj.configs as Record<string, ProviderConfig>) },
         };
       } else if (rawObj.provider) {
         // 兼容旧格式：单个 provider
         parsed = {
           activeProvider: rawObj.provider as string,
-          configs: { ...DEFAULT_AI_CONFIGS },
+          configs: cloneAiConfigs(DEFAULT_AI_CONFIGS),
         };
         parsed.configs[parsed.activeProvider] = {
           apiKey: (rawObj.apiKey as string) || "",
@@ -206,7 +218,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const bgColor = ref(savedTheme.bgColor);
   const themeDark = ref(savedTheme.themeDark);
 
-  const aiConfigs = ref<Record<string, ProviderConfig>>({ ...DEFAULT_AI_CONFIGS });
+  const aiConfigs = ref<Record<string, ProviderConfig>>(cloneAiConfigs(DEFAULT_AI_CONFIGS));
   const aiProvider = ref<"openai" | "claude" | "deepseek">("openai")
   const aiTemperature = ref(0.8)
 
@@ -295,7 +307,9 @@ export const useSettingsStore = defineStore("settings", () => {
     if (aiInitialized) return;
     aiInitialized = true;
     const saved = await loadAISettings();
-    aiConfigs.value = { ...DEFAULT_AI_CONFIGS, ...saved.configs };
+    // 必须深拷贝默认值：saved.configs 没有覆盖到的 provider 会直接引用模块级对象，
+    // 之后 setter 改 key 就等于改默认值，污染后续所有实例（测试互相影响即由此暴露）
+    aiConfigs.value = { ...cloneAiConfigs(DEFAULT_AI_CONFIGS), ...saved.configs };
     aiProvider.value = (saved.activeProvider as "openai" | "claude" | "deepseek") || "openai";
     if (typeof saved.temperature === 'number') aiTemperature.value = saved.temperature;
   }

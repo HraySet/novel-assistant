@@ -22,8 +22,8 @@ export interface AiChatTarget {
   projectRoot: () => string | undefined
   /** 当前打开的文件（插入/摘要/对比的目标） */
   activeFile: () => { path: string; name: string } | null | undefined
-  /** 把文本插入编辑器（由宿主组件转发到 MdEditor） */
-  insert: (text: string) => void
+  /** 把文本插入编辑器（由宿主组件转发到 MdEditor）；返回是否真的插入 */
+  insert: (text: string) => boolean
   /** 流式更新/发送完成后滚动到底部（可选） */
   scrollToBottom?: () => void
   /** 把 AI 结果替换进编辑器划词选区（返回是否成功；失败则放弃应用） */
@@ -122,7 +122,13 @@ export function useAiChat(target: AiChatTarget) {
   }
 
   function handleInsertClick(text: string, index: number) {
-    target.insert(text)
+    // 编辑器判定「光标前已有同样内容」时会拒绝插入——此时不能显示「已插入」，
+    // 否则用户点了按钮看到成功提示，正文里却什么都没多出来
+    const ok = target.insert(text)
+    if (!ok) {
+      useToastStore().push('info', '未插入', '光标前已有相同内容，未重复插入', 2500)
+      return
+    }
     insertedIndex.value = index
     if (insertedTimer) clearTimeout(insertedTimer)
     insertedTimer = setTimeout(() => { insertedIndex.value = null }, 1200)

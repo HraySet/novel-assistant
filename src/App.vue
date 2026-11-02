@@ -68,7 +68,7 @@
       <Transition name="slide-right">
         <AiPanel v-if="showAiPanel && !focusMode" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
           :apply-to-selection="handleApplySelection"
-          @expand="view = 'ai-chat'" @insert="handleAiInsert" />
+          :insert-text="handleAiInsert" @expand="view = 'ai-chat'" />
       </Transition>
 
       <!-- 右侧图标轨 -->
@@ -163,7 +163,7 @@
   <!-- ===== AI 全屏对话 ===== -->
   <AiChatView v-if="view === 'ai-chat'" :active-file="activeFile" :project-root="currentProject?.path ?? ''"
     :apply-to-selection="handleApplySelection"
-    @back="view = 'editor'" @insert="handleAiInsert" />
+    :insert-text="handleAiInsert" @back="view = 'editor'" />
 
       <!-- 全局历史版本（文件树右键直达） -->
       <HistoryModal
@@ -414,6 +414,7 @@ useKeyboardShortcuts({
   onRedo: () => editorRef.value?.redoCommand(),
   onCloseTab: () => fileStore.closeActiveTab(),
   onCycleTab: (d) => fileStore.cycleTab(d),
+  onSave: () => void fileStore.handleSave(),
 })
 
 onMounted(async () => {

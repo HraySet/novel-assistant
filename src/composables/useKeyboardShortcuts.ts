@@ -15,6 +15,8 @@ export function useKeyboardShortcuts(opts: {
   onRedo?: () => void
   onCloseTab?: () => void
   onCycleTab?: (delta: number) => void
+  /** 保存当前文件（焦点不在编辑器时兜住 Ctrl+S） */
+  onSave?: () => void
 }) {
   function isEditorFocused(): boolean {
     const el = document.activeElement
@@ -36,15 +38,24 @@ export function useKeyboardShortcuts(opts: {
       return
     }
 
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'A') {
-      if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-        e.preventDefault()
-        opts.view.value = 'editor'
-      }
+    // Ctrl/Cmd+Shift+A 回到编辑器。
+    // 原实现外层判断 (ctrl||meta)、内层只认 ctrl，在 macOS 上会吃掉 Cmd+Shift+A 却不做事。
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+      e.preventDefault()
+      opts.view.value = 'editor'
       return
     }
 
     if (opts.view.value !== 'editor') return
+
+    // Ctrl+S 保存：焦点在编辑器内由 CodeMirror 自己处理，这里兜住焦点在侧栏/标签栏的情况
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') {
+      if (!isEditorFocused()) {
+        e.preventDefault()
+        opts.onSave?.()
+      }
+      return
+    }
 
     // Word 式撤销/重做：焦点不在编辑器、也不在文本输入框时，把 Ctrl+Z/Y 路由到编辑器
     const active = document.activeElement as HTMLElement | null

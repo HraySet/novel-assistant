@@ -121,6 +121,8 @@ import { useDetectionStore } from '../stores/detection'
 const props = defineProps<{
   activeFile?: { path: string; name: string; content?: string } | null
   projectRoot?: string
+  /** 把 AI 结果插入编辑器（App 转发到 MdEditor）；返回是否真的插入 */
+  insertText?: (text: string) => boolean
   /** 把 AI 结果替换进编辑器选区（App 转发到 MdEditor） */
   applyToSelection?: (target: { path: string; from: number; to: number; original?: string }, text: string) => boolean | Promise<boolean>
 }>()
@@ -204,7 +206,7 @@ const {
 } = useAiChat({
   projectRoot: () => props.projectRoot,
   activeFile: () => props.activeFile,
-  insert: (text) => emit('insert', text),
+  insert: (text) => props.insertText?.(text) ?? false,
   applyToSelection: props.applyToSelection,
   scrollToBottom: () => nextTick(() => {
     const el = chatEl.value

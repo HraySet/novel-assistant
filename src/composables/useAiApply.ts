@@ -25,9 +25,9 @@ export function useAiApply(opts: {
   const fileStore = useFileStore()
   const selectionStore = useSelectionStore()
 
-  /** 把文本插入编辑器光标处（重复内容会被编辑器自身跳过） */
-  function insert(text: string): void {
-    opts.getEditor()?.insertIfNotDuplicate(text)
+  /** 把文本插入编辑器光标处；编辑器判定内容重复时会拒绝，返回 false */
+  function insert(text: string): boolean {
+    return opts.getEditor()?.insertIfNotDuplicate(text) ?? false
   }
 
   /**

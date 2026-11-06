@@ -1,6 +1,7 @@
 import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref } from 'vue'
 import * as api from '../api/files'
+import { joinPath } from '../core/paths'
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
@@ -29,9 +30,9 @@ export interface ChatConversation {
 const CHAT_DIR = '.chatlog'
 const INDEX_FILE = 'index.json'
 
-function chatDir(projectRoot: string) { return `${projectRoot}/${CHAT_DIR}` }
-function convPath(projectRoot: string, id: string) { return `${chatDir(projectRoot)}/${id}.json` }
-function indexPath(projectRoot: string) { return `${chatDir(projectRoot)}/${INDEX_FILE}` }
+function chatDir(projectRoot: string) { return joinPath(projectRoot, CHAT_DIR) }
+function convPath(projectRoot: string, id: string) { return joinPath(chatDir(projectRoot), `${id}.json`) }
+function indexPath(projectRoot: string) { return joinPath(chatDir(projectRoot), INDEX_FILE) }
 
 export const useChatStore = defineStore('chat', () => {
   const conversations = ref<ChatConversation[]>([])

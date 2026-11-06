@@ -28,6 +28,8 @@ export interface AiStreamRequest {
   system?: string
   /** 采样温度（0-2），不传则用服务商默认 */
   temperature?: number
+  /** 最大输出 token 数，不传则默认 4096（按操作类型传入，见 aiQuickActions.maxTokens） */
+  maxTokens?: number
   messages: { role: string; content: string }[]
   signal?: AbortSignal
   /** 收到响应前的最长等待（毫秒），默认 60s */
@@ -138,7 +140,7 @@ export async function streamChat(req: AiStreamRequest): Promise<AiStreamResult> 
   const body = isClaude
     ? {
         model: req.model,
-        max_tokens: 4096,
+        max_tokens: req.maxTokens ?? 4096,
         temperature: req.temperature ?? 0.8,
         system: req.system || undefined,
         messages: req.messages,
@@ -147,7 +149,7 @@ export async function streamChat(req: AiStreamRequest): Promise<AiStreamResult> 
     : {
         model: req.model,
         temperature: req.temperature ?? 0.8,
-        max_tokens: 4096,
+        max_tokens: req.maxTokens ?? 4096,
         messages: [
           ...(req.system ? [{ role: 'system', content: req.system }] : []),
           ...req.messages,

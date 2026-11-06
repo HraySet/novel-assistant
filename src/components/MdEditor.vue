@@ -115,12 +115,15 @@ import { useSettingsStore } from '../stores/settings'
 import { useFileStore } from '../stores/file'
 import { useSelectionStore } from '../stores/selection'
 import { QUICK_ACTIONS } from '../composables/aiQuickActions'
-import { countWords } from '../utils/countWords'
-import { sanitizeFileName } from '../core/text'
+import { useEditorScroll } from '../composables/editor/useEditorScroll'
+import { useEditorStats } from '../composables/editor/useEditorStats'
+import { useEditorOutline } from '../composables/editor/useEditorOutline'
+import { useEditorTitle } from '../composables/editor/useEditorTitle'
+import { useEditorUndo } from '../composables/editor/useEditorUndo'
+import { useEditorSelection } from '../composables/editor/useEditorSelection'
 import { ListTree, ChevronUp, ChevronDown, MoreHorizontal, Sparkles, ArrowLeftRight, CheckCircle2, CircleCheck, Flame, Timer, AlertCircle, Focus } from 'lucide-vue-next'
 import HistoryModal from './HistoryModal.vue'
 import StatusDot from './StatusDot.vue'
-import * as api from '../api/files'
 
 const props = defineProps<{
   content: string
@@ -201,26 +204,40 @@ let view: EditorView | null = null
 let switchSeq = 0
 /** 当前 view.state 实际属于哪个文件（切换完成前不更新，保证缓存/落盘的是正确的撤销历史） */
 let currentPath: string | undefined = undefined
-// ── 划词联动 ──
+
+// ── 滚动位置持久化（下沉自 useEditorScroll）──
+const scroll = useEditorScroll({
+  getRoot: () => fileStore.projectRoot,
+  getView: () => view,
+})
+const { scrollPercent, readScrollPercent, scheduleScrollSave, captureCurrentScroll, restoreScrollPercent } = scroll
+
+// ── 章节字数统计（下沉自 useEditorStats）──
+const wordStats = useEditorStats({ getView: () => view })
+const { chapterWords, updateChapterWords, clearWordsTimer } = wordStats
+
+// ── 划词联动：选区跟踪/菜单收起/动作触发 下沉自 useEditorSelection ──
 const selectionStore = useSelectionStore()
 const { selection } = storeToRefs(selectionStore)
-const selBar = ref<{ left: number; top: number } | null>(null)
 const selBarEl = ref<HTMLElement>()
-const selMoreOpen = ref(false)
 const showHistory = ref(false)
-const showOutline = ref(false)
-const headings = ref<{ level: number; text: string; pos: number }[]>([])
-const chapterWords = ref(0)
 const lastSavedTime = ref<Date | null>(null)
-const titleDraft = ref('')
 const titleInputRef = ref<HTMLInputElement>()
-const titleSyncError = ref('')
-let wordsTimer: ReturnType<typeof setTimeout> | null = null
-let titleErrorTimer: ReturnType<typeof setTimeout> | null = null
 let outlineCloseHandler: ((e: MouseEvent) => void) | null = null
 let moreCloseHandler: ((e: MouseEvent) => void) | null = null
 
-const scrollPercent = ref(0)
+const selMenu = useEditorSelection({
+  getView: () => view,
+  getPath: () => props.path ?? '',
+  setSelection: (path, from, to, text) => selectionStore.setSelection(path, from, to, text),
+  clearSelection: () => selectionStore.clearSelection(),
+  getSelection: () => selectionStore.selection,
+  requestAction: (payload) => selectionStore.requestAction(payload),
+  findAction: (label) => QUICK_ACTIONS.find((a) => a.label === label),
+  getCustomPrompt: (label) => settings.aiQuickPrompts[label],
+})
+const { selBar, selMoreOpen, trackSelection, hideSelMenu, runSelAction } = selMenu
+
 const showMore = ref(false)
 const isSaved = ref(true)
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -231,40 +248,26 @@ function formatTime(d: Date): string {
   return `${h}:${m}`
 }
 
-// ── 章节标题（即文件名，无 # 标题行） ──
+// ── 章节标题（即文件名，无 # 标题行）── 下沉自 useEditorTitle ──
+const title = useEditorTitle({
+  getName: () => props.name,
+  getPath: () => props.path,
+  isEditing: () => !!titleInputRef.value && document.activeElement === titleInputRef.value,
+  rename: (path, newName) => fileStore.renamePath(path, newName),
+})
+const { titleDraft, titleSyncError, syncTitleFromName, commitTitle, clearTitleErrorTimer } = title
 
-function fileNameOf(name?: string): string {
-  if (!name) return '未命名'
-  return name.replace(/\.(md|txt)$/i, '')
-}
-
-/** 标题即文件名：从文件名同步（去掉扩展名） */
-function syncTitleFromName() {
-  // 输入框正在编辑时不同步，避免覆盖未提交的草稿
-  if (titleInputRef.value && document.activeElement === titleInputRef.value) return
-  titleDraft.value = fileNameOf(props.name)
-}
-
-/** 标题提交 = 重命名文件（保留原扩展名；不碰文档内容） */
-async function commitTitle() {
-  if (!props.path || !props.name) return
-  const fallback = fileNameOf(props.name)
-  const finalTitle = sanitizeFileName(titleDraft.value.trim()) || fallback
-  titleDraft.value = finalTitle
-  if (finalTitle === fallback) return
-  const ext = props.name.match(/\.(md|txt)$/i)?.[0] ?? '.md'
-  const newName = finalTitle + ext
-  if (newName === props.name) return
-  titleSyncError.value = ''
-  try {
-    await fileStore.renamePath(props.path, newName)
-  } catch (e) {
-    console.error('重命名失败:', e)
-    titleSyncError.value = e instanceof Error ? e.message : '重命名失败'
-    if (titleErrorTimer) clearTimeout(titleErrorTimer)
-    titleErrorTimer = setTimeout(() => { titleSyncError.value = '' }, 3000)
-  }
-}
+// ── 章节内大纲 ── 下沉自 useEditorOutline ──
+const outline = useEditorOutline({
+  getDoc: () => view?.state.doc ?? null,
+  jumpTo: (pos) => {
+    if (!view) return
+    view.dispatch({ selection: { anchor: pos } })
+    view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'start' }) })
+    view.focus()
+  },
+})
+const { showOutline, headings, scheduleOutlineRefresh, toggleOutline, jumpToHeading, clearOutlineTimer } = outline
 
 
 const savedText = computed(() => {
@@ -274,21 +277,9 @@ const savedText = computed(() => {
 const savedClass = computed(() => isSaved.value ? 'text-success' : 'text-warning')
 
 function updateScrollPercent() {
-  if (!view) return
-  const el = view.scrollDOM
-  const max = el.scrollHeight - el.clientHeight
-  const pct = max > 0 ? Math.round((el.scrollTop / max) * 100) : 0
-  scrollPercent.value = pct
+  const pct = readScrollPercent()
   // 防抖持久化阅读位置（切文件/重启后恢复）
   if (props.path) scheduleScrollSave(props.path, pct)
-}
-
-function updateChapterWords() {
-  if (!view) return
-  if (wordsTimer) clearTimeout(wordsTimer)
-  wordsTimer = setTimeout(() => {
-    if (view) chapterWords.value = countWords(view.state.doc.toString())
-  }, 300)
 }
 
 // 文档替换来自 props 同步（保存落盘 / 外部修改 / 应用 AI 修改）时置位，
@@ -377,19 +368,10 @@ function insertIfNotDuplicate(text: string): boolean {
   return true
 }
 
-// ── 划词联动：选区跟踪、浮动工具条、选区替换 ──
+// ── 划词联动：trackSelection / hideSelMenu / runSelAction 已下沉到 useEditorSelection ──
 
-/** 把当前选区写入共享 store（无选区则清空）；选区一旦变化就收起右键菜单 */
-function trackSelection() {
-  if (!view) return
-  const sel = view.state.selection.main
-  const text = sel.empty ? '' : view.state.doc.sliceString(sel.from, sel.to)
-  if (text) selectionStore.setSelection(props.path ?? '', sel.from, sel.to, text)
-  else selectionStore.clearSelection()
-  hideSelMenu()
-}
-
-/** 右键菜单：显示在鼠标位置（contextmenu 时调用，viewport 坐标 → position: fixed） */
+/** 右键菜单：显示在鼠标位置（contextmenu 时调用，viewport 坐标 → position: fixed）。
+ *  边界回推依赖 selBarEl DOM ref，保留在组件（任务书 §3 Step 4 约定）。 */
 function showSelMenu(x: number, y: number) {
   const sel = selectionStore.selection
   if (!sel || !view) return
@@ -406,24 +388,6 @@ function showSelMenu(x: number, y: number) {
     if (top + rect.height > window.innerHeight - 8) top = Math.max(8, window.innerHeight - rect.height - 8)
     if (left !== selBar.value.left || top !== selBar.value.top) selBar.value = { left, top }
   })
-}
-
-/** 收起右键菜单（选区变化/滚动/点击别处/Esc 时） */
-function hideSelMenu() {
-  selBar.value = null
-  selMoreOpen.value = false
-}
-
-/** 划词工具条动作：把动作写入 store，由 AI 面板消费执行 */
-function runSelAction(label: string) {
-  selMoreOpen.value = false
-  selBar.value = null
-  const sel = selectionStore.selection
-  if (!sel || !view) return
-  const action = QUICK_ACTIONS.find((a) => a.label === label)
-  if (!action) return
-  const prompt = settings.aiQuickPrompts[label] || action.prompt
-  selectionStore.requestAction({ label, prompt, selection: sel })
 }
 
 /** 替换选区（应用划词 Diff 用）：校验范围仍为原文，防止覆盖用户后续编辑 */
@@ -455,54 +419,7 @@ function redoCommand(): boolean {
   return redo(view)
 }
 
-// ── 章节内大纲 ──
-
-function scanHeadings(): { level: number; text: string; pos: number }[] {
-  if (!view) return []
-  const doc = view.state.doc
-  const list: { level: number; text: string; pos: number }[] = []
-  for (let i = 1; i <= doc.lines; i++) {
-    const line = doc.line(i)
-    const m = /^(#{1,3})\s+(.+)$/.exec(line.text)
-    if (m) list.push({ level: m[1].length, text: m[2].trim(), pos: line.from })
-  }
-  return list
-}
-
-let outlineTimer: ReturnType<typeof setTimeout> | null = null
-
-/**
- * 大纲打开期间文档发生变化时重建。
- * 条目里存的是文档绝对位置，标题上方增删任何字符都会让后面的位置整体偏移——
- * 不重建就会「点了大纲跳到别处」。文档没变时不重扫，避免每次按键全量遍历。
- */
-function scheduleOutlineRefresh() {
-  if (!showOutline.value) return
-  if (outlineTimer) clearTimeout(outlineTimer)
-  outlineTimer = setTimeout(() => {
-    outlineTimer = null
-    if (showOutline.value) headings.value = scanHeadings()
-  }, 400)
-}
-
-function toggleOutline() {
-  if (!view) return
-  if (showOutline.value) {
-    showOutline.value = false
-    return
-  }
-  headings.value = scanHeadings()
-  showOutline.value = true
-}
-
-function jumpToHeading(pos: number) {
-  if (!view) return
-  view.dispatch({ selection: { anchor: pos } })
-  view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'start' }) })
-  view.focus()
-  showOutline.value = false
-}
-
+// ── 章节内大纲：扫描/刷新/跳转已下沉到 useEditorOutline ──
 // 点击浮层外关闭
 watch(showOutline, (v) => {
   if (outlineCloseHandler) {
@@ -722,85 +639,16 @@ function buildState(content: string): EditorState {
   return EditorState.create({ doc: content, extensions: baseExtensions })
 }
 
-// ── 撤销历史持久化（跨重启保留 Ctrl+Z） ──
+// ── 撤销历史持久化：下沉自 useEditorUndo ──
+const undoStore = useEditorUndo({
+  getRoot: () => fileStore.projectRoot,
+  getView: () => view,
+  fromJSON: (saved) => EditorState.fromJSON(saved, { extensions: baseExtensions }, { history: historyField }),
+  historyField,
+})
+const { saveUndoHistory, loadSavedState } = undoStore
 
-function undoFilePath(path: string): string {
-  const root = fileStore.projectRoot
-  if (!root) return ''
-  const sep = root.includes('\\') ? '\\' : '/'
-  return root + sep + '.stats' + sep + 'undo' + sep + encodeURIComponent(path) + '.json'
-}
-
-/** 序列化当前状态（含 doc、选区、撤销历史）写入 .stats/undo/ */
-function saveUndoHistory(path: string) {
-  if (!view || !path) return
-  try {
-    const file = undoFilePath(path)
-    if (!file) return
-    const json = view.state.toJSON({ history: historyField })
-    api.writeFile(file, JSON.stringify(json)).catch(() => { /* 保存失败不阻塞 */ })
-  } catch { /* 序列化失败忽略 */ }
-}
-
-/** 读取撤销历史：doc 与当前内容一致才恢复（位置才有效） */
-async function loadSavedState(path: string | undefined, content: string): Promise<EditorState | null> {
-  if (!path) return null
-  try {
-    const file = undoFilePath(path)
-    if (!file) return null
-    const raw = await api.readFile(file)
-    const saved = JSON.parse(raw)
-    if (!saved || saved.doc !== content) return null
-    return EditorState.fromJSON(saved, { extensions: baseExtensions }, { history: historyField })
-  } catch {
-    return null
-  }
-}
-
-
-// ── 阅读位置持久化（按文件记录滚动百分比） ──
-
-function scrollStoreKey(): string {
-  return 'editor-scroll:' + fileStore.projectRoot
-}
-
-let scrollSaveTimer: ReturnType<typeof setTimeout> | null = null
-
-function scheduleScrollSave(path: string, percent: number) {
-  if (scrollSaveTimer) clearTimeout(scrollSaveTimer)
-  scrollSaveTimer = setTimeout(() => {
-    scrollSaveTimer = null
-    try {
-      const map = JSON.parse(localStorage.getItem(scrollStoreKey()) || '{}')
-      map[path] = Math.max(0, Math.min(100, percent))
-      localStorage.setItem(scrollStoreKey(), JSON.stringify(map))
-    } catch { /* 忽略 */ }
-  }, 600)
-}
-
-/** 立刻记录当前滚动百分比（切文件/卸载前调用） */
-function captureCurrentScroll(path: string) {
-  if (!view) return
-  const el = view.scrollDOM
-  const max = el.scrollHeight - el.clientHeight
-  if (max > 0) scheduleScrollSave(path, Math.round((el.scrollTop / max) * 100))
-}
-
-function restoreScrollPercent(path: string | undefined) {
-  if (!view || !path) return
-  if (!view) return
-  try {
-    const map = JSON.parse(localStorage.getItem(scrollStoreKey()) || '{}')
-    const pct = map[path]
-    if (typeof pct === 'number' && pct > 0) {
-      const el = view.scrollDOM
-      const max = el.scrollHeight - el.clientHeight
-      if (max > 0) el.scrollTop = (pct / 100) * max
-    }
-  } catch { /* 忽略 */ }
-}
-
-/** 应用关闭前落盘撤销历史（App 关闭守卫调用） */
+/** 应用关闭前落盘撤销历史（App 关闭守卫调用，无参） */
 function flushUndo() {
   if (props.path) saveUndoHistory(props.path)
 }
@@ -835,10 +683,9 @@ onUnmounted(() => {
   // 使所有挂起的异步恢复作废
   switchSeq++
   if (saveTimer) clearTimeout(saveTimer)
-  if (wordsTimer) clearTimeout(wordsTimer)
-  if (scrollSaveTimer) clearTimeout(scrollSaveTimer)
-  if (outlineTimer) { clearTimeout(outlineTimer); outlineTimer = null }
-  if (titleErrorTimer) clearTimeout(titleErrorTimer)
+  clearWordsTimer()
+  clearOutlineTimer()
+  clearTitleErrorTimer()
   if (outlineCloseHandler) document.removeEventListener('mousedown', outlineCloseHandler)
   if (moreCloseHandler) document.removeEventListener('mousedown', moreCloseHandler)
   if (props.path) fileStore.unregisterContentProvider(props.path)

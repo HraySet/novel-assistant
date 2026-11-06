@@ -13,6 +13,7 @@ import {
   resolveSettingDir,
 } from '../composables/projectDocs'
 import { replaceFirst } from '../core/text'
+import { joinPath } from '../core/paths'
 
 /** AI 推断的角色性格变化（待用户确认） */
 export interface CharacterChange {
@@ -80,7 +81,7 @@ export const useDetectionStore = defineStore('detection', () => {
     outlineSuggestions.value = []
     if (!root) return
     try {
-      const raw = await api.readFile(`${root.replace(/\\/g, '/')}/${PERSIST_FILE}`)
+      const raw = await api.readFile(joinPath(root, PERSIST_FILE))
       const saved = JSON.parse(raw)
       if (Array.isArray(saved.characterChanges)) characterChanges.value = saved.characterChanges
       if (Array.isArray(saved.outlineSuggestions)) outlineSuggestions.value = saved.outlineSuggestions
@@ -95,7 +96,7 @@ export const useDetectionStore = defineStore('detection', () => {
       outlineSuggestions: outlineSuggestions.value,
       wordsSinceCheck: wordsSinceCheck.value,
     }
-    api.writeFile(`${projectRoot.value.replace(/\\/g, '/')}/${PERSIST_FILE}`, JSON.stringify(payload, null, 2))
+    api.writeFile(joinPath(projectRoot.value, PERSIST_FILE), JSON.stringify(payload, null, 2))
       .catch(() => { /* 保存失败不阻塞 */ })
   }
 
@@ -146,7 +147,7 @@ export const useDetectionStore = defineStore('detection', () => {
     const root = projectRoot.value
     if (!root || checking.value) return
     const settings = useSettingsStore()
-  const usageStore = useUsageStore()
+    const usageStore = useUsageStore()
     if (!settings.aiApiKey) return // 未配置 API Key 时静默跳过
 
     checking.value = true

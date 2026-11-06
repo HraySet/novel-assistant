@@ -132,6 +132,7 @@ fn build_opf(title: &str, count: usize) -> String {
         spine.push_str(&format!("    <itemref idref=\"{id}\"/>\n"));
     }
     // 无 uuid crate，用时间与地址拼一个唯一 id
+    // 变体位与版本位按 RFC 4122 置位（variant 10xx + version 0100），是合法的 UUID v4 形态
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())

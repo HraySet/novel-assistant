@@ -10,8 +10,8 @@ use crate::backup::{
     backup_file, clear_backup_hash, migrate_backups_on_move, migrate_backups_on_rename,
 };
 use crate::paths::{
-    path_mtime_secs, project_root_of, resolve_in_project, resolve_within, sanitize_component,
-    should_skip, unique_path,
+    encode_uri_component, path_mtime_secs, project_root_of, resolve_in_project, resolve_within,
+    sanitize_component, should_skip, unique_path,
 };
 
 /// 摘掉正文文件的扩展名（.md/.txt，大小写不敏感），用于摘要文件名。
@@ -54,12 +54,99 @@ fn migrate_summary_on_rename(app: &tauri::AppHandle, old_path: &std::path::Path,
         let _ = fs::rename(&from, &to);
     }
 }
+
+/// 绝对路径 → 相对项目根的规范化相对路径（统一 `/` 分隔符）。
+/// 与前端 `toRelativePath`（core/paths.ts）语义一致，用于撤销历史文件名。
+fn to_relative_path(root: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(root).ok()?;
+    let mut out = String::new();
+    for (i, comp) in rel.components().enumerate() {
+        if i > 0 {
+            out.push('/');
+        }
+        out.push_str(&comp.as_os_str().to_string_lossy());
+    }
+    Some(out)
+}
+
+/// 重命名/移动章节后，迁移 `.stats/undo/` 下的撤销历史文件（T1 后端一半）。
+///
+/// 撤销历史文件按「相对项目根的路径 + 固定 `/`」编码命名（`encode_uri_component(相对路径).json`）。
+/// 章节重命名/移动会改变相对路径，这里把旧 undo 文件 rename 到新名，否则撤销历史失联。
+/// 目录重命名时，遍历 undo 目录做前缀 remap（旧相对前缀 → 新相对前缀）。
+fn migrate_undo_on_rename(app: &tauri::AppHandle, old_path: &Path, new_path: &Path) {
+    let Some(root) = project_root_of(app) else {
+        return;
+    };
+    let Some(old_rel) = to_relative_path(&root, old_path) else {
+        return;
+    };
+    let Some(new_rel) = to_relative_path(&root, new_path) else {
+        return;
+    };
+    let undo_dir = root.join(".stats").join("undo");
+    if !undo_dir.exists() {
+        return;
+    }
+
+    // 单文件：旧相对路径精确等于某 undo 文件名，直接 rename
+    let old_file = undo_dir.join(format!("{}.json", encode_uri_component(&old_rel)));
+    if old_file.exists() {
+        let new_file = undo_dir.join(format!("{}.json", encode_uri_component(&new_rel)));
+        if !new_file.exists() {
+            let _ = fs::rename(&old_file, &new_file);
+        }
+        return;
+    }
+
+    // 目录重命名：遍历 undo 目录，把「旧相对前缀 + /」开头的文件名前缀 remap 到新相对前缀。
+    // 旧相对路径形如 卷1/第2章.md，编码后的文件名前缀为 encode_uri_component("卷1/")。
+    let old_prefix = encode_uri_component(&format!("{}/", old_rel));
+    let new_prefix = encode_uri_component(&format!("{}/", new_rel));
+    let Ok(entries) = fs::read_dir(&undo_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if let Some(rest) = name.strip_prefix(&old_prefix) {
+            let to = undo_dir.join(format!("{}{}", new_prefix, rest));
+            if !to.exists() {
+                let _ = fs::rename(entry.path(), &to);
+            }
+        }
+    }
+}
 use crate::types::{DirEntry, ImportFile};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+
+/// 读文本文件，UTF-8 优先；失败（GBK/GB18030 等中文旧编码）时按 GB18030 解码兜底。
+///
+/// 中文作者从 WPS/旧软件导出的 txt 大量是 GBK/GB2312，`fs::read_to_string`（严格 UTF-8）
+/// 会直接失败。这里字节级判断：先试 UTF-8，失败再按 GB18030（GBK 超集）解码，保证旧稿可读。
+fn read_text_utf8_or_gb18030(filepath: &Path) -> Result<String, String> {
+    let bytes = fs::read(filepath).map_err(|e| e.to_string())?;
+    // 空文件直接返回空串
+    if bytes.is_empty() {
+        return Ok(String::new());
+    }
+    match std::str::from_utf8(&bytes) {
+        Ok(s) => Ok(s.to_string()),
+        Err(_) => {
+            // 非 UTF-8：按 GB18030 解码（GB18030 兼容 GBK/GB2312）
+            let (cow, _, had_errors) = encoding_rs::GB18030.decode(&bytes);
+            if had_errors {
+                // 仍有解码错误（非文本或未知编码）：退回 lossy，保证不崩
+                Ok(cow.into_owned())
+            } else {
+                Ok(cow.into_owned())
+            }
+        }
+    }
+}
 
 // ── 字数统计 ──
 
@@ -188,7 +275,7 @@ fn get_or_compute_word_count(
     }
 
     // 缓存与索引均未命中 → 重新计算
-    let content = fs::read_to_string(path).ok()?;
+    let content = read_text_utf8_or_gb18030(path).ok()?;
     let count = count_words(&content);
 
     if let Ok(mut cache_lock) = cache.lock() {
@@ -294,7 +381,7 @@ pub async fn list_dir(app: tauri::AppHandle, path: String) -> Result<Vec<DirEntr
 #[tauri::command]
 pub fn read_file(app: tauri::AppHandle, path: String) -> Result<String, String> {
     let filepath = resolve_in_project(&app, &path)?;
-    fs::read_to_string(&filepath).map_err(|e| e.to_string())
+    read_text_utf8_or_gb18030(&filepath)
 }
 
 #[tauri::command]
@@ -393,6 +480,8 @@ pub fn move_path(app: tauri::AppHandle, source: String, dest_dir: String) -> Res
     if was_file {
         migrate_backups_on_move(&src, &dest);
     }
+    // 撤销历史（.stats/undo）按相对路径命名，移动会改变相对路径，需迁移
+    migrate_undo_on_rename(&app, &src, &dest);
     clear_backup_hash(&src);
     clear_backup_hash(&dest);
 
@@ -422,6 +511,8 @@ pub fn rename_path(app: tauri::AppHandle, source: String, dest: String) -> Resul
         migrate_backups_on_rename(&src, &dest_path);
         migrate_summary_on_rename(&app, &src, &dest_path);
     }
+    // 撤销历史（.stats/undo）按相对路径命名，重命名（含目录）会改变相对路径，需迁移
+    migrate_undo_on_rename(&app, &src, &dest_path);
     clear_backup_hash(&src);
     clear_backup_hash(&dest_path);
 
@@ -470,20 +561,13 @@ pub fn file_mtime(app: tauri::AppHandle, path: String) -> Option<u64> {
         .map(|d| d.as_secs())
 }
 
-/// 外部拖入：把文件复制进项目（保留子目录结构，重名自动加序号）
-#[tauri::command]
-pub fn import_files(    app: tauri::AppHandle,
-    dest_dir: String,
-    files: Vec<ImportFile>,
-) -> Result<usize, String> {
-    let dest = resolve_in_project(&app, &dest_dir)?;
-    if !dest.exists() || !dest.is_dir() {
-        return Err(format!("目标目录不存在: {}", dest_dir));
-    }
-    let mut count = 0usize;
+/// 预检阶段：完成路径清洗与 base64 解码，返回可写盘的结构。
+/// 任一路径非法跳过该文件（保持「单个非法不影响同批」约定）；
+/// 任一 base64 非法整体报错，保证调用方一个字节都不写。
+fn prepare_imports(files: &[ImportFile]) -> Result<Vec<(Vec<String>, Vec<u8>)>, String> {
+    let mut prepared: Vec<(Vec<String>, Vec<u8>)> = Vec::new();
     for f in files {
-        // 逐级清洗相对路径，拒绝绝对路径 / .. / 盘符注入；
-        // 单个文件非法时跳过它，不影响同批其它文件
+        // 逐级清洗相对路径，拒绝绝对路径 / .. / 盘符注入
         let mut parts: Vec<String> = Vec::new();
         let mut invalid = false;
         for comp in f.rel_path.replace('\\', "/").split('/') {
@@ -499,6 +583,29 @@ pub fn import_files(    app: tauri::AppHandle,
             continue;
         }
         let bytes = BASE64.decode(f.base64_data.as_bytes()).map_err(|e| e.to_string())?;
+        prepared.push((parts, bytes));
+    }
+    Ok(prepared)
+}
+
+/// 外部拖入：把文件复制进项目（保留子目录结构，重名自动加序号）
+#[tauri::command]
+pub fn import_files(    app: tauri::AppHandle,
+    dest_dir: String,
+    files: Vec<ImportFile>,
+) -> Result<usize, String> {
+    let dest = resolve_in_project(&app, &dest_dir)?;
+    if !dest.exists() || !dest.is_dir() {
+        return Err(format!("目标目录不存在: {}", dest_dir));
+    }
+
+    // 先全部预检（路径清洗 + base64 解码），把「可能失败的解析」与「写盘」分离；
+    // 任一 base64 非法则整体报错、一个字节都不写，避免留下「导了一半」的半成品。
+    let prepared = prepare_imports(&files)?;
+
+    // 写盘阶段：全部解析成功后才执行，失败概率已大幅下降
+    let mut count = 0usize;
+    for (parts, bytes) in prepared {
         let mut current = dest.to_path_buf();
         for (i, part) in parts.iter().enumerate() {
             if i == parts.len() - 1 {
@@ -516,7 +623,8 @@ pub fn import_files(    app: tauri::AppHandle,
 
 #[cfg(test)]
 mod tests {
-    use super::{chapter_stem, count_words};
+    use super::{chapter_stem, count_words, prepare_imports, read_text_utf8_or_gb18030};
+    use std::fs;
 
     #[test]
     fn strips_md_and_txt_extension_case_insensitive() {
@@ -562,5 +670,75 @@ mod tests {
     fn empty_text_is_zero() {
         assert_eq!(count_words(""), 0);
         assert_eq!(count_words("   \n\t"), 0);
+    }
+
+    // ── 编码检测（T5：GBK 旧稿可读）──
+
+    #[test]
+    fn read_utf8_passthrough() {
+        let dir = std::env::temp_dir().join(format!("qingbi-enc-utf8-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.txt");
+        fs::write(&f, "第1章 正文".as_bytes()).unwrap();
+        assert_eq!(read_text_utf8_or_gb18030(&f).unwrap(), "第1章 正文");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_gb18030_fallback() {
+        // 用 GB18030 编码写「第1章 正文」，UTF-8 严格解码会失败，应回退 GB18030 解出原文
+        let (gbk_bytes, _, _) = encoding_rs::GB18030.encode("第1章 正文");
+        let dir = std::env::temp_dir().join(format!("qingbi-enc-gbk-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("b.txt");
+        fs::write(&f, &gbk_bytes).unwrap();
+        assert_eq!(read_text_utf8_or_gb18030(&f).unwrap(), "第1章 正文");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_empty_file() {
+        let dir = std::env::temp_dir().join(format!("qingbi-enc-empty-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("c.txt");
+        fs::write(&f, []).unwrap();
+        assert_eq!(read_text_utf8_or_gb18030(&f).unwrap(), "");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── import_files 预检（base64 非法时整体报错，路径非法时跳过单个）──
+
+    #[test]
+    fn prepare_imports_rejects_bad_base64_wholesale() {
+        use base64::{engine::general_purpose::STANDARD as B64, Engine};
+        use crate::types::ImportFile;
+
+        let files = vec![
+            ImportFile { rel_path: "第1章.md".into(), base64_data: B64.encode("合法内容") },
+            ImportFile { rel_path: "第2章.md".into(), base64_data: "!!!not-base64!!!".into() },
+        ];
+
+        // 任一 base64 非法 → 整体报错（而非写入第一个、跳过第二个）
+        assert!(prepare_imports(&files).is_err(), "base64 非法应整体报错");
+    }
+
+    #[test]
+    fn prepare_imports_skips_invalid_path_but_keeps_valid() {
+        use base64::{engine::general_purpose::STANDARD as B64, Engine};
+        use crate::types::ImportFile;
+
+        let files = vec![
+            ImportFile { rel_path: "../逃逸.md".into(), base64_data: B64.encode("x") },
+            ImportFile { rel_path: "第1章.md".into(), base64_data: B64.encode("合法内容") },
+        ];
+
+        // 路径非法 → 跳过单个；合法文件保留
+        let prepared = prepare_imports(&files).unwrap();
+        assert_eq!(prepared.len(), 1, "只有合法文件被保留");
+        assert_eq!(prepared[0].0, vec!["第1章.md".to_string()]);
+        assert_eq!(prepared[0].1, "合法内容".as_bytes());
     }
 }

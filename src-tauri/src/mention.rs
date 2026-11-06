@@ -117,7 +117,6 @@ fn scan_blocking(root: &Path, names: Vec<String>) -> Result<Vec<MentionStat>, St
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     /// 构造一个临时项目：正文两章 + 角色目录（应被排除）
     fn fixture(tag: &str) -> PathBuf {
@@ -137,19 +136,19 @@ mod tests {
         root
     }
 
-    /// 追加一个换行以刷新 mtime（Windows 上写 0 字节不会更新 mtime）；
-    /// 换行不计入字数，也不影响角色名匹配。
-    fn touch(path: &Path) {
-        let mut f = fs::OpenOptions::new().append(true).open(path).unwrap();
-        f.write_all(b"\n").unwrap();
+    /// 确定性设置 mtime（秒级），让「最近」判断可复现，不依赖真实时钟与 sleep。
+    fn set_mtime(path: &Path, secs: u64) {
+        let f = fs::OpenOptions::new().write(true).open(path).unwrap();
+        let mtime = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs);
+        f.set_modified(mtime).unwrap();
     }
 
     #[test]
     fn counts_only_body_files_and_prefers_newest() {
         let root = fixture("count");
-        // 让第2章成为"最近修改"
-        std::thread::sleep(std::time::Duration::from_millis(1100));
-        touch(&root.join("第2章.md"));
+        // 第1章 mtime 较早、第2章较晚：用显式 mtime 代替 sleep，确定性复现「最近修改」
+        set_mtime(&root.join("第1章.md"), 1_700_000_000);
+        set_mtime(&root.join("第2章.md"), 1_700_000_100);
 
         let stats = scan_blocking(&root, vec!["张三".into()]).unwrap();
         assert_eq!(stats.len(), 1);

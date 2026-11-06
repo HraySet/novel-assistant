@@ -35,20 +35,39 @@ fn strip_api_keys(mut value: Value) -> Value {
     value
 }
 
-/// 钥匙串服务名。
+/// 钥匙串服务名（产品名「意笔」的拼音，与 Cargo.toml 的 package name 保持一致）。
 ///
-/// ⚠️ 与 Cargo.toml 的 package name 保持一致（`yanyan`）。**不要随手改成产品名**：
-/// 服务名是凭据条目的定位键，改了等于让所有用户已保存的 API Key 失联。
-/// 若将来确实要改名，必须先做双读迁移：先用新名读，读不到回退旧名，成功后回写新名。
-const KEYRING_SERVICE: &str = "yanyan";
+/// ⚠️ 服务名是凭据条目的定位键，改动会导致已保存的 API Key 失联。
+/// 历史旧名 `yanyan` 仍用于双读迁移（见 `get_api_key`），不可删除。
+const KEYRING_SERVICE: &str = "yibi";
 
-/// 从系统钥匙串读取某服务商的 API Key；未保存/读取失败返回 None
+/// 旧服务名，用于从上一代产品名无缝迁移已保存的 API Key。
+const LEGACY_KEYRING_SERVICE: &str = "yanyan";
+
+/// 从系统钥匙串读取某服务商的 API Key；未保存/读取失败返回 None。
+///
+/// 双读迁移：先用新服务名 `yibi` 读；读不到时回退旧名 `yanyan`，若旧名命中则回写到新名，
+/// 保证老用户已保存的密钥无感迁移、不丢失。
 #[tauri::command]
 pub fn get_api_key(provider: String) -> Option<String> {
-    keyring::Entry::new(KEYRING_SERVICE, &provider)
-        .ok()?
-        .get_password()
+    // 新名优先
+    if let Some(key) = keyring::Entry::new(KEYRING_SERVICE, &provider)
         .ok()
+        .and_then(|e| e.get_password().ok())
+    {
+        return Some(key);
+    }
+    // 回退旧名，命中则回写到新名完成迁移
+    if let Some(legacy_key) = keyring::Entry::new(LEGACY_KEYRING_SERVICE, &provider)
+        .ok()
+        .and_then(|e| e.get_password().ok())
+    {
+        if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, &provider) {
+            let _ = entry.set_password(&legacy_key);
+        }
+        return Some(legacy_key);
+    }
+    None
 }
 
 /// 把 API Key 写入系统钥匙串；传空串表示删除已保存的密钥

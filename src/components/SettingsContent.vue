@@ -336,12 +336,13 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { storeToRefs } from "pinia";
 import { PenLine, Palette, Cpu, CircleCheck, AlertCircle, XCircle } from "lucide-vue-next";
 import { useSettingsStore } from "../stores/settings";
 import { useSettingsForm } from "../composables/useSettingsForm";
 import { useFileStore } from "../stores/file";
 import { useStatsStore } from "../stores/stats";
-import type { FileNode } from "../types/file";
+import { useWritingStats } from "../composables/settings/useWritingStats";
 import SurfaceCard from "./SurfaceCard.vue";
 import StatusDot from "./StatusDot.vue";
 import SectionHeader from "./SectionHeader.vue";
@@ -355,21 +356,12 @@ const form = useSettingsForm();
 const fileStore = useFileStore();
 const stats = useStatsStore();
 
-// 全书总字数：遍历文件树求和（不含目录）
-const totalWords = computed(() => {
-  let sum = 0;
-  const walk = (nodes: FileNode[]) => {
-    for (const n of nodes) {
-      if (n.isDir) {
-        if (n.children) walk(n.children);
-      } else {
-        sum += n.wordCount ?? 0;
-      }
-    }
-  };
-  walk(fileStore.tree);
-  return sum;
-});
+// 全书总字数与写作分析（纯函数见 useWritingStats.ts）
+const { tree } = storeToRefs(fileStore);
+const { dailyRecords, todaySessionMs, todayWords } = storeToRefs(stats);
+const { totalWords, todaySpeed, avgDaily, activeDays, last7, barHeight } =
+  useWritingStats({ dailyRecords, todaySessionMs, todayWords, tree });
+
 const darkPresets = computed(() => store.colorPresets.filter(p => p.dark));
 const lightPresets = computed(() => store.colorPresets.filter(p => !p.dark));
 const widthOpts = ["窄", "中", "宽"];
@@ -399,33 +391,6 @@ function onPromptChange(label: string, e: Event) {
   }
 }
 
-// ── 写作分析 ──
-const todaySpeed = computed(() => {
-  const hours = stats.todaySessionMs / 3600000
-  if (hours <= 0 || stats.todayWords === 0) return 0
-  return Math.round(stats.todayWords / hours)
-})
-const activeDays = computed(() => stats.dailyRecords.filter((r) => r.wordCount > 0).length)
-const avgDaily = computed(() => {
-  const rs = stats.dailyRecords.filter((r) => r.wordCount > 0)
-  return rs.length ? Math.round(rs.reduce((s, r) => s + r.wordCount, 0) / rs.length) : 0
-})
-const last7 = computed(() => {
-  const out: { date: string; label: string; count: number }[] = []
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date()
-    d.setDate(d.getDate() - i)
-    const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    const rec = stats.dailyRecords.find((r) => r.date === ds)
-    out.push({ date: ds, label: `${d.getMonth() + 1}/${d.getDate()}`, count: rec?.wordCount ?? 0 })
-  }
-  return out
-})
-const last7Max = computed(() => Math.max(100, ...last7.value.map((d) => d.count)))
-function barHeight(count: number): string {
-  if (count <= 0) return '2px'
-  return `${Math.max(8, Math.round((count / last7Max.value) * 64))}px`
-}
 const aiProviders = [
   { key: "openai" as const, label: "OpenAI" },
   { key: "claude" as const, label: "Claude" },

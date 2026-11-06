@@ -280,13 +280,13 @@ function quickTitle(a: QuickAction): string {
   return a.hint
 }
 
-function runQuick(action: { label: string; prompt: string; hint?: string }) {
+function runQuick(action: QuickAction) {
   if (SELECTION_REQUIRED.has(action.label) && !selection.value) return
   const sel = SELECTION_AWARE.has(action.label) ? selection.value : null
-  handleQuickAction(action.label, action.prompt, sel)
+  handleQuickAction(action.label, action.prompt, sel, action.maxTokens)
 }
 
-async function handleQuickAction(label: string, prompt: string, sel: EditorSelection | null) {
+async function handleQuickAction(label: string, prompt: string, sel: EditorSelection | null, maxTokens?: number) {
   if (chatStore.streaming) return
   const requestText = sel
     ? `本次操作的对象是【选中文字】（共 ${sel.words} 字），不是全文。\n${prompt}\n\n【选中文字】\n"""\n${sel.text}\n"""`
@@ -297,6 +297,7 @@ async function handleQuickAction(label: string, prompt: string, sel: EditorSelec
     display: sel ? `[${label}·选中 ${sel.words} 字]` : '[' + label + ']',
     withOriginal: diffable,
     selection: diffable && sel ? { path: sel.path, from: sel.from, to: sel.to, text: sel.text } : undefined,
+    maxTokens,
   })
 }
 
@@ -306,7 +307,7 @@ watch(() => selectionStore.pendingAction, (action) => {
   if (!action) return
   if (chatStore.streaming) return // 正在生成：不消费，用户可在结束后重新触发
   selectionStore.consumePendingAction()
-  void handleQuickAction(action.label, action.prompt, action.selection)
+  void handleQuickAction(action.label, action.prompt, action.selection, action.maxTokens)
 }, { immediate: true })
 
 async function handleSend() {

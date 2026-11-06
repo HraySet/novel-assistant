@@ -27,17 +27,7 @@
       <template v-if="fileStore.renamingPath !== node.path">
         <span class="node-name">{{ node.name }}</span>
       </template>
-      <input
-        v-else
-        ref="renameInputRef"
-        v-model="renameValue"
-        class="rename-input"
-        spellcheck="false"
-        @click.stop
-        @keydown.enter="handleConfirm"
-        @keydown.escape="handleCancel"
-        @blur="handleConfirm"
-      />
+      <RenameInput v-else :node-path="node.path" :node-name="node.name" :is-dir="true" />
 
       <!-- 收藏星标 -->
       <button
@@ -88,17 +78,7 @@
       <template v-if="fileStore.renamingPath !== node.path">
         <span class="node-name">{{ node.name }}</span>
       </template>
-      <input
-        v-else
-        ref="renameInputRef"
-        v-model="renameValue"
-        class="rename-input"
-        spellcheck="false"
-        @click.stop
-        @keydown.enter="handleConfirm"
-        @keydown.escape="handleCancel"
-        @blur="handleConfirm"
-      />
+      <RenameInput v-else :node-path="node.path" :node-name="node.name" :is-dir="false" />
 
       <!-- 收藏星标 -->
       <button
@@ -148,10 +128,10 @@ import { FileText, Folder, Star, ChevronRight } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import type { FileNode } from '../types/file'
 import { useFileStore } from '../stores/file'
-import { useRename } from '../composables/useRename'
 import { useFileTreeDrag } from '../composables/useFileTreeDrag'
 import StatusDot from './StatusDot.vue'
 import DraftRow from './DraftRow.vue'
+import RenameInput from './RenameInput.vue'
 
 const props = defineProps<{
   node: FileNode
@@ -162,12 +142,6 @@ const fileStore = useFileStore()
 const { draft: draftState } = storeToRefs(fileStore)
 
 const isExpanded = computed(() => fileStore.isExpanded(props.node.path))
-
-const { renameValue, renameInputRef, handleConfirm, handleCancel } = useRename(
-  props.node.path,
-  props.node.name,
-  props.node.isDir,
-)
 
 const { dragOver, handleMouseDown, handleRowClick, handleDragEnter, handleDragOver, handleDragLeave, handleDrop, handleDragStart, isWindows } = useFileTreeDrag()
 
@@ -286,18 +260,6 @@ function formatWordCount(count: number): string {
   background: var(--color-bg-surface-hover);
 }
 
-.rename-input {
-  flex: 1;
-  min-width: 0;
-  font-size: 13px;
-  font-family: inherit;
-  color: var(--color-text-primary);
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-accent-border);
-  border-radius: var(--radius-sm);
-  padding: 1px 4px;
-  outline: none;
-}
 /* 子节点展开淡入（不追求精确高度过渡，缓解“瞬间炸开”感） */
 .node-children-enter-active { transition: opacity 0.12s ease; }
 .node-children-enter-from { opacity: 0; }

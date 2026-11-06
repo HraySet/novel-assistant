@@ -11,6 +11,8 @@ import {
   isInside,
   remapPath,
   remapPaths,
+  toRelativePath,
+  undoFileName,
 } from '../paths'
 
 /**
@@ -158,5 +160,35 @@ describe('remapPaths', () => {
       'E:/书/第一卷/b.md',
       'E:/书/第3章.md',
     ])
+  })
+})
+
+describe('toRelativePath / undoFileName（撤销历史命名，T1 定稿锚点）', () => {
+  // 定稿锚点：这些测试向量是前后端（JS encodeURIComponent 与 Rust encode_uri_component）
+  // 的「定稿」判据，改这里等于改命名契约。
+  it('toRelativePath 统一正斜杠并去盘符', () => {
+    expect(toRelativePath(String.raw`E:\book`, String.raw`E:\book\第1章.md`)).toBe('第1章.md')
+    expect(toRelativePath('E:/book', 'E:/book/卷1/第2章.md')).toBe('卷1/第2章.md')
+  })
+
+  it('undoFileName 输出与 encodeURIComponent 保留集一致', () => {
+    // 保留集 A-Za-z0-9-_.!~*'() 不编码
+    expect(undoFileName('第1章.md')).toBe('%E7%AC%AC1%E7%AB%A0.md.json')
+    expect(undoFileName('卷1/第2章.md')).toBe('%E5%8D%B71%2F%E7%AC%AC2%E7%AB%A0.md.json')
+    expect(undoFileName('a b.md')).toBe('a%20b.md.json')
+    expect(undoFileName('a!b.md')).toBe('a!b.md.json')   // ! 不编码
+    expect(undoFileName("a'b.md")).toBe("a'b.md.json")   // ' 不编码
+    expect(undoFileName('a*b.md')).toBe('a*b.md.json')   // * 不编码
+    expect(undoFileName('a(b).md')).toBe('a(b).md.json') // ( ) 不编码
+    expect(undoFileName('a~b.md')).toBe('a~b.md.json')   // ~ 不编码
+  })
+
+  it('undoFileName 对反斜杠/盘符路径编码（跨平台稳定）', () => {
+    // 反斜杠编码为 %5C，正斜杠 %2F，冒号 %3A
+    expect(undoFileName(String.raw`卷1\第2章.md`)).toBe('%E5%8D%B71%5C%E7%AC%AC2%E7%AB%A0.md.json')
+  })
+
+  it('toRelativePath 在 path 不在 root 内时退化但统一分隔符', () => {
+    expect(toRelativePath('E:/book', 'E:/other/a.md')).toBe('/other/a.md')
   })
 })

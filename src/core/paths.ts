@@ -112,3 +112,34 @@ export function remapPath(p: string, from: string, to: string): string {
 export function remapPaths(paths: string[], from: string, to: string): string[] {
   return paths.map((p) => remapPath(p, from, to))
 }
+
+/**
+ * 绝对路径 → 相对项目根的规范化相对路径（统一 `/` 分隔符）。
+ *
+ * 用于撤销历史命名（T1）：撤销文件名要跨平台/路径风格稳定，不能带盘符、
+ * 不能混用正反斜杠，否则同一文件在不同路径风格下 undo 文件名不同。
+ *
+ * - `toRelativePath('E:\\book', 'E:\\book\\第1章.md')` → `第1章.md`
+ * - `toRelativePath('E:/book', 'E:/book/卷1/第2章.md')` → `卷1/第2章.md`
+ * - path 不在 root 内时，返回 normalize(path) 去盘符后的兜底（仍统一 `/`）。
+ */
+export function toRelativePath(root: string, path: string): string {
+  const nr = normalize(root)
+  const np = normalize(path)
+  if (!nr || !np) return np
+  const prefix = nr.endsWith('/') ? nr : nr + '/'
+  if (np.startsWith(prefix)) return np.slice(prefix.length)
+  // 不在 root 内：退化为「去盘符 + 统一正斜杠」的相对表示（尽量稳定）
+  return np.replace(/^[A-Za-z]:/, '')
+}
+
+/**
+ * 相对路径 → 撤销历史文件名（encodeURIComponent + .json）。
+ *
+ * `encodeURIComponent` 的保留集 `A-Za-z0-9-_.!~*'()` 不编码，`\` `/` 空格等编码。
+ * 这是撤销历史（.stats/undo/*.json）文件名的唯一真源，Rust 端 `encode_uri_component`
+ * 必须与它逐字节一致（见 REBUILD-MODULE-backup.md §2.3 逐字符对齐向量表）。
+ */
+export function undoFileName(relPath: string): string {
+  return encodeURIComponent(relPath) + '.json'
+}

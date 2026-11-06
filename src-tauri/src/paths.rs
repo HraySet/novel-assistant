@@ -125,6 +125,32 @@ pub fn path_mtime_secs(path: &Path) -> Option<u64> {
         .map(|d| d.as_secs())
 }
 
+/// JS `encodeURIComponent` 的等价实现（UTF-8 百分号编码）。
+///
+/// 保留集 `A-Za-z0-9-_.!~*'()` 不编码；其余字符按其 UTF-8 字节序列编码为 `%XX`。
+/// 必须与前端 `encodeURIComponent` **逐字节一致**，否则撤销历史文件（.stats/undo/*.json）
+/// 在两端算出不同文件名，前端读不回。测试向量见 paths.rs `mod tests` 的
+/// `encode_uri_component_matches_js`（与 REBUILD-MODULE-backup.md §2.3 逐字符对齐向量表一致）。
+///
+/// 最易误编的是 `! ~ * ' ( )` 六个字符——标准库没有等价物，手写循环几乎必然把 `'`
+/// 编成 `%27`、把 `*` 编成 `%2A`。这里显式列出完整保留集，避免踩坑。
+pub fn encode_uri_component(input: &str) -> String {
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    let mut out = String::with_capacity(input.len() * 3);
+    for &b in input.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~'
+            | b'*' | b'\'' | b'(' | b')' => out.push(b as char),
+            _ => {
+                out.push('%');
+                out.push(HEX[(b >> 4) as usize] as char);
+                out.push(HEX[(b & 0x0F) as usize] as char);
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +232,44 @@ mod tests {
         assert_eq!(p3.file_name().unwrap().to_string_lossy(), "第1章 (3).md");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // ── encode_uri_component 逐字符对齐向量（与 REBUILD-MODULE-backup.md §2.3 一致）──
+    // 这是撤销历史文件名的「定稿锚点」：Rust 与前端 encodeURIComponent 逐字节一致。
+    #[test]
+    fn encode_uri_component_matches_js_reserved_set() {
+        // 保留集不编码
+        assert_eq!(encode_uri_component("azAZ09-_.!~*'()"), "azAZ09-_.!~*'()");
+        // 六字符单独锁定（最易误编）
+        assert_eq!(encode_uri_component("!"), "!");
+        assert_eq!(encode_uri_component("~"), "~");
+        assert_eq!(encode_uri_component("*"), "*");
+        assert_eq!(encode_uri_component("'"), "'");
+        assert_eq!(encode_uri_component("("), "(");
+        assert_eq!(encode_uri_component(")"), ")");
+    }
+
+    #[test]
+    fn encode_uri_component_matches_js_escapes() {
+        assert_eq!(encode_uri_component(" "), "%20");
+        assert_eq!(encode_uri_component("\\"), "%5C");
+        assert_eq!(encode_uri_component("/"), "%2F");
+        assert_eq!(encode_uri_component(":"), "%3A");
+        // 中文（UTF-8 多字节）
+        assert_eq!(encode_uri_component("中"), "%E4%B8%AD");
+        assert_eq!(encode_uri_component("文"), "%E6%96%87");
+        // emoji（4 字节 UTF-8）
+        assert_eq!(encode_uri_component("😀"), "%F0%9F%98%80");
+    }
+
+    #[test]
+    fn encode_uri_component_matches_js_undo_filename() {
+        // 与前端 undoFileName 的定稿锚点一致
+        assert_eq!(encode_uri_component("第1章.md"), "%E7%AC%AC1%E7%AB%A0.md");
+        assert_eq!(
+            encode_uri_component("卷1/第2章.md"),
+            "%E5%8D%B71%2F%E7%AC%AC2%E7%AB%A0.md"
+        );
+        assert_eq!(encode_uri_component("a b.md"), "a%20b.md.json".trim_end_matches(".json"));
     }
 }

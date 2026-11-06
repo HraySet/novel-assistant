@@ -96,6 +96,8 @@ import { streamChat } from '../composables/useAiStream'
 import { useUsageStore } from '../stores/usage'
 import { readDirDocsFull, resolveSettingDir } from '../composables/projectDocs'
 import { useSettingsStore } from '../stores/settings'
+import { detectRole, preview } from '../composables/characters/parseCharacter'
+import { useCharacterExtract } from '../composables/characters/useCharacterExtract'
 import ConfirmDialog from './ConfirmDialog.vue'
 import BaseModal from './BaseModal.vue'
 import StatusDot from './StatusDot.vue'
@@ -135,9 +137,6 @@ const pending = ref<
   | null
 >(null)
 const mentions = ref<Record<string, api.MentionStat>>({})
-const extracting = ref(false)
-const extractCandidates = ref<string[]>([])
-const extractNote = ref('')
 
 const confirmTitle = computed(() => {
   const p = pending.value
@@ -174,6 +173,32 @@ function refreshLiveContent() {
 }
 
 const canExtract = computed(() => liveContent.value.trim().length >= 200)
+
+// 角色名 AI 抽取（编排在 useCharacterExtract，名字解析在 parseCharacter 纯函数层）
+const extract = useCharacterExtract({
+  getLiveContent: () => liveContent.value,
+  existingNames: () => characters.value.map((c) => c.name),
+  stream: async ({ system, temperature, content }) => {
+    const settings = useSettingsStore()
+    const { text, usage } = await streamChat({
+      provider: settings.aiProvider,
+      endpoint: settings.aiEndpoint,
+      apiKey: settings.aiApiKey,
+      model: settings.aiModel,
+      system,
+      temperature,
+      messages: [{ role: 'user', content: `正文：\n${content}` }],
+      signal: new AbortController().signal,
+      onToken: () => {},
+    })
+    return { text, usage }
+  },
+  recordUsage: (usage) => useUsageStore().record(usage),
+  hasApiKey: () => !!useSettingsStore().aiApiKey,
+})
+const extracting = extract.extracting
+const extractCandidates = extract.extractCandidates
+const extractNote = extract.extractNote
 
 const charDir = () => `${props.projectRoot.replace(/\\/g, '/')}/角色`
 
@@ -250,23 +275,7 @@ async function selectCharacter(ch: CharEntry) {
   applySelect(ch)
 }
 
-/** 从"定位"字段提取角色类型，用于标签与配色 */
-function detectRole(content: string): string {
-  const line = content.split('\n').find((l) => l.includes('定位'))
-  if (line) {
-    const m = line.match(/定位[：:]\s*(.+)/)
-    if (m) return m[1].trim().slice(0, 6)
-  }
-  return '角色'
-}
-
-function preview(content: string): string {
-  const lines = content
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith('#') && !l.startsWith('- 定位'))
-  return lines[0]?.slice(0, 60) ?? '（空）'
-}
+/** 从"定位"字段提取角色类型，用于标签与配色（纯函数，见 parseCharacter.ts） */
 
 /** 角色出场统计（零 token：本地扫描正文） */
 function mentionCount(name: string): number {
@@ -340,76 +349,11 @@ async function createCharFile(name: string): Promise<string | null> {
   return null
 }
 
-/** AI 抽取：从当前打开的章节提取人名（一次小调用，只输出名字 JSON，不重写内容） */
-const EXTRACT_SYSTEM = '你是小说人物名提取器。阅读给定正文，提取其中出现的人物名（人名，含明显指向人物的昵称）。只输出一个 JSON 字符串数组，例如 ["张三","李四"]。不要输出任何其他内容；没有人物则输出 []。'
-
+/** AI 抽取角色名：编排逻辑见 useCharacterExtract.ts */
 async function extractCharacters() {
   if (extracting.value || !canExtract.value) return
-  const settings = useSettingsStore()
-  if (!settings.aiApiKey) {
-    extractNote.value = '需先在设置中配置 API Key'
-    clearNote()
-    return
-  }
-  extracting.value = true
-  extractNote.value = ''
-  try {
-    // 只截前 8000 字会漏掉"后半章才出场"的人物：首尾各取一段，
-    // 首段覆盖开场，尾段覆盖本章结尾引入的新角色
-    const full = liveContent.value.trim()
-    const content = full.length <= 8000
-      ? full
-      : `${full.slice(0, 5200)}\n……（中间省略）……\n${full.slice(-2600)}`
-    const { text, usage } = await streamChat({
-      provider: settings.aiProvider,
-      endpoint: settings.aiEndpoint,
-      apiKey: settings.aiApiKey,
-      model: settings.aiModel,
-      system: EXTRACT_SYSTEM,
-      temperature: 0.2,
-      messages: [{ role: 'user', content: `正文：\n${content}` }],
-      signal: new AbortController().signal,
-      onToken: () => {},
-    })
-    useUsageStore().record(usage)
-    const fresh = parseNameList(text).filter(
-      (n) => !characters.value.some((c) => c.name === n),
-    )
-    if (fresh.length === 0) {
-      extractNote.value = '未发现新角色名'
-      clearNote()
-      return
-    }
-    extractCandidates.value = fresh
-    pending.value = { kind: 'extract' }
-  } catch (e) {
-    console.error('抽取失败:', e)
-    extractNote.value = '抽取失败，请重试'
-    clearNote()
-  } finally {
-    extracting.value = false
-  }
-}
-
-/** 容错解析 AI 返回的名字数组（只取 [ ] 之间的 JSON） */
-function parseNameList(text: string): string[] {
-  const start = text.indexOf('[')
-  const end = text.lastIndexOf(']')
-  if (start < 0 || end <= start) return []
-  try {
-    const arr = JSON.parse(text.slice(start, end + 1))
-    if (!Array.isArray(arr)) return []
-    return arr
-      .filter((x) => typeof x === 'string')
-      .map((x) => x.trim())
-      .filter((n) => n.length >= 2 && n.length <= 12 && !/^[\d\s]+$/.test(n))
-  } catch {
-    return []
-  }
-}
-
-function clearNote() {
-  setTimeout(() => { extractNote.value = '' }, 4000)
+  const ok = await extract.runExtract()
+  if (ok) pending.value = { kind: 'extract' }
 }
 
 async function saveCharacter() {
@@ -454,7 +398,7 @@ async function confirmPending() {
   }
   // extract：批量创建候选角色卡
   const names = extractCandidates.value
-  extractCandidates.value = []
+  extract.clearCandidates()
   let created = 0
   for (const n of names) {
     if (await createCharFile(n)) created++
@@ -462,12 +406,12 @@ async function confirmPending() {
   if (created > 0) {
     await loadCharacters()
     extractNote.value = `已创建 ${created} 张角色卡`
-    clearNote()
+    extract.clearNote()
   }
 }
 
 function cancelPending() {
-  extractCandidates.value = []
+  extract.clearCandidates()
   pending.value = null
 }
 

@@ -16,7 +16,8 @@ vi.mock('../api/files', () => ({
 
 import * as api from '../api/files'
 import { useFileStore } from './file'
-import { useStatsStore } from './stats'
+import { useStatsStore, _resetStatsPathSubscriptionForTest } from './stats'
+import { onPathRemap, onPathDrop, _resetPathRemapSubscribersForTest } from './pathSubscriptions'
 
 const ROOT = '/p'
 const DIR = `${ROOT}/卷1`
@@ -47,6 +48,8 @@ function seed() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  _resetPathRemapSubscribersForTest()
+  _resetStatsPathSubscriptionForTest()
 })
 
 describe('renamePath：目录重命名的路径迁移', () => {
@@ -335,5 +338,50 @@ describe('章节排序：中文数字命名', () => {
     )
 
     expect(store.tree.map((n) => n.name)).toEqual(['第一卷', '第三卷', '第十章.md'])
+  })
+})
+
+describe('路径迁移订阅机制（onPathRemap / onPathDrop）', () => {
+  beforeEach(() => {
+    _resetPathRemapSubscribersForTest()
+  })
+
+  it('重命名时通知所有 remap 订阅者，传入的 mapper 语义正确', async () => {
+    const store = seed()
+    const spy = vi.fn((mapper: (p: string) => string) => {
+      expect(mapper(CH1)).toBe(`${ROOT}/第一卷/第1章.md`)
+    })
+    onPathRemap(spy)
+
+    await store.renamePath(DIR, '第一卷')
+
+    expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it('删除时通知所有 drop 订阅者，传入的 affected 谓词语义正确', async () => {
+    const store = seed()
+    let captured: ((p: string) => boolean) | null = null
+    const spy = vi.fn((affected: (p: string) => boolean) => {
+      captured = affected
+    })
+    onPathDrop(spy)
+
+    await store.deletePath(DIR)
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect(captured!(CH1)).toBe(true)          // 目录内文件命中
+    expect(captured!(`${DIR}/第2章.md`)).toBe(true)
+    expect(captured!(OUT)).toBe(false)          // 目录外文件不命中
+  })
+
+  it('订阅者注册后，后续多次迁移都会收到通知（显式订阅而非一次性）', async () => {
+    const store = seed()
+    const spy = vi.fn()
+    onPathRemap(spy)
+
+    await store.renamePath(DIR, '第一卷')
+    await store.renamePath(`${ROOT}/第一卷`, '第一卷改名')
+
+    expect(spy).toHaveBeenCalledTimes(2)
   })
 })

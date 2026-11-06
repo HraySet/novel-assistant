@@ -5,6 +5,7 @@ vi.mock('../api/files', () => ({
   readFile: vi.fn(async () => ''),
   writeFile: vi.fn(async () => undefined),
   listDir: vi.fn(async () => []),
+  pathExists: vi.fn(async () => false),
   createDir: vi.fn(async () => undefined),
   deleteFile: vi.fn(async () => undefined),
   writeFileTail: vi.fn(async () => undefined),

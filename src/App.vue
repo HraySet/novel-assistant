@@ -25,6 +25,9 @@
         <button class="icon-bar-btn" :class="{ active: showSidebar }" title="文件树" @click="showSidebar = !showSidebar">
           <FolderOpen :size="16" />
         </button>
+        <button class="icon-bar-btn" :class="{ active: showBookOutline }" title="全书结构" @click="showBookOutline = !showBookOutline">
+          <LayoutList :size="16" />
+        </button>
         <button class="icon-bar-btn" title="角色卡片" @click="showCharacters = true">
           <Users :size="16" />
         </button>
@@ -43,6 +46,11 @@
       <!-- 左侧推挤面板：文件树 -->
       <Transition name="slide-left">
         <LeftSidebar v-if="showSidebar && !focusMode" />
+      </Transition>
+
+      <!-- 左侧推挤面板：全书结构 -->
+      <Transition name="slide-left">
+        <BookOutline v-if="showBookOutline && !focusMode" />
       </Transition>
 
       <!-- 编辑器 -->
@@ -183,7 +191,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, defineAsyncComponent } from 'vue'
-import { FolderOpen, Sparkles, X, Settings, Download, Users, Trash2 } from 'lucide-vue-next'
+import { FolderOpen, Sparkles, X, Settings, Download, Users, Trash2, LayoutList } from 'lucide-vue-next'
 import { useKeyboardShortcuts } from './composables/useKeyboardShortcuts'
 import { useProjectOperations } from './composables/useProjectOperations'
 import { storeToRefs } from 'pinia'
@@ -210,6 +218,7 @@ import TopBar from './components/TopBar.vue'
 import MdEditor from './components/MdEditor.vue'
 import AiPanel from './components/AiPanel.vue'
 import LeftSidebar from './components/LeftSidebar.vue'
+import BookOutline from './components/BookOutline.vue'
 import GlobalContextMenu from './components/GlobalContextMenu.vue'
 import EditorTabs from './components/EditorTabs.vue'
 import SettingsNav from './components/SettingsNav.vue'
@@ -229,6 +238,7 @@ const SettingsContent = defineAsyncComponent(() => import('./components/Settings
 type View = 'library' | 'editor' | 'ai-chat'
 const view = ref<View>('library')
 const showSidebar = ref(false)
+const showBookOutline = ref(false)
 const showAiPanel = ref(false)
 const showSearch = ref(false)
 const showCharacters = ref(false)

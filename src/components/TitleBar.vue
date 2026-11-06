@@ -8,7 +8,7 @@
         <polygon points="296.5,181.5 323.5,208.5 211,321 175,330 184,294" fill="var(--color-text-on-accent)" />
         <line x1="256" y1="330" x2="337" y2="330" stroke="var(--color-text-on-accent)" stroke-width="18" stroke-linecap="round" />
       </svg>
-      <span class="titlebar-name">清笔</span>
+      <span class="titlebar-name">意笔</span>
     </div>
     <div class="titlebar-spacer" data-tauri-drag-region />
     <div v-if="isTauriEnv" class="titlebar-controls" @mousedown.stop @click.stop>

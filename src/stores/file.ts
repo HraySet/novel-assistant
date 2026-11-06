@@ -7,6 +7,7 @@ import { useToastStore } from './toast'
 import { countWords } from '../utils/countWords'
 import { sanitizeFileName, compareChapterNames } from '../core/text'
 import { basename, dirname, isInside, joinPath, remapPath, samePath } from '../core/paths'
+import { notifyRemapSubscribers, notifyDropSubscribers } from './pathSubscriptions'
 
 const EXPANDED_STORAGE_PREFIX = 'file-tree-expanded:'
 const FAVORITES_STORAGE_PREFIX = 'file-favorites:'
@@ -74,8 +75,6 @@ export const useFileStore = defineStore('file', () => {
   function clearHistoryTarget() {
     historyTarget.value = null
   }
-
-  // 收藏路径集合（以 projectRoot 为 key 持久化到 localStorage）
 
   // ── 编辑器内容提供者 ──
   // 编辑器挂载时注册一个按需读取的函数，保存 / 切换文件 / 构建 AI 上下文时
@@ -162,7 +161,8 @@ export const useFileStore = defineStore('file', () => {
     persistFavorites()
     expandedPaths.value = expandedPaths.value.map(mapper)
     persistExpandedState()
-    stats.remapChapterSnapshots(mapper)
+    // 统计快照的迁移已改为 stats store 通过 onPathRemap 订阅（见 stats.ts 初始化），
+    // 此处不再硬编码调用 stats.remapChapterSnapshots。
   }
 
   /**
@@ -200,6 +200,7 @@ export const useFileStore = defineStore('file', () => {
     }
 
     remapPersistedState(mapper)
+    notifyRemapSubscribers(mapper)
     persistOpenTabs()
   }
 
@@ -221,7 +222,8 @@ export const useFileStore = defineStore('file', () => {
     persistFavorites()
     expandedPaths.value = expandedPaths.value.filter((p) => !affected(p))
     persistExpandedState()
-    stats.removeChapterSnapshots(affected)
+    // 统计快照的清理已改为 stats store 通过 onPathDrop 订阅（见 stats.ts 初始化）。
+    notifyDropSubscribers(affected)
     persistOpenTabs()
   }
 
@@ -469,7 +471,6 @@ export const useFileStore = defineStore('file', () => {
     applyPathRemap(mapper, latest)
   }
 
-
   // ── Context menu ──
 
   function openContextMenu(x: number, y: number, nodePath: string, nodeType: 'file' | 'dir' | 'blank') {
@@ -609,16 +610,25 @@ export const useFileStore = defineStore('file', () => {
 
   // ── Save ──
 
+  /**
+   * 共享保存内核：写盘 → 读回最新 → 判定是否仍脏。
+   *
+   * 写盘期间用户可能继续键入，故写完后以 `getLatestContent` 再取一次：
+   * 若与写盘内容不一致，说明写盘期间又改了字，保持脏标记交由下一次自动保存兜底。
+   * 返回写盘时的 content（供字数统计）与最新 latest（供 store 回写）。
+   */
+  async function persistAndSync(path: string): Promise<{ content: string; latest: string; stillDirty: boolean }> {
+    const content = getLatestContent(path)
+    await api.writeFile(path, content)
+    const latest = getLatestContent(path)
+    return { content, latest, stillDirty: latest !== content }
+  }
+
   async function handleSave(): Promise<boolean> {
     if (!openFile.value) return true
     const path = openFile.value.path
     try {
-      const content = getLatestContent(path)
-      await api.writeFile(path, content)
-      // 写盘期间用户可能继续键入：以最新内容回写 store，避免旧快照覆盖编辑器丢字；
-      // 仍不一致时保持脏标记，交由下一次自动保存兜底
-      const latest = getLatestContent(path)
-      const stillDirty = latest !== content
+      const { content, latest, stillDirty } = await persistAndSync(path)
       if (openFile.value?.path === path) {
         updateActiveFile({ content: latest, isDirty: stillDirty })
       }
@@ -647,12 +657,8 @@ export const useFileStore = defineStore('file', () => {
     const file = openFiles.value.find(f => f.path === path)
     if (!file) return false
     try {
-      const content = getLatestContent(path)
-      await api.writeFile(path, content)
-      // 写盘期间可能继续键入：以最新内容回写，不一致则保持脏标记
-      const latest = getLatestContent(path)
-      const stillDirty = latest !== content
-      // 同步标记为干净
+      const { content, latest, stillDirty } = await persistAndSync(path)
+      // 活动文件走 updateActiveFile，非活动文件按索引直接更新（都保持脏标记语义）
       if (openFile.value?.path === path) {
         updateActiveFile({ content: latest, isDirty: stillDirty })
       } else {

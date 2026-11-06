@@ -2,6 +2,8 @@ import { defineStore, acceptHMRUpdate } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import * as api from '../api/files'
 import { useDetectionStore } from './detection'
+import { onPathRemap, onPathDrop } from './pathSubscriptions'
+import { joinPath } from '../core/paths'
 
 export interface DailyRecord {
   date: string
@@ -25,6 +27,10 @@ interface StatsData {
 
 const STATS_DIR = '.stats'
 const STATS_FILE = 'stats.json'
+
+// 订阅表是模块级单例，跨 pinia 实例（测试里多次 createPinia）会重复 setup。
+// 用模块级标记保证「路径迁移订阅」只注册一次，避免重复通知。
+let subscribed = false
 
 function todayString(): string {
   const d = new Date()
@@ -50,8 +56,7 @@ export const useStatsStore = defineStore('stats', () => {
 
   // ── 路径 ──
   function statsPath(): string {
-    const sep = projectRoot.value.includes('\\') ? '\\' : '/'
-    return `${projectRoot.value}${sep}${STATS_DIR}${sep}${STATS_FILE}`
+    return joinPath(joinPath(projectRoot.value, STATS_DIR), STATS_FILE)
   }
 
   // ── 持久化 ──
@@ -281,6 +286,15 @@ export const useStatsStore = defineStore('stats', () => {
     }
   }
 
+  // ── 路径迁移订阅（T2：替代 file.ts 里的硬编码调用）──
+  // 统计快照的迁移/清理改为订阅 file 的路径变更事件，而非被 file.ts 硬编码调用。
+  // 订阅表是模块级单例，用 subscribed 标记保证只注册一次。
+  if (!subscribed) {
+    subscribed = true
+    onPathRemap((mapper) => remapChapterSnapshots(mapper))
+    onPathDrop((affected) => removeChapterSnapshots(affected))
+  }
+
   function setDailyGoal(goal: number) { dailyGoal.value = goal }
 
   // ── 会话计时 ──
@@ -349,4 +363,9 @@ export const useStatsStore = defineStore('stats', () => {
 // 开发模式 HMR：store 改动时热替换定义，避免新旧实例混用导致运行时崩溃
 if (import.meta.hot) {
   import.meta.hot.accept(acceptHMRUpdate(useStatsStore, import.meta.hot))
+}
+
+/** 仅供测试：重置订阅注册标记，配合 pathSubscriptions 的清理函数使用 */
+export function _resetStatsPathSubscriptionForTest(): void {
+  subscribed = false
 }

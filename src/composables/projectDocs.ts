@@ -220,13 +220,18 @@ export async function readChapterSlices(
     preferSummary?: boolean
     tailFallback?: boolean
     fromEnd?: boolean
+    concurrency?: number
   },
 ): Promise<ChapterSlice[]> {
   const { count, perChapterMax, preferSummary = false, tailFallback = false, fromEnd = false } = opts
+  const concurrency = opts.concurrency ?? 4
   const picked = fromEnd ? chapters.slice(-count) : chapters.slice(0, count)
-  const out: ChapterSlice[] = []
 
-  for (const ch of picked) {
+  // 并发 worker 读取，结果按索引回填，保证输出顺序与输入一致
+  const results = new Array<ChapterSlice | null>(picked.length).fill(null)
+  let cursor = 0
+
+  const readOne = async (ch: ChapterRef): Promise<ChapterSlice | null> => {
     let slice: ChapterSlice | null = null
 
     if (preferSummary) {
@@ -262,10 +267,19 @@ export async function readChapterSlices(
       }
     }
 
-    if (slice) out.push(slice)
+    return slice
   }
 
-  return out
+  const worker = async () => {
+    while (true) {
+      const i = cursor++
+      if (i >= picked.length) return
+      results[i] = await readOne(picked[i])
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, picked.length) }, worker))
+  return results.filter((s): s is ChapterSlice => s !== null)
 }
 
 /**

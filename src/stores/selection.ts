@@ -16,6 +16,8 @@ export interface PendingSelectionAction {
   label: string
   prompt: string
   selection: EditorSelection
+  /** 最大输出 token（按操作类型），可选 */
+  maxTokens?: number
 }
 
 /**

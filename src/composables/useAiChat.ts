@@ -16,6 +16,7 @@ import { trimHistory } from '../core/chat'
 import { streamChat, AiRequestError } from './useAiStream'
 import { renderMarkdown, escapeHtml } from './useMarkdown'
 import { useAiContext } from './useAiContext'
+import { joinPath } from '../core/paths'
 import * as api from '../api/files'
 
 export interface AiChatTarget {
@@ -142,10 +143,10 @@ export function useAiChat(target: AiChatTarget) {
     const root = target.projectRoot()
     if (!file || !root) return
     const stem = file.name.replace(/\.(md|txt)$/i, '')
-    const dir = `${root.replace(/\\/g, '/')}/.summaries`
+    const dir = joinPath(root, '.summaries')
     try {
       await api.createDir(dir)
-      await api.writeFile(`${dir}/${stem}.md`, text.trim())
+      await api.writeFile(joinPath(dir, `${stem}.md`), text.trim())
       savedIndex.value = index
       if (savedTimer) clearTimeout(savedTimer)
       savedTimer = setTimeout(() => { savedIndex.value = null }, 2000)
@@ -214,6 +215,8 @@ export function useAiChat(target: AiChatTarget) {
     withOriginal?: boolean
     /** 划词目标：存在时润色/扩写只针对选区，应用 Diff 时替换选区而非全文 */
     selection?: { path: string; from: number; to: number; text: string }
+    /** 最大输出 token，不传则默认 4096（快捷操作按类型传入） */
+    maxTokens?: number
   }): Promise<boolean> {
     if (!settings.aiApiKey) {
       chatStore.streaming = false
@@ -269,6 +272,7 @@ export function useAiChat(target: AiChatTarget) {
         model: settings.aiModel,
         system: contextPrompt || undefined,
         temperature: settings.aiTemperature,
+        maxTokens: opts.maxTokens,
         messages: [...priorHistory, { role: 'user', content: opts.text }],
         signal: ctrl.signal,
         onToken: (full) => chatStore.updateLastMessage(convId, full),

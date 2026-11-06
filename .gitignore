@@ -37,3 +37,6 @@ src-tauri/target
 nul
 .deepseek/
 .dsh_better_edit/
+
+# 本地打包产物
+release/

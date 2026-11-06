@@ -12,6 +12,11 @@ rust-version = "1.77.2"
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# 生产构建必须启用：让 Tauri 加载嵌入的前端资源，而非 devUrl（localhost:5173）
+# 缺少该项时 `cargo build --release` 产出的是 dev 模式产物，运行会显示「无法访问此页面」
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
 

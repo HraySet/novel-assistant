@@ -1,4 +1,4 @@
-# 清笔设计准则
+# 意笔设计准则
 
 > 这份文档回答一个问题：**在这个代码库里，什么算好设计。**
 > 每条判据都配了本项目的真实正例/反例，不是通用套话。
@@ -35,7 +35,7 @@ Rust 侧（src-tauri/src/，依赖方向同上）：
 
 - ✅ `core/tree.ts` 的 `TREE_POLICIES`：正文/导出/设定/浏览分别要哪些文件，一处定义
 - ❌ 重构前的 5 处遍历：`App.orderedFiles`、`useAiContext.orderedChapters`、`detection.collectRecentChapters`、`useExport.collectFilePaths`、`SearchModal.collectFiles`——规则各写一遍，其中导出那份漏了「排除角色/大纲」，代价是交付物里混进设定文件
-- ❌ `KEYRING_SERVICE = "yanyan"`：项目改名后服务名留在原处，成为隐性单点
+- ❌ `KEYRING_SERVICE = "yanyan"`：上一代产品名残留，服务名与 Cargo 包名不一致，成为隐性单点（现已在改名为「意笔/yibi」时统一，并保留 `yanyan` 旧名做双读迁移）
 
 ### 2. 纯函数优先
 

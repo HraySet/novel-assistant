@@ -20,6 +20,9 @@ src-tauri/target
 ~/
 .tmp/
 
+# WorkBuddy 本地工作目录（记忆日志 / 本地归档，不入库）
+.workbuddy/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
